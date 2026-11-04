@@ -35,9 +35,33 @@ Dedicated [P03 Windows workflow](.github/workflows/drumator-p03.yml):
 
 Successful P03 proof: [Windows Actions #41919715104](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41919715104).
 
+
+## Verified P04: native VST3 editor input, not yet full product GUI QA
+
+The separate [P04 Windows GUI workflow](.github/workflows/gui-p04.yml)
+builds `125A_Test_Lab_GUI.exe` and two self-created, native-Win32 VST3s.
+
+- Open real `IPlugView` via `IEditController`, attach a child HWND to
+  an actual Win32 host window, pump messages and detach, **twice**.
+- Emit native `WM_MOUSEMOVE`, `WM_LBUTTONDOWN` and `WM_LBUTTONUP`
+  to the fixture's real child HWND. The click **must** change parameter
+  ID 9001 from 0 to 1, and this is verified on both editor cycles.
+- Deliberately inert VST3 is rejected **specifically** because the
+  parameter did not change; unrelated load errors do not satisfy CI.
+- `--probe <plugin.vst3>` performs real editor lifecycle checks for an
+  arbitrary Windows VST3. A plugin without an editor is **INCONCLUSIVE**
+  (exit 10), not a green PASS.
+
+Evidence: [P04 GitHub Actions SUCCESS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41921967133).
+
+**P04 boundaries:** This is a native HWND message-dispatch test on a
+controlled plugin. It does **not** prove pixel rendering, pointer behavior
+through an interactive physical desktop, MIDI/WAV export dialogs, or
+correctness of every product control. Do not call it a comprehensive GUI audit.
+
 ## Limitations / unfinished tests
 
-**P03 is an independent technical/musical test, not a Drumator release approval.**
+**P03/P04 are limited integration proofs, not a Drumator release approval.**
 It does not yet click the real GUI, trigger Beat Creator generate/variate/break,
 test the UI's preset browser, internal MIDI/WAV export buttons, or reproduce
 issues specific to Fender Studio Pro. Do not substitute generic P02/P03
