@@ -137,7 +137,8 @@ int32_t pcm24(Sample32 input) {
 }
 
 int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
-           const std::filesystem::path& statePath = {}) {
+           const std::filesystem::path& statePath = {},
+           const std::filesystem::path& stateSnapshotPath = {}) {
     std::string error;
     auto module = Module::create(pluginPath, error);
     require(static_cast<bool>(module), ("Cannot load VST3 module: " + error).c_str());
@@ -303,6 +304,21 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
             require(component->setActive(false) == kResultOk, "setActive(false) failed");
             active = false;
             writeWave(wavePath, interleaved);
+            if (!stateSnapshotPath.empty()) {
+                ResizableMemoryIBStream returnedState;
+                require(component->getState(&returnedState) == kResultOk,
+                        "Plugin failed to save VST3 component state");
+                const auto size = returnedState.getCursor();
+                require(size > 8 && size < 16 * 1024 * 1024,
+                        "Plugin saved empty or unreasonable component state");
+                std::ofstream dump(stateSnapshotPath, std::ios::binary | std::ios::trunc);
+                require(dump.good(), "Cannot open state snapshot path");
+                dump.write(static_cast<const char*>(returnedState.getData()),
+                           static_cast<std::streamsize>(size));
+                require(dump.good(), "Cannot write complete state snapshot");
+                std::cout << "[PASS] VST3 component state saved by actual plugin: "
+                          << size << " bytes\n";
+            }
             std::cout << "[PASS] VST3 processing: 4 bars, 120 BPM, 44.1 kHz, PCM24 stereo\n";
             std::cout << "[INFO] MIDI events emitted: " << emittedEvents << "\n";
             std::cout << "[INFO] Rendered peak: " << peak << "\n";
@@ -334,9 +350,14 @@ int main(int argc, char** argv) {
         if (argc == 5 && std::string(argv[1]) == "--render-state")
             return render(argv[2], std::filesystem::path(argv[4]),
                           std::filesystem::path(argv[3]));
+        if (argc == 6 && std::string(argv[1]) == "--render-state-save")
+            return render(argv[2], std::filesystem::path(argv[4]),
+                          std::filesystem::path(argv[3]),
+                          std::filesystem::path(argv[5]));
         std::cerr << "Usage: 125A_Test_Lab_Host --selftest\n"
                   << "       125A_Test_Lab_Host --render <plugin.vst3> <output.wav>\n"
-                  << "       125A_Test_Lab_Host --render-state <plugin.vst3> <state.bin> <output.wav>\n";
+                  << "       125A_Test_Lab_Host --render-state <plugin.vst3> <state.bin> <output.wav>\n"
+                  << "       125A_Test_Lab_Host --render-state-save <plugin.vst3> <state.bin> <output.wav> <saved-state.bin>\n";
         return 2;
     } catch (const std::exception& error) {
         std::cerr << "[FAIL] " << error.what() << '\n';
