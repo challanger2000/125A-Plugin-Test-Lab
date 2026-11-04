@@ -15,6 +15,8 @@ on:
       - 'tests/verify_midi_export.py'
       - 'tests/drumator_beat_probe.cpp'
       - 'tests/verify_beat_creator.py'
+      - 'tests/drumator_wav_probe.cpp'
+      - 'tests/verify_wav_export.py'
       - '.github/workflows/drumator-p03.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -207,6 +209,26 @@ jobs:
           Write-Host "[PASS] P07: 1,280 Beat Creator A/B/C patterns validated across ten styles"
           exit 0
 
+      - name: P08 actual WAV export vs independently validated MIDI timing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          cmake --build build-p06 --config Release --target DrumatorWavExportProbe --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw "P08 offline WAV exporter read-only compilation failed" }
+          $exe = @(Get-ChildItem build-p06 -Recurse -File -Filter "125A_Drumator_WAV_Probe.exe")
+          if ($exe.Count -ne 1) { throw "P08 WAV probe executable missing or ambiguous" }
+          New-Item -ItemType Directory -Force build/p08-wav-exports | Out-Null
+          & $exe[0].FullName build/p08-wav-exports 2>&1 |
+            Tee-Object -FilePath build/p08-actual-wav-export.log
+          if ($LASTEXITCODE -ne 0) { throw "P08 real WAV export failed" }
+          python tests/verify_wav_export.py build/p08-wav-exports build/p06-exports 2>&1 |
+            Tee-Object -FilePath build/p08-independent-wav-midi-oracle.log
+          if ($LASTEXITCODE -ne 0) {
+            throw "P08 independent PCM24, stereo or MIDI-to-WAV musical timing check FAILED"
+          }
+          Write-Host "[PASS] P08: 18 actual PCM24 WAV exports match independent MIDI timing reference"
+          exit 0
+
       - name: Collect P03 diagnostic evidence
         if: always()
         shell: pwsh
@@ -227,6 +249,10 @@ jobs:
                              "build/p07-independent-beat-oracle.log",
                              "build/p07-beat-creator-report.json",
                              "build/p07-creator-vectors/style0-steps16-complexity35-seed0.abc",
+                             "build/p08-actual-wav-export.log",
+                             "build/p08-independent-wav-midi-oracle.log",
+                             "build/p08-independent-wav-midi-report.json",
+                             "build/p08-wav-exports/song-bpm120-swing50.wav",
                              "build/p05-renders/bpm120-swing50-block127.wav")) {
             if (Test-Path $file) { Copy-Item $file artifact/P03/ }
           }
@@ -237,6 +263,7 @@ jobs:
             "P05 matrix checks timing and block equivalence for 90/120/150 BPM, 0/25/50 swing.",
             "P06 tests the actual MIDI export core in an independently built harness.",
             "P07 checks product Beat Creator core and 5-point UI complexity function (not live clicks).",
+            "P08 checks real WAV export core and independent MIDI/WAV correspondence.",
             "The VST3 GUI export button, file chooser, and controller communication remain untested."
           ) | Set-Content artifact/P03/REPORT-NOTES.txt
 
