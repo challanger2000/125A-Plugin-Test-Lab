@@ -37,8 +37,8 @@ void require(bool okay, const char* message) {
     if (!okay) throw std::runtime_error(message);
 }
 
-double ppqAt(int64 frame) {
-    return static_cast<double>(frame) * static_cast<double>(kBpm) /
+double ppqAt(int64 frame, int bpm = kBpm) {
+    return static_cast<double>(frame) * static_cast<double>(bpm) /
            (60.0 * static_cast<double>(kSampleRate));
 }
 
@@ -60,7 +60,7 @@ struct Bus {
     AudioBusBuffers buffers{};
 };
 
-std::vector<Bus> createBuses(IComponent* component, BusDirection direction) {
+std::vector<Bus> createBuses(IComponent* component, BusDirection direction, int blockSize) {
     const int32 count = component->getBusCount(kAudio, direction);
     require(count >= 0 && count <= 64, "invalid audio bus count");
     std::vector<Bus> buses(static_cast<size_t>(count));
@@ -75,7 +75,7 @@ std::vector<Bus> createBuses(IComponent* component, BusDirection direction) {
         bus.samples.resize(static_cast<size_t>(info.channelCount));
         bus.pointers.resize(bus.samples.size());
         for (size_t ch = 0; ch < bus.samples.size(); ++ch) {
-            bus.samples[ch].assign(kBlockSize, 0.f);
+            bus.samples[ch].assign(static_cast<size_t>(blockSize), 0.f);
             bus.pointers[ch] = bus.samples[ch].data();
         }
         bus.buffers.numChannels = info.channelCount;
@@ -138,7 +138,13 @@ int32_t pcm24(Sample32 input) {
 
 int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
            const std::filesystem::path& statePath = {},
-           const std::filesystem::path& stateSnapshotPath = {}) {
+           const std::filesystem::path& stateSnapshotPath = {},
+           int bpm = kBpm, int blockSize = kBlockSize) {
+    require(bpm >= 60 && bpm <= 240, "Tempo outside supported 60..240 BPM range");
+    require(blockSize >= 16 && blockSize <= 2048, "Block size outside supported 16..2048 frames");
+    require((kSampleRate * 60) % bpm == 0, "Tempo not sample-exact at 44.1 kHz");
+    const int beatFrames = kSampleRate * 60 / bpm;
+    const int totalFrames = beatFrames * kBeatsPerBar * kBars;
     std::string error;
     auto module = Module::create(pluginPath, error);
     require(static_cast<bool>(module), ("Cannot load VST3 module: " + error).c_str());
@@ -169,8 +175,8 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
             require(processor->canProcessSampleSize(kSample32) == kResultTrue,
                     "plugin does not support 32-bit floating point audio");
 
-            auto inputs = createBuses(component.get(), kInput);
-            auto outputs = createBuses(component.get(), kOutput);
+            auto inputs = createBuses(component.get(), kInput, blockSize);
+            auto outputs = createBuses(component.get(), kOutput, blockSize);
             require(!outputs.empty() && !outputs.front().samples.empty(),
                     "plugin has no renderable audio output");
             const auto eventBusCount = component->getBusCount(kEvent, kInput);
@@ -184,7 +190,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
             ProcessSetup setup{};
             setup.processMode = kRealtime;
             setup.symbolicSampleSize = kSample32;
-            setup.maxSamplesPerBlock = kBlockSize;
+            setup.maxSamplesPerBlock = blockSize;
             setup.sampleRate = kSampleRate;
             require(processor->setupProcessing(setup) == kResultOk, "setupProcessing failed");
             // P03: load a deterministic drum kit as a real host-project state.
@@ -218,12 +224,12 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
             processing = true;
 
             std::vector<int32_t> interleaved;
-            interleaved.reserve(static_cast<size_t>(kTotalFrames) * 2U);
+            interleaved.reserve(static_cast<size_t>(totalFrames) * 2U);
             double peak = 0.0;
             int64_t emittedEvents = 0;
 
-            for (int start = 0; start < kTotalFrames; start += kBlockSize) {
-                const int frames = std::min(kBlockSize, kTotalFrames - start);
+            for (int start = 0; start < totalFrames; start += blockSize) {
+                const int frames = std::min(blockSize, totalFrames - start);
                 auto inputBuffers = descriptors(inputs);
                 auto outputBuffers = descriptors(outputs);
                 for (auto& bus : outputs)
@@ -233,7 +239,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                 EventList events(32);
                 if (eventBusCount > 0 && statePath.empty()) {
                     for (int beat = 0; beat < kBeatsPerBar * kBars; ++beat) {
-                        const int frame = beat * kFramesPerBeat;
+                        const int frame = beat * beatFrames;
                         const int offFrame = frame + kSampleRate / 10;
                         for (int kind = 0; kind < 2; ++kind) {
                             const int at = kind == 0 ? frame : offFrame;
@@ -241,7 +247,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                             Event event{};
                             event.busIndex = 0;
                             event.sampleOffset = at - start;
-                            event.ppqPosition = ppqAt(at);
+                            event.ppqPosition = ppqAt(at, bpm);
                             event.type = kind == 0 ? Event::kNoteOnEvent : Event::kNoteOffEvent;
                             if (kind == 0) {
                                 event.noteOn.channel = 0;
@@ -268,9 +274,9 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                             ProcessContext::kBarPositionValid;
                 ctx.sampleRate = kSampleRate;
                 ctx.projectTimeSamples = start;
-                ctx.projectTimeMusic = ppqAt(start);
+                ctx.projectTimeMusic = ppqAt(start, bpm);
                 ctx.barPositionMusic = 4.0 * std::floor(ctx.projectTimeMusic / 4.0);
-                ctx.tempo = kBpm;
+                ctx.tempo = bpm;
                 ctx.timeSigNumerator = kBeatsPerBar;
                 ctx.timeSigDenominator = 4;
 
@@ -319,7 +325,9 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                 std::cout << "[PASS] VST3 component state saved by actual plugin: "
                           << size << " bytes\n";
             }
-            std::cout << "[PASS] VST3 processing: 4 bars, 120 BPM, 44.1 kHz, PCM24 stereo\n";
+            std::cout << "[PASS] VST3 processing: 4 bars, " << bpm
+                      << " BPM, 44.1 kHz, block=" << blockSize
+                      << ", PCM24 stereo, frames=" << totalFrames << "\n";
             std::cout << "[INFO] MIDI events emitted: " << emittedEvents << "\n";
             std::cout << "[INFO] Rendered peak: " << peak << "\n";
             if (peak < 1.e-6)
@@ -354,10 +362,15 @@ int main(int argc, char** argv) {
             return render(argv[2], std::filesystem::path(argv[4]),
                           std::filesystem::path(argv[3]),
                           std::filesystem::path(argv[5]));
+        if (argc == 7 && std::string(argv[1]) == "--render-state-at")
+            return render(argv[2], std::filesystem::path(argv[4]),
+                          std::filesystem::path(argv[3]), {},
+                          std::stoi(argv[5]), std::stoi(argv[6]));
         std::cerr << "Usage: 125A_Test_Lab_Host --selftest\n"
                   << "       125A_Test_Lab_Host --render <plugin.vst3> <output.wav>\n"
                   << "       125A_Test_Lab_Host --render-state <plugin.vst3> <state.bin> <output.wav>\n"
-                  << "       125A_Test_Lab_Host --render-state-save <plugin.vst3> <state.bin> <output.wav> <saved-state.bin>\n";
+                  << "       125A_Test_Lab_Host --render-state-save <plugin.vst3> <state.bin> <output.wav> <saved-state.bin>\n"
+                  << "       125A_Test_Lab_Host --render-state-at <plugin.vst3> <state.bin> <output.wav> <bpm> <block-size>\n";
         return 2;
     } catch (const std::exception& error) {
         std::cerr << "[FAIL] " << error.what() << '\n';
