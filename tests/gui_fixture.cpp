@@ -10,6 +10,7 @@
 #include "pluginterfaces/vst/vstspeaker.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 
+#include <algorithm>
 #include <cstring>
 using namespace Steinberg;
 using namespace Steinberg::Vst;
@@ -57,14 +58,15 @@ public:
 class Controller;
 class ClickView final : public CPluginView {
 public:
-    explicit ClickView(Controller* owner) : CPluginView(&kBounds), owner_(owner) {}
+    explicit ClickView(Controller* owner) : CPluginView(nullptr), owner_(owner) {
+        setRect(ViewRect(0, 0, 320, 180));
+    }
     tresult PLUGIN_API isPlatformTypeSupported(FIDString type) override {
         return type && std::strcmp(type, kPlatformTypeHWND) == 0 ? kResultTrue : kResultFalse;
     }
     tresult PLUGIN_API attached(void* parent, FIDString type) override;
     tresult PLUGIN_API removed() override;
 private:
-    static constexpr ViewRect kBounds{0,0,320,180};
     static LRESULT CALLBACK clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM l);
     Controller* owner_{};
     HWND clickWindow_{};
