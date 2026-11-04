@@ -2,6 +2,7 @@
 // parameter assertion. No vendor DAW dependency or product source code.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <objbase.h> // CoInitializeEx, COINIT_APARTMENTTHREADED, CoUninitialize
 #include "public.sdk/source/vst/hosting/module.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
 #include "base/source/fobject.h"
