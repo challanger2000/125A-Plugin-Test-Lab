@@ -243,11 +243,42 @@ jobs:
           if ($exe.Count -ne 1 -or $plugin.Count -ne 1) {
             throw "P09 actual Drumator/editor host paths missing or ambiguous"
           }
-          New-Item -ItemType Directory -Force build/p09-gui | Out-Null
+          # Unlike audio-only P03-P08, a VSTGUI editor needs the standard
+          # VST3 Contents/Resources directory. The product release workflow
+          # packages these resources; recreate that bundle READ-ONLY in Test Lab.
+          $bundle = Join-Path $PWD 'build/p09-bundle/125A Drumator.vst3'
+          $binDir = Join-Path $bundle 'Contents/x86_64-win'
+          $resDir = Join-Path $bundle 'Contents/Resources'
+          New-Item -ItemType Directory -Force $binDir,$resDir,'build/p09-gui' | Out-Null
+          $packagedBinary = Join-Path $binDir '125A Drumator.vst3'
+          Copy-Item -LiteralPath $plugin[0].FullName -Destination $packagedBinary
+          $required = @(
+            'Drumator.uidesc',
+            '125A_Drumator_Knob.png', '125A_Drumator_Screw.png',
+            '125A_Drumator_Faceplate.png',
+            'Futuristische industrielle Metalloberfläche.png',
+            '125A_Dark_Button_83x32_Normal_1x.png',
+            '125A_Dark_Button_83x32_Normal_4x.png',
+            '125A_Dark_Button_83x32_Aktiv_1x.png',
+            '125A_Dark_Button_83x32_Aktiv_4x.png',
+            '125A_Dark_Button_83x32_Gedrueckt_1x.png',
+            '125A_Dark_Button_83x32_Gedrueckt_4x.png',
+            '125A_Dark_Button_83x32_Deaktiviert_1x.png',
+            '125A_Dark_Button_83x32_Deaktiviert_4x.png',
+            'DRUMATOR_Logo_Modern_Transparent.png',
+            '125A Systems Metall-Logo Badge.png'
+          )
+          foreach ($filename in $required) {
+            $source = Join-Path 'drumator-src/resource' $filename
+            if (-not (Test-Path -LiteralPath $source)) {
+              throw "P09 standard VST3 GUI resource missing: $filename"
+            }
+            Copy-Item -LiteralPath $source -Destination (Join-Path $resDir $filename)
+          }
           $before = "build/p09-gui/before.bin"
           $cancel = "build/p09-gui/cancel.bin"
           $after = "build/p09-gui/after.bin"
-          & $exe[0].FullName --drumator-beat-creator $plugin[0].FullName $before $cancel $after 2>&1 |
+          & $exe[0].FullName --drumator-beat-creator $packagedBinary $before $cancel $after 2>&1 |
             Tee-Object -FilePath build/p09-real-native-gui.log
           if ($LASTEXITCODE -ne 0) {
             throw "P09 native real Drumator GUI interaction failed"
