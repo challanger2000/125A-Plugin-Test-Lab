@@ -45,3 +45,19 @@ enable_testing()
 add_test(NAME transport_selftest COMMAND $<TARGET_FILE:TestLabHost> --selftest)
 add_test(NAME invalid_plugin_rejected COMMAND $<TARGET_FILE:TestLabHost> --render .\\invalid.vst3 .\\invalid.wav)
 set_tests_properties(invalid_plugin_rejected PROPERTIES WILL_FAIL TRUE)
+
+# CI-only VST3s: one renders known musical impulses, the second injects
+# nonfinite audio. These are NEVER bundled with the public host artifact.
+set(SMTG_PLUGIN_TARGET_PATH "${CMAKE_BINARY_DIR}/QA-VST3" CACHE PATH "" FORCE)
+
+smtg_add_vst3plugin(QASignalGood
+    PACKAGE_NAME "125A_QA_SignalGood"
+    SOURCES_LIST tests/signal_fixture.cpp)
+target_link_libraries(QASignalGood PRIVATE sdk)
+target_compile_definitions(QASignalGood PRIVATE NOMINMAX QA_DELIBERATE_NAN=0)
+
+smtg_add_vst3plugin(QASignalBad
+    PACKAGE_NAME "125A_QA_SignalBad"
+    SOURCES_LIST tests/signal_fixture.cpp)
+target_link_libraries(QASignalBad PRIVATE sdk)
+target_compile_definitions(QASignalBad PRIVATE NOMINMAX QA_DELIBERATE_NAN=1)
