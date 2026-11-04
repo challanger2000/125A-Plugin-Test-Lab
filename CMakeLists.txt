@@ -23,12 +23,19 @@ FetchContent_Declare(vst3sdk
     GIT_SUBMODULES_RECURSE TRUE)
 FetchContent_MakeAvailable(vst3sdk)
 
-add_executable(TestLabHost
-    src/main.cpp
-    "${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/hosting/module_win32.cpp"
-    "${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/hosting/eventlist.cpp")
+# The pinned Steinberg Windows module still uses u8string() as std::string.
+# In C++20+ u8string() returns std::u8string. Compile ONLY this SDK translation
+# unit as C++17; keep all original 125A code at C++23.
+add_library(Vst3WinModule OBJECT
+    "${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/hosting/module_win32.cpp")
+set_target_properties(Vst3WinModule PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_link_libraries(Vst3WinModule PRIVATE sdk_hosting sdk_common base pluginterfaces)
+target_compile_definitions(Vst3WinModule PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+
+add_executable(TestLabHost src/main.cpp)
 set_target_properties(TestLabHost PROPERTIES OUTPUT_NAME "125A_Test_Lab_Host")
-target_link_libraries(TestLabHost PRIVATE sdk_hosting sdk_common base pluginterfaces)
+target_link_libraries(TestLabHost PRIVATE Vst3WinModule sdk_hosting sdk_common base pluginterfaces)
 target_compile_definitions(TestLabHost PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
 if(MSVC)
   target_compile_options(TestLabHost PRIVATE /W4 /permissive- /utf-8)
