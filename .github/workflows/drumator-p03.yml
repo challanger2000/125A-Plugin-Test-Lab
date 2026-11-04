@@ -17,6 +17,8 @@ on:
       - 'tests/verify_beat_creator.py'
       - 'tests/drumator_wav_probe.cpp'
       - 'tests/verify_wav_export.py'
+      - 'src/gui_host.cpp'
+      - 'tests/verify_drumator_gui.py'
       - '.github/workflows/drumator-p03.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -229,6 +231,35 @@ jobs:
           Write-Host "[PASS] P08: 18 actual PCM24 WAV exports match independent MIDI timing reference"
           exit 0
 
+      - name: P09 true Drumator VST3 GUI GENERATE / CANCEL / APPLY state changes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          cmake --build build --config Release --target TestLabGUI --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw "P09 native VST3 GUI host compilation failed" }
+          $exe = @(Get-ChildItem build -Recurse -File -Filter "125A_Test_Lab_GUI.exe")
+          $plugin = @(Get-ChildItem build-drumator -Recurse -File -Filter "Drumator.vst3" |
+            Where-Object { $_.FullName -match '[\\/]VST3[\\/]' })
+          if ($exe.Count -ne 1 -or $plugin.Count -ne 1) {
+            throw "P09 actual Drumator/editor host paths missing or ambiguous"
+          }
+          New-Item -ItemType Directory -Force build/p09-gui | Out-Null
+          $before = "build/p09-gui/before.bin"
+          $cancel = "build/p09-gui/cancel.bin"
+          $after = "build/p09-gui/after.bin"
+          & $exe[0].FullName --drumator-beat-creator $plugin[0].FullName $before $cancel $after 2>&1 |
+            Tee-Object -FilePath build/p09-real-native-gui.log
+          if ($LASTEXITCODE -ne 0) {
+            throw "P09 native real Drumator GUI interaction failed"
+          }
+          python tests/verify_drumator_gui.py $before $cancel $after 2>&1 |
+            Tee-Object -FilePath build/p09-independent-gui-oracle.log
+          if ($LASTEXITCODE -ne 0) {
+            throw "P09 actual Drumator GUI actions did not produce expected real processor state changes"
+          }
+          Write-Host "[PASS] P09: actual Drumator GUI mouse input => A/B/C changed and CANCEL preserved state"
+          exit 0
+
       - name: Collect P03 diagnostic evidence
         if: always()
         shell: pwsh
@@ -253,6 +284,11 @@ jobs:
                              "build/p08-independent-wav-midi-oracle.log",
                              "build/p08-independent-wav-midi-report.json",
                              "build/p08-wav-exports/song-bpm120-swing50.wav",
+                             "build/p09-real-native-gui.log",
+                             "build/p09-independent-gui-oracle.log",
+                             "build/p09-gui/before.bin",
+                             "build/p09-gui/cancel.bin",
+                             "build/p09-gui/after.bin",
                              "build/p05-renders/bpm120-swing50-block127.wav")) {
             if (Test-Path $file) { Copy-Item $file artifact/P03/ }
           }
@@ -264,7 +300,8 @@ jobs:
             "P06 tests the actual MIDI export core in an independently built harness.",
             "P07 checks product Beat Creator core and 5-point UI complexity function (not live clicks).",
             "P08 checks real WAV export core and independent MIDI/WAV correspondence.",
-            "The VST3 GUI export button, file chooser, and controller communication remain untested."
+            "P09 exercises actual product GUI Beat Creator GENERATE/CANCEL/APPLY by native HWND events.",
+            "The GUI MIDI/WAV export file chooser and drag-and-drop remain untested."
           ) | Set-Content artifact/P03/REPORT-NOTES.txt
 
       - name: Upload P03 results (even if tests failed)
