@@ -10,6 +10,9 @@ on:
       - 'tests/verify_drumator_swing.py'
       - 'tests/verify_drumator_recall.py'
       - 'tests/verify_drumator_matrix.py'
+      - 'tests/drumator_midi_probe.cpp'
+      - 'tests/midi_probe/CMakeLists.txt'
+      - 'tests/verify_midi_export.py'
       - '.github/workflows/drumator-p03.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -161,6 +164,29 @@ jobs:
           Write-Host "[PASS] P05: 36 independently verified real Drumator timing and buffer matrix renders"
           exit 0
 
+      - name: P06 Drumator MIDI export implementation + independent SMF oracle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $src = (Resolve-Path drumator-src).Path
+          cmake -S tests/midi_probe -B build-p06 -G "Visual Studio 17 2022" -A x64 "-DDRUMATOR_SOURCE_ROOT=$src"
+          if ($LASTEXITCODE -ne 0) { throw "P06 read-only Drumator MIDI probe configure failed" }
+          cmake --build build-p06 --config Release --target DrumatorMidiProbe --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw "P06 actual MIDI export implementation build failed" }
+          $exe = @(Get-ChildItem build-p06 -Recurse -File -Filter "125A_Drumator_MIDI_Probe.exe")
+          if ($exe.Count -ne 1) { throw "P06 MIDI probe exe missing or ambiguous" }
+          New-Item -ItemType Directory -Force build/p06-exports | Out-Null
+          & $exe[0].FullName build/p06-exports 2>&1 |
+            Tee-Object -FilePath build/p06-real-export.log
+          if ($LASTEXITCODE -ne 0) { throw "P06 product MIDI exporter generated invalid data" }
+          python tests/verify_midi_export.py build/p06-exports 2>&1 |
+            Tee-Object -FilePath build/p06-independent-midi-oracle.log
+          if ($LASTEXITCODE -ne 0) {
+            throw "P06 independent SMF parser rejected product MIDI export"
+          }
+          Write-Host "[PASS] P06 18 MIDI export files independently parsed, plus negative mutations"
+          exit 0
+
       - name: Collect P03 diagnostic evidence
         if: always()
         shell: pwsh
@@ -173,6 +199,10 @@ jobs:
                              "build/p03-recall-negative.log", "build/p05-host-renders.log",
                              "build/p05-independent-matrix-oracle.log",
                              "build/p05-report.json",
+                             "build/p06-real-export.log",
+                             "build/p06-independent-midi-oracle.log",
+                             "build/p06-independent-midi-report.json",
+                             "build/p06-exports/pattern-bpm120-swing50.mid",
                              "build/p05-renders/bpm120-swing50-block127.wav")) {
             if (Test-Path $file) { Copy-Item $file artifact/P03/ }
           }
@@ -181,7 +211,8 @@ jobs:
             "Product SHA e22e65517e3e61d5e55e29b0ee7e34ea9b856a3c",
             "Only synthetic self-created sample content; no proprietary drum kits.",
             "P05 matrix checks timing and block equivalence for 90/120/150 BPM, 0/25/50 swing.",
-            "GUI and internal export are not covered."
+            "P06 tests the actual MIDI export core in an independently built harness.",
+            "The VST3 GUI export button, file chooser, and controller communication remain untested."
           ) | Set-Content artifact/P03/REPORT-NOTES.txt
 
       - name: Upload P03 results (even if tests failed)
