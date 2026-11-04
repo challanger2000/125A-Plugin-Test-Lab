@@ -8,9 +8,14 @@ on:
       - 'src/main.cpp'
       - 'tests/make_drumator_state.py'
       - 'tests/verify_drumator_swing.py'
+      - 'tests/verify_drumator_recall.py'
       - '.github/workflows/drumator-p03.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
+
+concurrency:
+  group: 125a-testlab-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
