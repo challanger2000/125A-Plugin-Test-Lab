@@ -1,0 +1,51 @@
+name: 125A Test Lab - Windows P01
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-build-and-selftest:
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure (MSVC 2022, x64)
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Compile VST3 test host
+        shell: pwsh
+        run: cmake --build build --config Release --target TestLabHost --parallel 4
+
+      - name: Run transport and negative-path self-tests
+        shell: pwsh
+        run: |
+          ctest --test-dir build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw "CTest failed ($LASTEXITCODE)" }
+
+      - name: Stage binary and test instructions
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          $hostExe = Get-ChildItem build -Recurse -File -Filter "125A_Test_Lab_Host.exe" | Select-Object -First 1
+          if (-not $hostExe) { throw "Host executable missing" }
+          Copy-Item $hostExe.FullName artifact\
+          Copy-Item START-HERE.md artifact\
+          Get-FileHash $hostExe.FullName -Algorithm SHA256 | Format-List | Out-File artifact\SHA256.txt
+
+      - name: Publish P01 test host
+        uses: actions/upload-artifact@v4
+        with:
+          name: 125A-Plugin-Test-Lab-P01-Windows-x64
+          path: artifact/
+          if-no-files-found: error
