@@ -64,6 +64,7 @@ jobs:
             throw "Bad VST3 rejected for an unexpected reason; NaN detection NOT proven"
           }
           Write-Host "[PASS] P02 real processing + independent waveform oracle + deliberately corrupt VST3 detection"
+          exit 0 # Clear expected native exit=1 from deliberately corrupt fixture
 
       - name: Stage executable and P02 evidence
         shell: pwsh
