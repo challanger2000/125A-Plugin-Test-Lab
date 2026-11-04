@@ -16,6 +16,10 @@ reproducible state restore. It is **not** a complete consumer DAW.
   stereo audio** across all 352,800 frames, saved state CRC verifies.
 - Bad state CRC rejected by actual Drumator; no output WAV produced.
 
+- P04 PASS: native Win32 VST3 GUI click-to-controller parameter verified
+  across two real window lifecycle cycles, plus a deliberately inert negative
+  VST3; evidence in Actions run 41921967133.
+
 ## Windows CLI
 ```powershell
 .\125A_Test_Lab_Host.exe --selftest
@@ -23,6 +27,16 @@ reproducible state restore. It is **not** a complete consumer DAW.
 .\125A_Test_Lab_Host.exe --render-state "C:\Path\Plugin.vst3" ".\kit.bin" ".\render.wav"
 .\125A_Test_Lab_Host.exe --render-state-save "C:\Path\Plugin.vst3" ".\kit.bin" ".\render.wav" ".\saved-kit.bin"
 ```
+
+P04 GUI executable commands:
+```powershell
+.\\125A_Test_Lab_GUI.exe --probe "C:\\Path\\Plugin.vst3"
+.\\125A_Test_Lab_GUI.exe --prove-click ".\\125A_QA_GUI_Click.vst3" 9001
+```
+The `--prove-click` mode is intended for plugins exposing a known testable
+controller parameter. It does not automatically discover product GUI controls.
+No-editor returns **INCONCLUSIVE (10)**. Actual attach/click assertion failure
+returns **FAIL (1)**.
 
 P03 synthetic kits are generated in CI by
 `python tests/make_drumator_state.py build/p03-state`.
@@ -38,7 +52,8 @@ rendering a supplied kit state so genuine Drumator pattern scheduling is heard.
 - Silent render is inconclusive for musical function.
 - FAIL can indicate a plugin bug, host defect, or unsupported scenario;
   reproduce and classify before assigning fault.
-- P03 **does not test** GUI buttons, Beat Creator UI, preset browser,
+- P04 proves a synthetic GUI click, not the actual Drumator GUI buttons;
+  P03 **does not test** Beat Creator UI, preset browser,
   internal export, or Fender Studio Pro-specific integration.
 - No FINAL release or sales update is authorized by this test.
 
