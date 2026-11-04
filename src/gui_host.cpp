@@ -344,6 +344,24 @@ void runRealDrumatorGui(const std::string& path,
         require(view->getSize(&geometry) == kResultTrue &&
                 view->isPlatformTypeSupported(kPlatformTypeHWND) == kResultTrue,
                 "P09 product editor is not a Win32 view");
+        std::cout << "[INFO] P09 pre-attach product IPlugView::getSize = "
+                  << geometry.getWidth() << "x" << geometry.getHeight() << "\n";
+        if (geometry.getWidth() < 100 || geometry.getHeight() < 60) {
+            // Some VSTGUI editors report an uninitialized rect before the
+            // host proposes an initial size. This is a TEST HOST negotiation,
+            // not a change in product source or any production parameter.
+            ViewRect proposed{0, 0, 1280, 700};
+            require(view->onSize(&proposed) == kResultTrue,
+                    "P09 product rejected host's initial editor size");
+            require(view->getSize(&geometry) == kResultTrue,
+                    "P09 product getSize failed after host onSize");
+            std::cout << "[WARN] P09 product requires initial host size proposal; "
+                      << "rect after negotiation=" << geometry.getWidth() << "x"
+                      << geometry.getHeight() << "\n";
+        }
+        require(geometry.getWidth() >= 100 && geometry.getHeight() >= 60 &&
+                geometry.getWidth() <= 8192 && geometry.getHeight() <= 8192,
+                "P09 editor geometry invalid even after host negotiation");
         Window window(geometry);
         HostFrame* frame = new HostFrame(window.get());
         bool frameAssigned = false;
