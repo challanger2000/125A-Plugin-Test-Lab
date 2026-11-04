@@ -1,0 +1,95 @@
+name: Complete 125A Plugin Test Lab Technical Audit
+
+# One workflow entrypoint to the independent Windows VST3, real product
+# processing/export, and native GUI fixture gates.
+on:
+  workflow_dispatch:
+    inputs:
+      drumator_ref:
+        description: "Exact Drumator commit SHA to verify (branch names allowed for development)"
+        required: false
+        type: string
+        default: "6184718dda4a725fe4892a9e76533ec24dfa2f17"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 125a-full-audit-${{ github.ref }}-${{ inputs.drumator_ref }}
+  cancel-in-progress: false
+
+jobs:
+  host-fixtures:
+    uses: ./.github/workflows/windows.yml
+
+  real-product-functional:
+    uses: ./.github/workflows/drumator-p03.yml
+    with:
+      drumator_ref: ${{ inputs.drumator_ref }}
+
+  native-gui-fixtures:
+    uses: ./.github/workflows/gui-p04.yml
+
+  audit-report:
+    needs: [host-fixtures, real-product-functional, native-gui-fixtures]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Generate machine-readable audit and explicit coverage limits
+        shell: bash
+        env:
+          P02_RESULT: ${{ needs.host-fixtures.result }}
+          PRODUCT_RESULT: ${{ needs.real-product-functional.result }}
+          P04_RESULT: ${{ needs.native-gui-fixtures.result }}
+          SOURCE_REF: ${{ inputs.drumator_ref }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          gate = {
+              "P02_Real_VST3_Host": os.environ["P02_RESULT"],
+              "P03_P05_P06_P07_P08_Drumator_Product_Functions": os.environ["PRODUCT_RESULT"],
+              "P04_Native_GUI_Fixture": os.environ["P04_RESULT"],
+          }
+          all_success = all(value == "success" for value in gate.values())
+          report = {
+              "schema": "125A-Plugin-Test-Lab/1",
+              "drumator_requested_ref": os.environ["SOURCE_REF"],
+              "technical_gates": gate,
+              "technical_gate_result": "PASS" if all_success else "FAIL",
+              "release_approval": "NOT_GRANTED",
+              "unsupported_or_unverified": [
+                  "Complete product GUI control and popup interaction coverage",
+                  "Actual VST3 GUI Save As/drag MIDI and WAV export pathway",
+                  "Independent third-party DAW compatibility (e.g. Fender Studio Pro)",
+                  "Automatic coverage of other 125A plugins without product adapters",
+              ],
+              "readme": "Successful technical gates never imply complete product release approval.",
+          }
+          Path("125a-audit-report.json").write_text(
+              json.dumps(report, indent=2) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(report, indent=2))
+          PY
+
+      - name: Upload complete technical audit record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 125A-Test-Lab-Technical-Audit-Report
+          path: 125a-audit-report.json
+          if-no-files-found: error
+
+      - name: Reject technical audit if any prerequisite failed or was skipped
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          report = json.load(open("125a-audit-report.json", encoding="utf-8"))
+          if report["technical_gate_result"] != "PASS":
+              raise SystemExit("FAIL: one or more technical audit gates failed")
+          print("PASS: all technical gates succeeded; RELEASE APPROVAL NOT GRANTED")
+          PY
