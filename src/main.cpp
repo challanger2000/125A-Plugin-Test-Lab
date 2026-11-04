@@ -5,6 +5,7 @@
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 #include "pluginterfaces/vst/vsttypes.h"
+#include "public.sdk/source/vst/utility/memoryibstream.h"
 
 #include <algorithm>
 #include <array>
@@ -135,7 +136,9 @@ int32_t pcm24(Sample32 input) {
     return static_cast<int32_t>(std::llround(clamped * 8388607.0));
 }
 
-int render(const std::string& pluginPath, const std::filesystem::path& wavePath) {
+int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
+           const std::filesystem::path& statePath = {},
+           const std::filesystem::path& stateSnapshotPath = {}) {
     std::string error;
     auto module = Module::create(pluginPath, error);
     require(static_cast<bool>(module), ("Cannot load VST3 module: " + error).c_str());
@@ -184,6 +187,31 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath)
             setup.maxSamplesPerBlock = kBlockSize;
             setup.sampleRate = kSampleRate;
             require(processor->setupProcessing(setup) == kResultOk, "setupProcessing failed");
+            // P03: load a deterministic drum kit as a real host-project state.
+            // The processor receives the complete VST3 IBStream contract;
+            // no private Drumator classes are linked into the test host.
+            if (!statePath.empty()) {
+                std::ifstream stateFile(statePath, std::ios::binary | std::ios::ate);
+                require(stateFile.good(), "Cannot open state fixture file");
+                const auto length = stateFile.tellg();
+                require(length > 0 && length < 16 * 1024 * 1024,
+                        "Invalid state fixture size");
+                std::vector<char> bytes(static_cast<size_t>(length));
+                stateFile.seekg(0);
+                stateFile.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+                require(stateFile.good(), "Cannot read complete state fixture");
+                ResizableMemoryIBStream stream(bytes.size());
+                int32 written = 0;
+                require(stream.write(bytes.data(), static_cast<int32>(bytes.size()),
+                                     &written) == kResultOk &&
+                        written == static_cast<int32>(bytes.size()),
+                        "Cannot create state IBStream");
+                stream.rewind();
+                require(component->setState(&stream) == kResultOk,
+                        "Plugin rejected supplied VST3 project state");
+                std::cout << "[PASS] Host project state loaded: " << bytes.size()
+                          << " bytes\n";
+            }
             require(component->setActive(true) == kResultOk, "setActive(true) failed");
             active = true;
             require(processor->setProcessing(true) == kResultOk, "setProcessing(true) failed");
@@ -203,7 +231,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath)
                         std::fill(channel.begin(), channel.end(), 0.f);
 
                 EventList events(32);
-                if (eventBusCount > 0) {
+                if (eventBusCount > 0 && statePath.empty()) {
                     for (int beat = 0; beat < kBeatsPerBar * kBars; ++beat) {
                         const int frame = beat * kFramesPerBeat;
                         const int offFrame = frame + kSampleRate / 10;
@@ -254,7 +282,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath)
                 data.numOutputs = static_cast<int32>(outputBuffers.size());
                 data.inputs = inputBuffers.empty() ? nullptr : inputBuffers.data();
                 data.outputs = outputBuffers.data();
-                data.inputEvents = eventBusCount > 0 ? &events : nullptr;
+                data.inputEvents = eventBusCount > 0 && statePath.empty() ? &events : nullptr;
                 data.processContext = &ctx;
                 require(processor->process(data) == kResultOk, "VST3 process() failed");
 
@@ -276,6 +304,21 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath)
             require(component->setActive(false) == kResultOk, "setActive(false) failed");
             active = false;
             writeWave(wavePath, interleaved);
+            if (!stateSnapshotPath.empty()) {
+                ResizableMemoryIBStream returnedState;
+                require(component->getState(&returnedState) == kResultOk,
+                        "Plugin failed to save VST3 component state");
+                const auto size = returnedState.getCursor();
+                require(size > 8 && size < 16 * 1024 * 1024,
+                        "Plugin saved empty or unreasonable component state");
+                std::ofstream dump(stateSnapshotPath, std::ios::binary | std::ios::trunc);
+                require(dump.good(), "Cannot open state snapshot path");
+                dump.write(static_cast<const char*>(returnedState.getData()),
+                           static_cast<std::streamsize>(size));
+                require(dump.good(), "Cannot write complete state snapshot");
+                std::cout << "[PASS] VST3 component state saved by actual plugin: "
+                          << size << " bytes\n";
+            }
             std::cout << "[PASS] VST3 processing: 4 bars, 120 BPM, 44.1 kHz, PCM24 stereo\n";
             std::cout << "[INFO] MIDI events emitted: " << emittedEvents << "\n";
             std::cout << "[INFO] Rendered peak: " << peak << "\n";
@@ -304,8 +347,17 @@ int main(int argc, char** argv) {
         if (argc == 2 && std::string(argv[1]) == "--selftest") return selfTest();
         if (argc == 4 && std::string(argv[1]) == "--render")
             return render(argv[2], std::filesystem::path(argv[3]));
+        if (argc == 5 && std::string(argv[1]) == "--render-state")
+            return render(argv[2], std::filesystem::path(argv[4]),
+                          std::filesystem::path(argv[3]));
+        if (argc == 6 && std::string(argv[1]) == "--render-state-save")
+            return render(argv[2], std::filesystem::path(argv[4]),
+                          std::filesystem::path(argv[3]),
+                          std::filesystem::path(argv[5]));
         std::cerr << "Usage: 125A_Test_Lab_Host --selftest\n"
-                  << "       125A_Test_Lab_Host --render <plugin.vst3> <output.wav>\n";
+                  << "       125A_Test_Lab_Host --render <plugin.vst3> <output.wav>\n"
+                  << "       125A_Test_Lab_Host --render-state <plugin.vst3> <state.bin> <output.wav>\n"
+                  << "       125A_Test_Lab_Host --render-state-save <plugin.vst3> <state.bin> <output.wav> <saved-state.bin>\n";
         return 2;
     } catch (const std::exception& error) {
         std::cerr << "[FAIL] " << error.what() << '\n';

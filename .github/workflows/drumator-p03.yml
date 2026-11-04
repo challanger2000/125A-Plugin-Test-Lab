@@ -1,0 +1,156 @@
+name: P03 Real Drumator Swing Host Test
+
+# A deliberately separate, costly integration gate; not every push to main.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/main.cpp'
+      - 'tests/make_drumator_state.py'
+      - 'tests/verify_drumator_swing.py'
+      - 'tests/verify_drumator_recall.py'
+      - '.github/workflows/drumator-p03.yml'
+      - 'CMakeLists.txt'
+  workflow_dispatch:
+
+concurrency:
+  group: 125a-testlab-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  actual-drumator-vst3:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout the test lab
+        uses: actions/checkout@v4
+
+      - name: Checkout EXACT V1.5 Drumator revision (no release code modifications)
+        uses: actions/checkout@v4
+        with:
+          repository: challanger2000/125A-Drumator-Final
+          ref: e22e65517e3e61d5e55e29b0ee7e34ea9b856a3c
+          path: drumator-src
+          persist-credentials: false
+
+      - name: Verify pinned product revision
+        shell: pwsh
+        run: |
+          $actual = (git -C drumator-src rev-parse HEAD).Trim()
+          if ($actual -cne "e22e65517e3e61d5e55e29b0ee7e34ea9b856a3c") {
+            throw "Wrong Drumator V1.5 revision: $actual"
+          }
+          Write-Host "P03 product commit: $actual"
+
+      - name: Configure Test Lab and obtain exact Steinberg SDK
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build P02-proven VST3 host
+        shell: pwsh
+        run: cmake --build build --config Release --target TestLabHost --parallel 4
+
+      - name: Configure source-built real Drumator V1.5
+        shell: pwsh
+        run: |
+          $sdk = (Resolve-Path "build/_deps/vst3sdk-src").Path
+          cmake -S drumator-src -B build-drumator -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=OFF -DDRUMATOR_BUILD_VST3=ON "-DVST3_SDK_ROOT=$sdk"
+          if ($LASTEXITCODE -ne 0) { throw "Drumator configure failed" }
+
+      - name: Build real Drumator VST3 (no test double)
+        shell: pwsh
+        run: |
+          cmake --build build-drumator --config Release --target Drumator --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw "Drumator VST3 build failed" }
+
+      - name: Generate rights-clean deterministic 0/50 swing project states
+        shell: pwsh
+        run: |
+          python tests/make_drumator_state.py build/p03-state
+          if ($LASTEXITCODE -ne 0) { throw "Synthetic Drumator states failed" }
+
+      - name: Render actual Drumator (0% and 50% swing) and verify music timing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter "125A_Test_Lab_Host.exe")
+          $plugin = @(Get-ChildItem build-drumator -Recurse -File -Filter "Drumator.vst3" |
+            Where-Object { $_.FullName -match '[\\/]VST3[\\/]' })
+          if ($hostExe.Count -ne 1 -or $plugin.Count -ne 1) {
+            throw "Expected exactly 1 host EXE and 1 actual Drumator VST3; host=$($hostExe.Count), vst3=$($plugin.Count)"
+          }
+          $straight = (Join-Path $PWD "build/p03-straight.wav")
+          $swung = (Join-Path $PWD "build/p03-swing50.wav")
+          $saved = (Join-Path $PWD "build/p03-saved-drumator.bin")
+          $recallWave = (Join-Path $PWD "build/p03-recall.wav")
+          $corrupt = (Join-Path $PWD "build/p03-tampered-drumator.bin")
+          $negativeWave = (Join-Path $PWD "build/p03-rejected.wav")
+          & $hostExe[0].FullName --render-state-save $plugin[0].FullName build/p03-state/Drumator-Swing-0.bin $straight $saved 2>&1 |
+            Tee-Object build/p03-drumator-0.log
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $straight)) {
+            throw "Real Drumator render 0% swing failed"
+          }
+          & $hostExe[0].FullName --render-state $plugin[0].FullName build/p03-state/Drumator-Swing-50.bin $swung 2>&1 |
+            Tee-Object build/p03-drumator-50.log
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $swung)) {
+            throw "Real Drumator render 50% swing failed"
+          }
+          python tests/verify_drumator_swing.py $straight $swung 2>&1 |
+            Tee-Object build/p03-independent-oracle.log
+          if ($LASTEXITCODE -ne 0) {
+            throw "Independent P03 swing oracle rejected real Drumator output"
+          }
+          if (-not (Test-Path $saved)) { throw "Actual Drumator did not serialize its VST3 state" }
+          & $hostExe[0].FullName --render-state $plugin[0].FullName $saved $recallWave 2>&1 |
+            Tee-Object build/p03-recall-host.log
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $recallWave)) {
+            throw "Actual Drumator failed to restore its own state in fresh host process"
+          }
+          python tests/verify_drumator_recall.py $straight $recallWave $saved 2>&1 |
+            Tee-Object build/p03-recall-oracle.log
+          if ($LASTEXITCODE -ne 0) {
+            throw "Independent fresh-process state/audio recall comparison FAILED"
+          }
+          $bytes = [System.IO.File]::ReadAllBytes($saved)
+          $bytes[$bytes.Length - 1] = $bytes[$bytes.Length - 1] -bxor 0x01
+          [System.IO.File]::WriteAllBytes($corrupt, $bytes)
+          & $hostExe[0].FullName --render-state $plugin[0].FullName $corrupt $negativeWave 2>&1 |
+            Tee-Object build/p03-recall-negative.log
+          if ($LASTEXITCODE -ne 1 -or (Test-Path $negativeWave)) {
+            throw "Tampered state unexpectedly accepted or produced audio"
+          }
+          if (-not (Get-Content build/p03-recall-negative.log -Raw).Contains("Plugin rejected supplied VST3 project state")) {
+            throw "Tampered state failed for an unrelated reason"
+          }
+          Write-Host "[PASS] P03 actual Drumator DSP + host-saved kit + sample-exact musical swing and fresh-instance recall oracles"
+          exit 0
+
+      - name: Collect P03 diagnostic evidence
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact/P03 -ErrorAction SilentlyContinue | Out-Null
+          foreach ($file in @("build/p03-drumator-0.log", "build/p03-drumator-50.log",
+                             "build/p03-independent-oracle.log", "build/p03-straight.wav",
+                             "build/p03-swing50.wav", "build/p03-recall.wav",
+                             "build/p03-recall-host.log", "build/p03-recall-oracle.log",
+                             "build/p03-recall-negative.log")) {
+            if (Test-Path $file) { Copy-Item $file artifact/P03/ }
+          }
+          @(
+            "P03 status is the GitHub Actions workflow conclusion; logs alone are not a PASS.",
+            "Product SHA e22e65517e3e61d5e55e29b0ee7e34ea9b856a3c",
+            "Only synthetic self-created sample content; no proprietary drum kits.",
+            "GUI and internal export are not covered."
+          ) | Set-Content artifact/P03/REPORT-NOTES.txt
+
+      - name: Upload P03 results (even if tests failed)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 125A-Test-Lab-P03-Drumator-Audio-Evidence
+          path: artifact/P03/
+          if-no-files-found: error
