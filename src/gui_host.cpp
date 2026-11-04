@@ -139,7 +139,7 @@ void acquireController(IComponent* component,
         dest.ptr) return;
     TUID uid{};
     require(component->getControllerClassId(uid) == kResultTrue,
-            "component has no editor controller class");
+            "component has no editor controller class (INCONCLUSIVE)");
     auto separate = factory.createInstance<IEditController>(VST3::UID(uid));
     require(static_cast<bool>(separate), "cannot construct VST3 editor controller");
     dest.ptr = separate.take();
