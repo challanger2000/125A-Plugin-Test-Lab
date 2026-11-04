@@ -1,4 +1,4 @@
-name: 125A Test Lab - Windows P01
+name: 125A Test Lab - Windows P02
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  host-build-and-selftest:
+  host-build-and-real-vst3-proof:
     runs-on: windows-2022
     timeout-minutes: 30
 
@@ -23,17 +23,49 @@ jobs:
         shell: pwsh
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 
-      - name: Compile VST3 test host
+      - name: Compile test host and real VST3 fixtures
         shell: pwsh
-        run: cmake --build build --config Release --target TestLabHost --parallel 4
+        run: cmake --build build --config Release --target TestLabHost QASignalGood QASignalBad --parallel 4
 
-      - name: Run transport and negative-path self-tests
+      - name: Run transport and invalid-module self-tests
         shell: pwsh
         run: |
           ctest --test-dir build -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { throw "CTest failed ($LASTEXITCODE)" }
 
-      - name: Stage binary and test instructions
+      - name: P02 actual VST3 processing and independent PCM24 oracle
+        shell: pwsh
+        run: |
+          $hostExe = Get-ChildItem build -Recurse -File -Filter "125A_Test_Lab_Host.exe" | Select-Object -First 1
+          $good = Get-ChildItem build -Recurse -Directory -Filter "125A_QA_SignalGood.vst3" | Select-Object -First 1
+          $bad = Get-ChildItem build -Recurse -Directory -Filter "125A_QA_SignalBad.vst3" | Select-Object -First 1
+          if (-not $hostExe -or -not $good -or -not $bad) {
+            throw "P02 host or VST3 fixtures missing"
+          }
+          $goodWave = Join-Path (Get-Location) "build\p02-good.wav"
+          $badWave = Join-Path (Get-Location) "build\p02-bad.wav"
+          Remove-Item $goodWave, $badWave -Force -ErrorAction SilentlyContinue
+
+          Write-Host "Running known-good VST3 through actual VST3 process callback"
+          & $hostExe.FullName --render $good.FullName $goodWave 2>&1 | Tee-Object -FilePath build\p02-good-host.log
+          if ($LASTEXITCODE -ne 0) { throw "Known-good VST3 render failed ($LASTEXITCODE)" }
+          if (-not (Test-Path $goodWave)) { throw "Known-good WAV missing" }
+
+          Write-Host "Independent full-length, sample-exact PCM24 analysis"
+          python tests/verify_render.py $goodWave 2>&1 | Tee-Object -FilePath build\p02-good-oracle.log
+          if ($LASTEXITCODE -ne 0) { throw "Independent audio analysis failed ($LASTEXITCODE)" }
+
+          Write-Host "Running intentionally corrupt VST3: must reject NaN, not merely crash"
+          & $hostExe.FullName --render $bad.FullName $badWave 2>&1 | Tee-Object -FilePath build\p02-bad-host.log
+          if ($LASTEXITCODE -ne 1) { throw "Bad VST3 returned $LASTEXITCODE, expected 1" }
+          if (Test-Path $badWave) { throw "Bad VST3 incorrectly wrote WAV" }
+          $badLog = Get-Content build\p02-bad-host.log -Raw
+          if (-not $badLog.Contains("nonfinite audio emitted by plugin")) {
+            throw "Bad VST3 rejected for an unexpected reason; NaN detection NOT proven"
+          }
+          Write-Host "[PASS] P02 real processing + independent waveform oracle + deliberately corrupt VST3 detection"
+
+      - name: Stage executable and P02 evidence
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifact | Out-Null
@@ -41,11 +73,13 @@ jobs:
           if (-not $hostExe) { throw "Host executable missing" }
           Copy-Item $hostExe.FullName artifact\
           Copy-Item START-HERE.md artifact\
+          Copy-Item build\p02-good.wav artifact\P02-Reference-Render.wav
+          Copy-Item build\p02-good-host.log, build\p02-good-oracle.log, build\p02-bad-host.log artifact\
           Get-FileHash $hostExe.FullName -Algorithm SHA256 | Format-List | Out-File artifact\SHA256.txt
 
-      - name: Publish P01 test host
+      - name: Publish proven P02 test host and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: 125A-Plugin-Test-Lab-P01-Windows-x64
+          name: 125A-Plugin-Test-Lab-P02-Windows-x64
           path: artifact/
           if-no-files-found: error
