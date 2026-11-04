@@ -1,13 +1,13 @@
 // P04 minimal Win32 editor host, with observable native mouse-to-VST3
 // parameter assertion. No vendor DAW dependency or product source code.
 #define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
 #include <windows.h>
 #include "public.sdk/source/vst/hosting/module.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
 #include "base/source/fobject.h"
 #include "pluginterfaces/gui/iplugview.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
+#include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/vsttypes.h"
@@ -80,7 +80,7 @@ public:
         wc.hInstance = GetModuleHandleW(nullptr);
         wc.lpfnWndProc = windowProc;
         wc.lpszClassName = kWindowClass;
-        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
         require(RegisterClassW(&wc) || GetLastError() == ERROR_CLASS_ALREADY_EXISTS,
                 "Win32 class registration failed");
         require(bounds.getWidth() >= 100 && bounds.getHeight() >= 60 &&
