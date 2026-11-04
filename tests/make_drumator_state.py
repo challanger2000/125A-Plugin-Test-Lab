@@ -30,7 +30,7 @@ def pcm16_wav() -> bytes:
 
 
 def encode(swing: int) -> bytes:
-    assert swing in (0, 50)
+    assert swing in (0, 25, 50)
     b = bytearray()
     b += struct.pack("<BBHH", 0, 8, 0, 0)  # selected, visible, mute, solo
     b += bytes([100]) * ROWS  # per-row volume
@@ -73,7 +73,7 @@ def main() -> None:
     parser.add_argument("output_dir", type=pathlib.Path)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    for swing in (0, 50):
+    for swing in (0, 25, 50):
         path = args.output_dir / f"Drumator-Swing-{swing}.bin"
         contents = encode(swing)
         path.write_bytes(contents)

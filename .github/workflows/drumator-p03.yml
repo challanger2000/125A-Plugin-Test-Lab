@@ -9,6 +9,7 @@ on:
       - 'tests/make_drumator_state.py'
       - 'tests/verify_drumator_swing.py'
       - 'tests/verify_drumator_recall.py'
+      - 'tests/verify_drumator_matrix.py'
       - '.github/workflows/drumator-p03.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -128,6 +129,38 @@ jobs:
           Write-Host "[PASS] P03 actual Drumator DSP + host-saved kit + sample-exact musical swing and fresh-instance recall oracles"
           exit 0
 
+      - name: P05 real Drumator musical and process-buffer matrix (36 scenarios)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = @(Get-ChildItem build -Recurse -File -Filter "125A_Test_Lab_Host.exe")
+          $plugin = @(Get-ChildItem build-drumator -Recurse -File -Filter "Drumator.vst3" |
+            Where-Object { $_.FullName -match '[\\/]VST3[\\/]' })
+          if ($exe.Count -ne 1 -or $plugin.Count -ne 1) {
+            throw "P05 expected exactly one VST3 host EXE and one source-built Drumator VST3"
+          }
+          New-Item -ItemType Directory -Force build/p05-renders | Out-Null
+          foreach ($tempo in @(90, 120, 150)) {
+            foreach ($swing in @(0, 25, 50)) {
+              foreach ($block in @(64, 127, 512, 1024)) {
+                $state = "build/p03-state/Drumator-Swing-$swing.bin"
+                $wav = "build/p05-renders/bpm$tempo-swing$swing-block$block.wav"
+                & $exe[0].FullName --render-state-at $plugin[0].FullName $state $wav $tempo $block |
+                  Out-File -Append -FilePath build/p05-host-renders.log
+                if ($LASTEXITCODE -ne 0 -or -not (Test-Path $wav)) {
+                  throw "P05 REAL plugin render failed: tempo=$tempo swing=$swing block=$block"
+                }
+              }
+            }
+          }
+          python tests/verify_drumator_matrix.py build/p05-renders 2>&1 |
+            Tee-Object -FilePath build/p05-independent-matrix-oracle.log
+          if ($LASTEXITCODE -ne 0) {
+            throw "P05 independent musical onsets or process-block equivalence FAILED"
+          }
+          Write-Host "[PASS] P05: 36 independently verified real Drumator timing and buffer matrix renders"
+          exit 0
+
       - name: Collect P03 diagnostic evidence
         if: always()
         shell: pwsh
@@ -137,13 +170,17 @@ jobs:
                              "build/p03-independent-oracle.log", "build/p03-straight.wav",
                              "build/p03-swing50.wav", "build/p03-recall.wav",
                              "build/p03-recall-host.log", "build/p03-recall-oracle.log",
-                             "build/p03-recall-negative.log")) {
+                             "build/p03-recall-negative.log", "build/p05-host-renders.log",
+                             "build/p05-independent-matrix-oracle.log",
+                             "build/p05-report.json",
+                             "build/p05-renders/bpm120-swing50-block127.wav")) {
             if (Test-Path $file) { Copy-Item $file artifact/P03/ }
           }
           @(
             "P03 status is the GitHub Actions workflow conclusion; logs alone are not a PASS.",
             "Product SHA e22e65517e3e61d5e55e29b0ee7e34ea9b856a3c",
             "Only synthetic self-created sample content; no proprietary drum kits.",
+            "P05 matrix checks timing and block equivalence for 90/120/150 BPM, 0/25/50 swing.",
             "GUI and internal export are not covered."
           ) | Set-Content artifact/P03/REPORT-NOTES.txt
 
