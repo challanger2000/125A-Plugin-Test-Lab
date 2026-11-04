@@ -48,6 +48,10 @@ public:
         return AudioEffect::setActive(state);
     }
 
+    tresult PLUGIN_API setProcessing(TBool) override {
+        return kResultOk;
+    }
+
     tresult PLUGIN_API process(ProcessData& data) override {
         if (data.symbolicSampleSize != kSample32 || data.numSamples < 1 ||
             data.numSamples > 512 || data.numOutputs < 1 || !data.outputs ||
