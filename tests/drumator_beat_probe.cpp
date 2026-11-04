@@ -3,6 +3,7 @@
 #include "core/BeatCreatorTransaction.h"
 #include "vst3/UiBeatCreatorDialog.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
