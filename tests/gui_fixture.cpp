@@ -131,7 +131,7 @@ tresult PLUGIN_API ClickView::attached(void* parent, FIDString type) {
     wc.hInstance = GetModuleHandleW(nullptr);
     wc.lpfnWndProc = &ClickView::clickProc;
     wc.lpszClassName = className;
-    wc.hCursor = LoadCursorW(nullptr, IDC_HAND);
+    wc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32649));
     if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
         return kResultFalse;
     clickWindow_ = CreateWindowExW(0, className, L"P04", WS_CHILD | WS_VISIBLE,
