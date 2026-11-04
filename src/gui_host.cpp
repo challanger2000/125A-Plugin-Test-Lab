@@ -35,6 +35,28 @@ void require(bool value, const char* error) {
     if (!value) throw std::runtime_error(error);
 }
 
+
+// Windows VSTGUI uses COM-backed WIC/Direct2D resources. A real DAW normally
+// creates its UI thread COM apartment before constructing plugin editors.
+// The P04 synthetic HWND fixture did not need COM; the actual VSTGUI does.
+class ComApartment final {
+public:
+    ComApartment() {
+        const HRESULT result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        require(SUCCEEDED(result),
+                "P09 COM STA initialization failed before VSTGUI editor attach");
+        initialized_ = true;
+        std::cout << "[INFO] GUI host initialized Win32 COM STA apartment\n";
+    }
+    ~ComApartment() {
+        if (initialized_) CoUninitialize();
+    }
+    ComApartment(const ComApartment&) = delete;
+    ComApartment& operator=(const ComApartment&) = delete;
+private:
+    bool initialized_{false};
+};
+
 LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
@@ -441,6 +463,7 @@ int main(int argc, char** argv) {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     try {
+        ComApartment guiCom;
         if (argc == 6 && std::string(argv[1]) == "--drumator-beat-creator") {
             runRealDrumatorGui(argv[2], argv[3], argv[4], argv[5]);
             return 0;
