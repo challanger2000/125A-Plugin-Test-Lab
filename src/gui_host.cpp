@@ -319,9 +319,11 @@ void runRealDrumatorGui(const std::string& path,
                         const std::filesystem::path& originalState,
                         const std::filesystem::path& canceledState,
                         const std::filesystem::path& appliedState) {
+    std::cout << "[INFO] P09 load source-built packaged VST3 from " << path << "\n";
     std::string error;
     auto module = Module::create(path, error);
     require(static_cast<bool>(module), "P09 cannot load actual product VST3");
+    std::cout << "[INFO] P09 module loaded successfully\n";
     HostApplication context;
     auto factory = module->getFactory();
     factory.setHostContext(&context);
@@ -332,14 +334,17 @@ void runRealDrumatorGui(const std::string& path,
         require(static_cast<bool>(component), "P09 cannot create product component");
         require(component->initialize(&context) == kResultOk,
                 "P09 cannot initialize Drumator component");
+        std::cout << "[INFO] P09 product component initialized\n";
 
         Controller controller;
         acquireController(component.get(), factory, &context, controller);
         require(controller.connected,
                 "P09 controller not connected to processor (fail closed)");
+        std::cout << "[INFO] P09 controller connected to component\n";
 
         IPlugView* view = controller.ptr->createView(ViewType::kEditor);
         require(view != nullptr, "P09 no real product editor");
+        std::cout << "[INFO] P09 product IPlugView created\n";
         ViewRect geometry{};
         require(view->getSize(&geometry) == kResultTrue &&
                 view->isPlatformTypeSupported(kPlatformTypeHWND) == kResultTrue,
@@ -363,6 +368,7 @@ void runRealDrumatorGui(const std::string& path,
                 geometry.getWidth() <= 8192 && geometry.getHeight() <= 8192,
                 "P09 editor geometry invalid even after host negotiation");
         Window window(geometry);
+        std::cout << "[INFO] P09 real native host HWND created\n";
         HostFrame* frame = new HostFrame(window.get());
         bool frameAssigned = false;
         bool attached = false;
@@ -373,6 +379,7 @@ void runRealDrumatorGui(const std::string& path,
             require(view->attached(window.get(), kPlatformTypeHWND) == kResultTrue,
                     "P09 product IPlugView::attached failed");
             attached = true;
+            std::cout << "[INFO] P09 real product editor attached to HWND\n";
             ShowWindow(window.get(), SW_SHOWNA);
             UpdateWindow(window.get());
             pump(300);
@@ -431,6 +438,8 @@ void runRealDrumatorGui(const std::string& path,
 } // namespace
 
 int main(int argc, char** argv) {
+    std::cout << std::unitbuf;
+    std::cerr << std::unitbuf;
     try {
         if (argc == 6 && std::string(argv[1]) == "--drumator-beat-creator") {
             runRealDrumatorGui(argv[2], argv[3], argv[4], argv[5]);
