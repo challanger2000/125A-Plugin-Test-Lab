@@ -61,3 +61,25 @@ smtg_add_vst3plugin(QASignalBad
     SOURCES_LIST tests/signal_fixture.cpp)
 target_link_libraries(QASignalBad PRIVATE sdk)
 target_compile_definitions(QASignalBad PRIVATE NOMINMAX QA_DELIBERATE_NAN=1)
+
+# P04: native Win32 editor host; real mouse-to-VST3-parameter assertion is
+# verified by two independent, source-built synthetic UI fixtures in Actions.
+add_executable(TestLabGUI src/gui_host.cpp)
+set_target_properties(TestLabGUI PROPERTIES OUTPUT_NAME "125A_Test_Lab_GUI")
+target_link_libraries(TestLabGUI PRIVATE Vst3WinModule sdk_hosting sdk_common base pluginterfaces user32 gdi32)
+target_compile_definitions(TestLabGUI PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+if(MSVC)
+  target_compile_options(TestLabGUI PRIVATE /W4 /permissive- /utf-8)
+endif()
+
+smtg_add_vst3plugin(QAGuiClick
+    PACKAGE_NAME "125A_QA_GUI_Click"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiClick PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiClick PRIVATE NOMINMAX QA_GUI_INERT=0)
+
+smtg_add_vst3plugin(QAGuiInert
+    PACKAGE_NAME "125A_QA_GUI_Inert"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiInert PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiInert PRIVATE NOMINMAX QA_GUI_INERT=1)
