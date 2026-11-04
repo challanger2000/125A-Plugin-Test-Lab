@@ -26,3 +26,13 @@ target_compile_definitions(DrumatorBeatCreatorProbe PRIVATE NOMINMAX)
 if(MSVC)
     target_compile_options(DrumatorBeatCreatorProbe PRIVATE /W4 /permissive- /utf-8)
 endif()
+
+add_executable(DrumatorWavExportProbe ../drumator_wav_probe.cpp)
+set_target_properties(DrumatorWavExportProbe PROPERTIES
+    CXX_STANDARD 23 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO
+    OUTPUT_NAME "125A_Drumator_WAV_Probe")
+target_include_directories(DrumatorWavExportProbe PRIVATE "${DRUMATOR_SOURCE_ROOT}/src")
+target_compile_definitions(DrumatorWavExportProbe PRIVATE NOMINMAX)
+if(MSVC)
+    target_compile_options(DrumatorWavExportProbe PRIVATE /W4 /permissive- /utf-8)
+endif()
