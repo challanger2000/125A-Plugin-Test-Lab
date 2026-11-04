@@ -79,7 +79,11 @@ jobs:
           }
           $straight = (Join-Path $PWD "build/p03-straight.wav")
           $swung = (Join-Path $PWD "build/p03-swing50.wav")
-          & $hostExe[0].FullName --render-state $plugin[0].FullName build/p03-state/Drumator-Swing-0.bin $straight 2>&1 |
+          $saved = (Join-Path $PWD "build/p03-saved-drumator.bin")
+          $recallWave = (Join-Path $PWD "build/p03-recall.wav")
+          $corrupt = (Join-Path $PWD "build/p03-tampered-drumator.bin")
+          $negativeWave = (Join-Path $PWD "build/p03-rejected.wav")
+          & $hostExe[0].FullName --render-state-save $plugin[0].FullName build/p03-state/Drumator-Swing-0.bin $straight $saved 2>&1 |
             Tee-Object build/p03-drumator-0.log
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path $straight)) {
             throw "Real Drumator render 0% swing failed"
@@ -94,7 +98,29 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Independent P03 swing oracle rejected real Drumator output"
           }
-          Write-Host "[PASS] P03 actual Drumator DSP + host-saved kit + sample-exact musical swing oracle"
+          if (-not (Test-Path $saved)) { throw "Actual Drumator did not serialize its VST3 state" }
+          & $hostExe[0].FullName --render-state $plugin[0].FullName $saved $recallWave 2>&1 |
+            Tee-Object build/p03-recall-host.log
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $recallWave)) {
+            throw "Actual Drumator failed to restore its own state in fresh host process"
+          }
+          python tests/verify_drumator_recall.py $straight $recallWave $saved 2>&1 |
+            Tee-Object build/p03-recall-oracle.log
+          if ($LASTEXITCODE -ne 0) {
+            throw "Independent fresh-process state/audio recall comparison FAILED"
+          }
+          $bytes = [System.IO.File]::ReadAllBytes($saved)
+          $bytes[$bytes.Length - 1] = $bytes[$bytes.Length - 1] -bxor 0x01
+          [System.IO.File]::WriteAllBytes($corrupt, $bytes)
+          & $hostExe[0].FullName --render-state $plugin[0].FullName $corrupt $negativeWave 2>&1 |
+            Tee-Object build/p03-recall-negative.log
+          if ($LASTEXITCODE -ne 1 -or (Test-Path $negativeWave)) {
+            throw "Tampered state unexpectedly accepted or produced audio"
+          }
+          if (-not (Get-Content build/p03-recall-negative.log -Raw).Contains("Plugin rejected supplied VST3 project state")) {
+            throw "Tampered state failed for an unrelated reason"
+          }
+          Write-Host "[PASS] P03 actual Drumator DSP + host-saved kit + sample-exact musical swing and fresh-instance recall oracles"
           exit 0
 
       - name: Collect P03 diagnostic evidence
@@ -104,7 +130,9 @@ jobs:
           New-Item -ItemType Directory -Force artifact/P03 -ErrorAction SilentlyContinue | Out-Null
           foreach ($file in @("build/p03-drumator-0.log", "build/p03-drumator-50.log",
                              "build/p03-independent-oracle.log", "build/p03-straight.wav",
-                             "build/p03-swing50.wav")) {
+                             "build/p03-swing50.wav", "build/p03-recall.wav",
+                             "build/p03-recall-host.log", "build/p03-recall-oracle.log",
+                             "build/p03-recall-negative.log")) {
             if (Test-Path $file) { Copy-Item $file artifact/P03/ }
           }
           @(
