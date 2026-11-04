@@ -34,7 +34,7 @@ jobs:
       - name: Compile GUI host and two real GUI VST3s
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabGUI QAGuiClick QAGuiInert --parallel 4
+          cmake --build build --config Release --target TestLabGUI QAGuiClick QAGuiInert QASignalGood --parallel 4
           if ($LASTEXITCODE -ne 0) { throw "P04 build failed" }
 
       - name: Native Win32 click-to-VST3 parameter proof and negative control
@@ -44,7 +44,8 @@ jobs:
           $exe = @(Get-ChildItem build -Recurse -File -Filter "125A_Test_Lab_GUI.exe")
           $good = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_GUI_Click.vst3")
           $inert = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_GUI_Inert.vst3")
-          if ($exe.Count -ne 1 -or $good.Count -ne 1 -or $inert.Count -ne 1) {
+          $editorless = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_SignalGood.vst3")
+          if ($exe.Count -ne 1 -or $good.Count -ne 1 -or $inert.Count -ne 1 -or $editorless.Count -ne 1) {
             throw "P04 executable / fixture path not unique or missing"
           }
           & $exe[0].FullName --prove-click $good[0].FullName 9001 2>&1 |
@@ -69,7 +70,15 @@ jobs:
           & $exe[0].FullName --probe $good[0].FullName 2>&1 |
             Tee-Object -FilePath build/p04-lifecycle.log
           if ($LASTEXITCODE -ne 0) { throw "P04 basic editor lifecycle probe failed" }
-          Write-Host "[PASS] P04 actual GUI HWND, two click cycles, VST3 parameter observation, inert negative control"
+          & $exe[0].FullName --probe $editorless[0].FullName 2>&1 |
+            Tee-Object -FilePath build/p04-editorless.log
+          if ($LASTEXITCODE -ne 10) {
+            throw "P04 expected INCONCLUSIVE (10) from a real GUI-less VST3"
+          }
+          if (-not (Get-Content build/p04-editorless.log -Raw).Contains("[INCONCLUSIVE]")) {
+            throw "Editorless fixture was not explicitly classified INCONCLUSIVE"
+          }
+          Write-Host "[PASS] P04 actual GUI HWND, two click cycles, VST3 parameter observation, inert negative control, editorless INCONCLUSIVE"
           exit 0
 
       - name: Collect logs and proven GUI executable
@@ -77,7 +86,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifact -ErrorAction SilentlyContinue | Out-Null
-          foreach ($name in @("p04-click-good.log","p04-click-inert.log","p04-lifecycle.log")) {
+          foreach ($name in @("p04-click-good.log","p04-click-inert.log","p04-lifecycle.log","p04-editorless.log")) {
             if (Test-Path "build/$name") { Copy-Item "build/$name" "artifact/$name" }
           }
           $exe = @(Get-ChildItem build -Recurse -File -Filter "125A_Test_Lab_GUI.exe")
