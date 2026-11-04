@@ -1,0 +1,40 @@
+cmake_minimum_required(VERSION 3.25)
+project(PluginTestLab125A VERSION 0.1.0 LANGUAGES CXX)
+
+if(NOT WIN32)
+  message(FATAL_ERROR "125A Plugin Test Lab P01 supports Windows x64 only")
+endif()
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SMTG_ENABLE_VST3_HOSTING_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
+set(SMTG_RUN_VST_VALIDATOR OFF CACHE BOOL "" FORCE)
+set(SMTG_CREATE_PLUGIN_LINK OFF CACHE BOOL "" FORCE)
+
+include(FetchContent)
+# Keep aligned with the established 125A Plugin Tester; do not float to master.
+FetchContent_Declare(vst3sdk
+    GIT_REPOSITORY https://github.com/steinbergmedia/vst3sdk.git
+    GIT_TAG v3.8.1_build_84
+    GIT_SHALLOW TRUE
+    GIT_SUBMODULES_RECURSE TRUE)
+FetchContent_MakeAvailable(vst3sdk)
+
+add_executable(TestLabHost
+    src/main.cpp
+    "${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/hosting/module_win32.cpp"
+    "${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/hosting/eventlist.cpp")
+set_target_properties(TestLabHost PROPERTIES OUTPUT_NAME "125A_Test_Lab_Host")
+target_link_libraries(TestLabHost PRIVATE sdk_hosting sdk_common base pluginterfaces)
+target_compile_definitions(TestLabHost PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+if(MSVC)
+  target_compile_options(TestLabHost PRIVATE /W4 /permissive- /utf-8)
+endif()
+
+enable_testing()
+add_test(NAME transport_selftest COMMAND $<TARGET_FILE:TestLabHost> --selftest)
+add_test(NAME invalid_plugin_rejected COMMAND $<TARGET_FILE:TestLabHost> --render .\\invalid.vst3 .\\invalid.wav)
+set_tests_properties(invalid_plugin_rejected PROPERTIES WILL_FAIL TRUE)
