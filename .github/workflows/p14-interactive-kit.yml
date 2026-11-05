@@ -8,6 +8,7 @@ on:
       - 'tools/Run-OLE-Test.cmd'
       - 'tools/README-INTERACTIVE-OLE.txt'
       - '.github/workflows/p14-interactive-kit.yml'
+      - 'tools/Run-GitHub-Interactive-OLE.ps1'
   workflow_dispatch:
     inputs:
       drumator_ref:
@@ -169,3 +170,27 @@ jobs:
           path: artifact/125A-Test-Lab-P14-Interactive-OLE.zip
           if-no-files-found: error
           retention-days: 30
+
+      - name: P16 true Windows interactive desktop OLE drops (not a contract test)
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./tools/Run-GitHub-Interactive-OLE.ps1 -Kit 'artifact/P14-Interactive-OLE'
+          if ($LASTEXITCODE -ne 0) { throw 'P16 real OLE desktop test did not pass' }
+          $result = Get-Content 'artifact/P14-Interactive-OLE/P16-RESULT.txt' -Raw
+          if (-not $result.Contains('Status: PASS')) { throw 'P16 lacked four native COM OLE drops' }
+
+      - name: Publish P16 native desktop evidence (including failure logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 125A-Test-Lab-P16-Real-OLE-Evidence
+          path: |
+            artifact/P14-Interactive-OLE/P16-RESULT.txt
+            artifact/P14-Interactive-OLE/P16-DIAGNOSTICS.txt
+            artifact/P14-Interactive-OLE/P16-DESKTOP-LOG.txt
+            artifact/P14-Interactive-OLE/results/**/RESULT.txt
+            artifact/P14-Interactive-OLE/results/**/OLE-TEST-LOG.txt
+          if-no-files-found: warn
+          retention-days: 14
