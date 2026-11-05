@@ -85,6 +85,12 @@ smtg_add_vst3plugin(QAGuiInert
 target_link_libraries(QAGuiInert PRIVATE sdk user32 gdi32)
 target_compile_definitions(QAGuiInert PRIVATE NOMINMAX QA_GUI_INERT=1)
 
+smtg_add_vst3plugin(QAGuiStalePaint
+    PACKAGE_NAME "125A_QA_GUI_StalePaint"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiStalePaint PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiStalePaint PRIVATE NOMINMAX QA_GUI_INERT=0 QA_GUI_STALE_PAINT=1)
+
 # P25-P27: native VST3 concurrency host and deliberately defective production-API fixtures.
 add_executable(TestLabStateStress src/state_stress.cpp)
 set_target_properties(TestLabStateStress PROPERTIES OUTPUT_NAME "125A_Test_Lab_State_Stress")

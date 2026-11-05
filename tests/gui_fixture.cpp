@@ -18,10 +18,17 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_INERT
 #define QA_GUI_INERT 0
 #endif
+#ifndef QA_GUI_STALE_PAINT
+#define QA_GUI_STALE_PAINT 0
+#endif
 
 namespace {
 constexpr ParamID kClickParam = 9001;
-#if QA_GUI_INERT
+#if QA_GUI_STALE_PAINT
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000011, 0xB0000011);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000012, 0xB0000012);
+constexpr const char* kName = "125A GUI Stale Paint Fixture";
+#elif QA_GUI_INERT
 const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000001, 0xB0000001);
 const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000002, 0xB0000002);
 constexpr const char* kName = "125A GUI Broken Fixture";
@@ -110,7 +117,10 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
         const HDC dc = BeginPaint(hwnd, &ps);
         RECT rect{};
         GetClientRect(hwnd, &rect);
-        const HBRUSH fill = CreateSolidBrush(RGB(30, 36, 48));
+        const bool active = self && self->owner_ &&
+            self->owner_->getParamNormalized(kClickParam) > 0.5;
+        const HBRUSH fill = CreateSolidBrush(
+            active && !QA_GUI_STALE_PAINT ? RGB(12, 142, 85) : RGB(30, 36, 48));
         FillRect(dc, &rect, fill);
         DeleteObject(fill);
         SetBkMode(dc, TRANSPARENT);

@@ -11,6 +11,8 @@ import re
 import subprocess
 import sys
 
+from verify_p33_artifacts import rgb_at
+
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
 HASH = re.compile(r"^[0-9a-f]{64}$")
 
@@ -54,6 +56,17 @@ def validate(manifest):
         val = control.get("expected_normalized")
         if type(val) not in (float, int) or not 0.0 < val <= 1.0:
             raise ValueError("invalid independent GUI expected value")
+        pixel = control.get("expected_pixel")
+        if pixel is not None:
+            if not isinstance(pixel, dict) or set(pixel) != {"x", "y", "rgb"}:
+                raise ValueError("invalid painted-pixel oracle")
+            if any(type(pixel.get(k)) is not int or pixel[k] < 0 or pixel[k] > 4095
+                   for k in ("x", "y")):
+                raise ValueError("invalid painted-pixel location")
+            rgb = pixel["rgb"]
+            if not isinstance(rgb, list) or len(rgb) != 3 or any(
+                    type(c) is not int or c < 0 or c > 255 for c in rgb):
+                raise ValueError("invalid independently expected painted RGB")
     return host, bundle, binary, controls
 
 
@@ -65,14 +78,20 @@ def run(manifest, out, timeout=90, runner=subprocess.run):
     report = {"schema": "125a-gui-controls-result-v1",
               "status": "FAIL", "verified_module_sha256": digest(binary),
               "declared_controls": len(controls), "tested_controls": 0,
+              "painted_pixel_oracles": sum("expected_pixel" in c for c in controls),
               "all_product_controls": "NOT COVERED",
               "product_audio_semantics": "NOT COVERED",
               "commercial_daw_integration": "NOT COVERED",
               "cases": []}
     for control in controls:
-        cmd = [str(host), "--prove-click-at", str(bundle),
+        screenshot = out / (control["id"] + ".bmp")
+        screenshot.unlink(missing_ok=True)
+        cmd = [str(host), "--prove-click-and-snapshot" if "expected_pixel" in control
+               else "--prove-click-at", str(bundle),
                str(control["param_id"]), str(control["x"]), str(control["y"]),
                str(control["expected_normalized"])]
+        if "expected_pixel" in control:
+            cmd.append(str(screenshot))
         log = out / (control["id"] + ".log")
         log.unlink(missing_ok=True)
         failures = []
@@ -88,6 +107,18 @@ def run(manifest, out, timeout=90, runner=subprocess.run):
                 failures.append("two native editor cycles not independently observed")
             if "two actual editor attach/message/input/detach cycles" not in body:
                 failures.append("editor lifecycle proof missing")
+            if "expected_pixel" in control:
+                pixel = control["expected_pixel"]
+                if not screenshot.is_file():
+                    failures.append("real native GUI screenshot missing")
+                else:
+                    try:
+                        observed = rgb_at(screenshot, pixel["x"], pixel["y"])
+                        if observed != pixel["rgb"]:
+                            failures.append("painted GUI RGB mismatch: expected %s got %s" % (
+                                pixel["rgb"], observed))
+                    except (OSError, ValueError, IndexError) as error:
+                        failures.append("invalid real GUI screenshot: " + str(error))
         except (OSError, subprocess.TimeoutExpired) as error:
             failures.append(str(error))
         report["tested_controls"] += 1

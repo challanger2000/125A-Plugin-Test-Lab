@@ -1633,6 +1633,16 @@ int main(int argc, char** argv) {
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])),
                        x, y, expected);
         }
+        if (argc == 8 && std::string(argv[1]) == "--prove-click-and-snapshot") {
+            const int x = std::stoi(argv[4]);
+            const int y = std::stoi(argv[5]);
+            const double expected = std::stod(argv[6]);
+            require(x >= 0 && y >= 0 && std::isfinite(expected) &&
+                    expected > 0.0 && expected <= 1.0,
+                    "invalid GUI interaction parameters");
+            return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])),
+                       x, y, expected, std::filesystem::path(argv[7]));
+        }
         if (argc == 4 && std::string(argv[1]) == "--snapshot-editor")
             return run(argv[2], false, 0, -1, -1, 1.0,
                        std::filesystem::path(argv[3]));
@@ -1640,7 +1650,8 @@ int main(int argc, char** argv) {
             return run(argv[2], false, 0);
         if (argc == 4 && std::string(argv[1]) == "--prove-click")
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
-        std::cerr << "Usage: 125A_Test_Lab_GUI --snapshot-editor <plugin.vst3> <output.bmp>\n"
+        std::cerr << "Usage: 125A_Test_Lab_GUI --prove-click-and-snapshot <plugin.vst3> <param-id> <x> <y> <expected> <output.bmp>\n"
+                  << "       125A_Test_Lab_GUI --snapshot-editor <plugin.vst3> <output.bmp>\n"
                   << "       125A_Test_Lab_GUI --probe <plugin.vst3>\n"
                   << "       125A_Test_Lab_GUI --prove-click <plugin.vst3> <param-id>\n"
                   << "       125A_Test_Lab_GUI --prove-click-at <plugin.vst3> <param-id> <x> <y> <expected-normalized>\n"
