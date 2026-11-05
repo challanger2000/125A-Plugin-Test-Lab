@@ -53,7 +53,7 @@ void updateMax(std::atomic<int64>& value,int64 candidate) {
     while(candidate>old && !value.compare_exchange_weak(old,candidate,std::memory_order_relaxed)){}
 }
 int stress(const std::string& pluginPath,const std::filesystem::path& report,
-           int sampleRate,int block,int iterations,const std::string& oracle) {
+           int sampleRate,int block,int iterations,const std::string& oracle,bool saveOnly) {
     demand(sampleRate==44100||sampleRate==48000||sampleRate==96000,"unsupported test sample rate");
     demand(block==0||block==17||block==64||block==127||block==512||block==1024,
            "unsupported test block");
@@ -163,20 +163,28 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                         metrics.torn++;
                 }
             };
-            for(int i=0;i<iterations*2;++i) {
-                if(i%20==0) saveSnapshot();
-                const Pair p=makePair((i&1)!=0);
-                ResizableMemoryIBStream stream;
-                int32 written=0;
-                if(stream.write(const_cast<Pair*>(&p),sizeof(p),&written)!=kResultOk ||
-                   written!=sizeof(p)) {
-                    metrics.setFailures++;
-                } else {
-                    stream.rewind();
-                    if(component->setState(&stream)!=kResultOk) metrics.setFailures++;
+            if(saveOnly) {
+                // Normal playback: absolutely no project writes or automation.
+                for(int i=0;i<500;++i) {
+                    saveSnapshot();
+                    hostPaceMicroseconds(75);
                 }
-                if(i%20==10) saveSnapshot();
-                hostPaceMicroseconds(5);
+            } else {
+                for(int i=0;i<iterations*2;++i) {
+                    if(i%20==0) saveSnapshot();
+                    const Pair p=makePair((i&1)!=0);
+                    ResizableMemoryIBStream stream;
+                    int32 written=0;
+                    if(stream.write(const_cast<Pair*>(&p),sizeof(p),&written)!=kResultOk ||
+                       written!=sizeof(p)) {
+                        metrics.setFailures++;
+                    } else {
+                        stream.rewind();
+                        if(component->setState(&stream)!=kResultOk) metrics.setFailures++;
+                    }
+                    if(i%20==10) saveSnapshot();
+                    hostPaceMicroseconds(5);
+                }
             }
             audio.join();
             demand(processor->setProcessing(false)==kResultOk,"stop processing failed");
@@ -212,7 +220,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     out<<"format\t125A-P25-v1\n";
     out<<"plugin\t"<<pluginPath<<"\n";
     out<<"sample_rate\t"<<sampleRate<<"\nblock_size\t"<<block<<"\niterations\t"<<iterations<<"\n";
-    out<<"oracle\t"<<oracle<<"\nclasses\t"<<audioClasses<<"\n";
+    out<<"oracle\t"<<oracle<<"\nscenario\t"<<(saveOnly?"playback-save-no-writes":"concurrent-writers")<<"\nclasses\t"<<audioClasses<<"\n";
     out<<"callbacks\t"<<metrics.callbacks.load()<<"\nprocess_failures\t"<<metrics.processFailures.load();
     out<<"\nset_failures\t"<<metrics.setFailures.load()<<"\nsave_failures\t"<<metrics.saveFailures.load();
     out<<"\nsave_success\t"<<metrics.saveOK.load()<<"\ntorn_snapshots\t"<<metrics.torn.load();
@@ -231,11 +239,12 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
 }
 int main(int argc,char** argv) {
     try {
-        if(argc!=8||std::string(argv[1])!="--stress") {
-            std::cerr<<"Usage: --stress <VST3> <report.tsv> <rate> <block> <iterations> <paired|ramp|none>\n";
+        if((argc!=8&&argc!=9)||std::string(argv[1])!="--stress" ||
+           (argc==9&&std::string(argv[8])!="--save-only")) {
+            std::cerr<<"Usage: --stress <VST3> <report.tsv> <rate> <block> <iterations> <paired|ramp|none> [--save-only]\n";
             return 2;
         }
-        return stress(argv[2],argv[3],std::stoi(argv[4]),std::stoi(argv[5]),std::stoi(argv[6]),argv[7]);
+        return stress(argv[2],argv[3],std::stoi(argv[4]),std::stoi(argv[5]),std::stoi(argv[6]),argv[7],argc==9);
     } catch(const std::exception& e) {
         std::cerr<<"[FAIL] P25 host: "<<e.what()<<"\n";
         return 3;
