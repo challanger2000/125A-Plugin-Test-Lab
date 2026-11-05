@@ -61,13 +61,17 @@ jobs:
             @{id='rate-44100';mode='0';rate=44100;block=127;oracle='ramp';expect='good-ramp';exit=0},
             @{id='rate-48000';mode='0';rate=48000;block=64;oracle='ramp';expect='good-ramp';exit=0},
             @{id='rate-96000';mode='0';rate=96000;block=17;oracle='ramp';expect='good-ramp';exit=0},
+            @{id='good-save-only';mode='0';rate=44100;block=64;oracle='paired';expect='good-paired';exit=0;saveOnly=$true},
+            @{id='bad-save-only';mode='2';rate=44100;block=64;oracle='paired';expect='bad-save';exit=1;saveOnly=$true},
             @{id='bad-torn';mode='1';rate=44100;block=64;oracle='paired';expect='bad-torn';exit=1},
             @{id='bad-save';mode='2';rate=44100;block=64;oracle='paired';expect='bad-save';exit=1},
             @{id='bad-rate';mode='3';rate=96000;block=127;oracle='ramp';expect='bad-rate';exit=1}
           )
           foreach ($case in $matrix) {
             $report = "artifacts/P25/$($case.id).tsv"
-            & $exe --stress $plugin[$case.mode] $report $case.rate $case.block 2500 $case.oracle 2>&1 |
+            $stressArgs = @('--stress', $plugin[$case.mode], $report, $case.rate, $case.block, 2500, $case.oracle)
+            if ($case.saveOnly) { $stressArgs += '--save-only' }
+            & $exe @stressArgs 2>&1 |
               Tee-Object -FilePath "artifacts/P25/$($case.id).log"
             $rc = $LASTEXITCODE
             if ($rc -ne $case.exit) {
@@ -78,7 +82,7 @@ jobs:
               throw "P25 independent semantic oracle failed: $($case.id)"
             }
           }
-          Write-Host '[PASS] P25 nine real VST3 concurrent playback/state and sample-rate cases, including three deliberate defects'
+          Write-Host '[PASS] P25 eleven real VST3 concurrent playback/state and sample-rate cases, including three deliberate defects'
           exit 0
       - name: Publish proof even on failure
         if: always()
