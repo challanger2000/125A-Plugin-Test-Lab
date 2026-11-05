@@ -14,12 +14,14 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 using namespace Steinberg;
 using namespace Steinberg::Vst;
