@@ -19,6 +19,21 @@ discovery is **not** a claim that an unexecuted DSP, GUI or recall test passed.
 The Windows P02 workflow proves P22 against two distinct real VST3
 fixtures and rejects a deliberately invalid module.
 
+## Universal multi-plugin batch inspection (P23)
+
+The CLI `python tests/run_vst3_batch.py --host "<125A_Test_Lab_Host.exe>" --root "<VST3 folder>" --out "<report folder>"`
+discovers all `.vst3` files and bundles recursively, with each plugin loaded
+**in its own child process and a bounded timeout**. It produces
+`BATCH-RESULT.json`, individual module logs, discovered audio/event
+capabilities and explicit PASS/FAIL per plugin. If even one module fails,
+the batch exits nonzero; successfully inspected modules retain their
+independent results. This is universal capability discovery, not a claim
+that every plugin's audio or GUI behavior passed.
+
+[Verified P23 Windows Actions run](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42041631444):
+two real, unrelated VST3 test fixtures PASS together, while a malformed
+module is correctly isolated as FAIL alongside an otherwise healthy one.
+
 ## What actually passed
 
 All gates below have verified Windows GitHub Actions evidence, not just
@@ -46,6 +61,7 @@ the resolved tested commit in its artifact.
 | P18 — fresh-process recall matrix | 0/25/50 Swing states each saved and restored through new VST3 host processes; independently verified DM18 CRC and byte-identical non-silent stereo 24-bit PCM after reload |
 | P19 — real GUI control stress | 96 actual Win32 editor limiter clicks, 48 alternate-state changes and byte-identical processor-state reversals, required by Windows CI |
 | P20 — invalid state matrix | 16 individually corrupted/truncated DM18 project states rejected by the actual VST3 host, no audio files emitted, tested rejection paths |
+| P23 — universal folder batch | Recursively discovers arbitrary VST3s; independent child-process inspection, timeout and isolated per-plugin JSON/errors; Windows positive and mixed-negative fixture tests PASS |
 | P22 — universal class/bus discovery | Product-neutral inspection of VST3 processor sample formats and all audio/event buses; independent eligibility JSON and invalid-module negative control in Windows CI |
 | P21 — exact-SHA release evidence | Fail-closed `RELEASE-EVIDENCE.json` generated from 13 independent gate log files, exact product commit recorded; separate DAW/OLE workflow coverage explicitly identified |
 
