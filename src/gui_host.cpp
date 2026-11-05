@@ -1382,9 +1382,9 @@ void runRealDrumatorGui(const std::string& path,
                             "P19 real GUI limiter roundtrip corrupted component state");
                     if (pair % 12 == 0)
                         std::cout << "[INFO] P19 completed " << pair * 2
-                                  << " actual GUI clicks with exact state recovery\\n";
+                                  << " actual GUI clicks with exact state recovery\n";
                 }
-                std::cout << "[PASS] P19 96 real GUI clicks and 48 state roundtrips\\n";
+                std::cout << "[PASS] P19 96 real GUI clicks and 48 state roundtrips\n";
             } else if (checkGuiLifecycle) {
                 // P17: stress the actual production editor's VST3 lifecycle
                 // without altering any musical settings. State is captured
