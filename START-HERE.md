@@ -1,11 +1,12 @@
 # START HERE — 125A Plugin Test Lab
 
-## Latest usable Windows test kit (5 November 2026)
+## Latest usable Windows test kit (6 November 2026)
 
 ## Current test acceptance and latest proof
 
-**Verified Windows code baseline:** commit
-`b841783ef3e8855ed353ae7310dbb638ddfad5ea` (followed by documentation-only updates).
+**Latest verified Windows quickcheck:** pull requests #45 and #46,
+validated in [the actual Windows P25 pipeline](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42131347744).
+The real Drumator product regression remains independently verified in P03.
 The complete relevant Windows CI for the latest changes has passed,
 including the real production VST3 GUI/exports regression and all 13
 independent product-domain evidence gates.
@@ -34,7 +35,8 @@ product-specific reference data or real DAW integration. They remain
 
 
 The currently verified native Windows x64 quickcheck runs a real third-party
-VST3 through 2,500 audio callbacks, 500 playback-time state saves and an
+VST3 through six combinations of 44.1/48/96 kHz and 64/512-sample buffers:
+**15,000 audio callbacks and 3,000 project-state saves**, plus an
 independent native PCM/state capture. It pins the exact VST3 module SHA-256,
 rejects missing or stale evidence and never treats technical success as full
 product release approval.
@@ -42,13 +44,14 @@ product release approval.
 **Simplest Windows use:** drag the trusted installed `.vst3` **folder**
 onto `Run-VST3-Test.cmd` in the extracted `PORTABLE` package.
 The test runs native audio playback, repeated state saves, rendering,
-state capture and actual editor open/close checks; reports are written
-under `RESULTS`. If the plugin has no editor, GUI is `NOT COVERED`.
+state capture and actual editor open/close checks. It automatically opens
+`RESULTS/<Plugin>/TESTERGEBNIS.html`, with simple German
+**BESTANDEN / FEHLER / NICHT GEPRUEFT** verdicts. If the plugin has no editor, GUI is `NOT COVERED`.
 An external per-product control map can additionally automate click/pixel
 checks (see `docs/ONE-COMMAND-QUICKCHECK.md`).
 
 **Use without compiling the test host yourself:** download the latest
-successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42101336624),
+successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42131347744),
 open its `PORTABLE` folder, and follow `README.md`. The artifact
 contains all three native x64 audio/state/GUI hosts, the drag-and-drop launcher, supporting Python scripts
 and SHA-256 checksums. Python 3 on Windows is required.
