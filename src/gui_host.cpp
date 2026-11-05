@@ -200,8 +200,63 @@ void acquireController(IComponent* component,
     }
 }
 
+// Capture the pixels actually painted by the native HWND editor, not an
+// approximate screenshot synthesized from controller parameter values.
+void captureEditorBmp(HWND nativeChild, const std::filesystem::path& path) {
+    RECT rect{};
+    require(IsWindow(nativeChild) && GetClientRect(nativeChild, &rect) != 0,
+            "GUI snapshot HWND or client rectangle missing");
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    require(width > 0 && width <= 4096 && height > 0 && height <= 4096,
+            "GUI snapshot dimensions invalid or excessive");
+    const HDC source = GetDC(nativeChild);
+    require(source != nullptr, "GUI snapshot cannot obtain native HWND DC");
+    const HDC memory = CreateCompatibleDC(source);
+    HBITMAP bitmap = memory ? CreateCompatibleBitmap(source, width, height) : nullptr;
+    HGDIOBJ old = bitmap ? SelectObject(memory, bitmap) : nullptr;
+    const bool selectionOK = old && old != HGDI_ERROR;
+    const bool copied = selectionOK &&
+        BitBlt(memory, 0, 0, width, height, source, 0, 0, SRCCOPY) != 0;
+    if (selectionOK) (void)SelectObject(memory, old);
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = width;
+    info.bmiHeader.biHeight = -height;  // top-down, matches GUI coordinates
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+    const auto byteCount = static_cast<std::size_t>(width) *
+                           static_cast<std::size_t>(height) * 4U;
+    std::vector<std::uint8_t> pixels(byteCount);
+    const bool extracted = copied && GetDIBits(
+        memory, bitmap, 0, static_cast<UINT>(height),
+        pixels.data(), &info, DIB_RGB_COLORS) == height;
+    if (bitmap) DeleteObject(bitmap);
+    if (memory) DeleteDC(memory);
+    ReleaseDC(nativeChild, source);
+    require(extracted, "GUI snapshot real Win32 pixels unavailable");
+    BITMAPFILEHEADER file{};
+    file.bfType = 0x4D42;
+    file.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+    file.bfSize = static_cast<DWORD>(file.bfOffBits + byteCount);
+    info.bmiHeader.biSizeImage = static_cast<DWORD>(byteCount);
+    if (!path.parent_path().empty())
+        std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    require(out.good(), "GUI snapshot output BMP cannot be opened");
+    out.write(reinterpret_cast<const char*>(&file), sizeof(file));
+    out.write(reinterpret_cast<const char*>(&info.bmiHeader), sizeof(BITMAPINFOHEADER));
+    out.write(reinterpret_cast<const char*>(pixels.data()),
+              static_cast<std::streamsize>(pixels.size()));
+    require(out.good(), "GUI snapshot BMP write failed");
+    std::cout << "[PASS] real native HWND BMP captured " << width
+              << "x" << height << ": " << path.string() << '\n';
+}
+
 void runView(IEditController* controller, int cycle, bool checkClick, ParamID paramID,
-             int clickX = -1, int clickY = -1, double expectedValue = 1.0) {
+             int clickX = -1, int clickY = -1, double expectedValue = 1.0,
+             const std::filesystem::path& screenshot = {}) {
     IPlugView* view = controller->createView(ViewType::kEditor);
     if (!view) throw std::runtime_error("plugin supplies no editor view (INCONCLUSIVE)");
     bool frameSet = false;
@@ -261,6 +316,15 @@ void runView(IEditController* controller, int cycle, bool checkClick, ParamID pa
                       << size.getWidth() << "x" << size.getHeight() << '\n';
         }
 
+        if (!screenshot.empty() && cycle == 1) {
+            HWND child = GetWindow(window.get(), GW_CHILD);
+            require(child && IsWindow(child), "GUI snapshot has no painted child HWND");
+            InvalidateRect(child, nullptr, TRUE);
+            require(UpdateWindow(child) != FALSE,
+                    "GUI snapshot failed to repaint actual child HWND");
+            pump(30);
+            captureEditorBmp(child, screenshot);
+        }
         require(view->removed() == kResultTrue, "IPlugView::removed failed");
         attached = false;
         require(view->setFrame(nullptr) == kResultTrue, "IPlugView::setFrame(nullptr) failed");
@@ -279,7 +343,8 @@ void runView(IEditController* controller, int cycle, bool checkClick, ParamID pa
 }
 
 int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
-        int clickX = -1, int clickY = -1, double expectedValue = 1.0) {
+        int clickX = -1, int clickY = -1, double expectedValue = 1.0,
+        const std::filesystem::path& screenshot = {}) {
     std::string error;
     auto module = Module::create(pluginPath, error);
     require(static_cast<bool>(module), ("Cannot load VST3: " + error).c_str());
@@ -299,7 +364,7 @@ int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
             acquireController(component.get(), factory, &host, controller);
             for (int cycle = 1; cycle <= 2; ++cycle)
                 runView(controller.ptr, cycle, checkClick, paramID,
-                        clickX, clickY, expectedValue);
+                        clickX, clickY, expectedValue, screenshot);
             controller.close();
         }
         require(component->terminate() == kResultOk,
@@ -1568,11 +1633,15 @@ int main(int argc, char** argv) {
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])),
                        x, y, expected);
         }
+        if (argc == 4 && std::string(argv[1]) == "--snapshot-editor")
+            return run(argv[2], false, 0, -1, -1, 1.0,
+                       std::filesystem::path(argv[3]));
         if (argc == 3 && std::string(argv[1]) == "--probe")
             return run(argv[2], false, 0);
         if (argc == 4 && std::string(argv[1]) == "--prove-click")
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
-        std::cerr << "Usage: 125A_Test_Lab_GUI --probe <plugin.vst3>\n"
+        std::cerr << "Usage: 125A_Test_Lab_GUI --snapshot-editor <plugin.vst3> <output.bmp>\n"
+                  << "       125A_Test_Lab_GUI --probe <plugin.vst3>\n"
                   << "       125A_Test_Lab_GUI --prove-click <plugin.vst3> <param-id>\n"
                   << "       125A_Test_Lab_GUI --prove-click-at <plugin.vst3> <param-id> <x> <y> <expected-normalized>\n"
                   << "       125A_Test_Lab_GUI --drumator-beat-creator <plugin.vst3> <before.bin> <cancel.bin> <after.bin>\n"
