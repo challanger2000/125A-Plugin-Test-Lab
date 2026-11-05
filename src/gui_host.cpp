@@ -19,6 +19,8 @@
 #include <vector>
 
 #include <algorithm>
+#include <array>
+#include <cwchar>
 #include <atomic>
 #include <thread>
 #include <chrono>
@@ -386,8 +388,8 @@ bool cancelNativeSaveDialog(const std::wstring& title) {
         if (query.window) {
             std::wcout << L"[INFO] P10 verified native Windows Shell Save dialog: "
                        << title << L"\n";
-            require(PostMessageW(query.window, WM_CLOSE, 0, 0) != 0,
-                    "P10 cannot request native dialog cancel");
+            if (!PostMessageW(query.window, WM_CLOSE, 0, 0))
+                return false;
             for (unsigned i = 0; i < 30; ++i) {
                 if (!IsWindow(query.window)) return true;
                 Sleep(80);
