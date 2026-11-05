@@ -2,6 +2,7 @@
 // parameter assertion. No vendor DAW dependency or product source code.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <objbase.h> // CoInitializeEx, COINIT_APARTMENTTHREADED, CoUninitialize
 #include "public.sdk/source/vst/hosting/module.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
 #include "base/source/fobject.h"
@@ -11,6 +12,11 @@
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/vsttypes.h"
+#include "public.sdk/source/vst/utility/memoryibstream.h"
+
+#include <filesystem>
+#include <fstream>
+#include <vector>
 
 #include <algorithm>
 #include <cmath>
@@ -29,6 +35,28 @@ constexpr wchar_t kWindowClass[] = L"125A_Test_Lab_P04_EditorHost";
 void require(bool value, const char* error) {
     if (!value) throw std::runtime_error(error);
 }
+
+
+// Windows VSTGUI uses COM-backed WIC/Direct2D resources. A real DAW normally
+// creates its UI thread COM apartment before constructing plugin editors.
+// The P04 synthetic HWND fixture did not need COM; the actual VSTGUI does.
+class ComApartment final {
+public:
+    ComApartment() {
+        const HRESULT result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        require(SUCCEEDED(result),
+                "P09 COM STA initialization failed before VSTGUI editor attach");
+        initialized_ = true;
+        std::cout << "[INFO] GUI host initialized Win32 COM STA apartment\n";
+    }
+    ~ComApartment() {
+        if (initialized_) CoUninitialize();
+    }
+    ComApartment(const ComApartment&) = delete;
+    ComApartment& operator=(const ComApartment&) = delete;
+private:
+    bool initialized_{false};
+};
 
 LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
@@ -262,16 +290,228 @@ int run(const std::string& pluginPath, bool checkClick, ParamID paramID) {
     throw std::runtime_error("No VST3 audio class found");
 }
 
+
+std::vector<std::uint8_t> captureActualComponentState(IComponent* component) {
+    ResizableMemoryIBStream stream;
+    require(component->getState(&stream) == kResultOk,
+            "P09 cannot read live VST3 component state");
+    const auto bytes = stream.getCursor();
+    require(bytes > 64 && bytes < 16 * 1024 * 1024,
+            "P09 live project state has invalid size");
+    const auto* begin = static_cast<const std::uint8_t*>(stream.getData());
+    require(begin != nullptr, "P09 live project state has no bytes");
+    return {begin, begin + bytes};
+}
+
+void saveActualComponentState(IComponent* component, const std::filesystem::path& path) {
+    ResizableMemoryIBStream stream;
+    require(component->getState(&stream) == kResultOk,
+            "Drumator component getState failed during GUI test");
+    const auto size = stream.getCursor();
+    require(size >= 64 && size < 16 * 1024 * 1024,
+            "Drumator GUI state size is invalid");
+    std::ofstream dump(path, std::ios::binary | std::ios::trunc);
+    require(dump.good(), "Cannot create P09 GUI state evidence file");
+    dump.write(static_cast<const char*>(stream.getData()),
+               static_cast<std::streamsize>(size));
+    require(dump.good(), "Cannot save P09 GUI state evidence");
+}
+
+HWND getRealVstGuiWindow(HWND parent) {
+    const auto child = GetWindow(parent, GW_CHILD);
+    require(child && IsWindow(child),
+            "P09 real Drumator GUI has no native child HWND");
+    RECT dims{};
+    require(GetClientRect(child, &dims) != 0 &&
+            dims.right >= 700 && dims.bottom >= 250,
+            "P09 Drumator native HWND is too small for real controls");
+    return child;
+}
+
+void clickRealDrumatorGui(HWND surface, double x, double y,
+                          const char* action) {
+    // UI geometry is normalized to Drumator's 1280-pixel logical viewport.
+    // No production header or object is imported into the test host.
+    RECT rect{};
+    require(GetClientRect(surface, &rect) != 0, "No GUI click surface");
+    const double scale = static_cast<double>(rect.right) / 1280.0;
+    require(scale >= 0.45 && scale <= 2.5,
+            "Unsupported P09 product GUI scale; do not guess coordinates");
+    const int px = static_cast<int>(std::lround(x * scale));
+    const int py = static_cast<int>(std::lround(y * scale));
+    require(px > 0 && px < rect.right && py > 0 && py < rect.bottom,
+            "P09 click outside actual product window");
+    const LPARAM at = MAKELPARAM(px, py);
+    (void)SendMessageW(surface, WM_MOUSEMOVE, 0, at);
+    (void)SendMessageW(surface, WM_LBUTTONDOWN, MK_LBUTTON, at);
+    (void)SendMessageW(surface, WM_LBUTTONUP, 0, at);
+    pump(110);
+    std::cout << "[INFO] P09 actual HWND mouse action: " << action
+              << " at " << px << "," << py << '\n';
+}
+
+void runRealDrumatorGui(const std::string& path,
+                        const std::filesystem::path& originalState,
+                        const std::filesystem::path& canceledState,
+                        const std::filesystem::path& appliedState) {
+    std::cout << "[INFO] P09 load source-built packaged VST3 from " << path << "\n";
+    std::string error;
+    auto module = Module::create(path, error);
+    require(static_cast<bool>(module), "P09 cannot load actual product VST3");
+    std::cout << "[INFO] P09 module loaded successfully\n";
+    HostApplication context;
+    auto factory = module->getFactory();
+    factory.setHostContext(&context);
+
+    for (const auto& info : factory.classInfos()) {
+        if (info.category() != kVstAudioEffectClass) continue;
+        auto component = factory.createInstance<IComponent>(info.ID());
+        require(static_cast<bool>(component), "P09 cannot create product component");
+        require(component->initialize(&context) == kResultOk,
+                "P09 cannot initialize Drumator component");
+        std::cout << "[INFO] P09 product component initialized\n";
+
+        Controller controller;
+        acquireController(component.get(), factory, &context, controller);
+        require(controller.connected,
+                "P09 controller not connected to processor (fail closed)");
+        std::cout << "[INFO] P09 controller connected to component\n";
+
+        IPlugView* view = controller.ptr->createView(ViewType::kEditor);
+        require(view != nullptr, "P09 no real product editor");
+        std::cout << "[INFO] P09 product IPlugView created\n";
+        ViewRect geometry{};
+        require(view->getSize(&geometry) == kResultTrue &&
+                view->isPlatformTypeSupported(kPlatformTypeHWND) == kResultTrue,
+                "P09 product editor is not a Win32 view");
+        std::cout << "[INFO] P09 pre-attach product IPlugView::getSize = "
+                  << geometry.getWidth() << "x" << geometry.getHeight() << "\n";
+        if (geometry.getWidth() < 100 || geometry.getHeight() < 60) {
+            // Some VSTGUI editors report an uninitialized rect before the
+            // host proposes an initial size. This is a TEST HOST negotiation,
+            // not a change in product source or any production parameter.
+            ViewRect proposed{0, 0, 1280, 700};
+            require(view->onSize(&proposed) == kResultTrue,
+                    "P09 product rejected host's initial editor size");
+            require(view->getSize(&geometry) == kResultTrue,
+                    "P09 product getSize failed after host onSize");
+            std::cout << "[WARN] P09 product requires initial host size proposal; "
+                      << "rect after negotiation=" << geometry.getWidth() << "x"
+                      << geometry.getHeight() << "\n";
+        }
+        require(geometry.getWidth() >= 100 && geometry.getHeight() >= 60 &&
+                geometry.getWidth() <= 8192 && geometry.getHeight() <= 8192,
+                "P09 editor geometry invalid even after host negotiation");
+        Window window(geometry);
+        std::cout << "[INFO] P09 real native host HWND created\n";
+        HostFrame* frame = new HostFrame(window.get());
+        bool frameAssigned = false;
+        bool attached = false;
+        try {
+            require(view->setFrame(frame) == kResultTrue,
+                    "P09 product IPlugView::setFrame failed");
+            frameAssigned = true;
+            require(view->attached(window.get(), kPlatformTypeHWND) == kResultTrue,
+                    "P09 product IPlugView::attached failed");
+            attached = true;
+            std::cout << "[INFO] P09 real product editor attached to HWND\n";
+            ShowWindow(window.get(), SW_SHOWNA);
+            UpdateWindow(window.get());
+            pump(300);
+            const HWND child = getRealVstGuiWindow(window.get());
+            RECT client{};
+            require(GetClientRect(child, &client) != 0,
+                    "P09 cannot read native product editor size");
+            const double logicalHeight =
+                static_cast<double>(client.bottom) * 1280.0 /
+                static_cast<double>(client.right);
+            require(logicalHeight >= 254.0 && logicalHeight <= 1250.0,
+                    "P09 unsupported product logical height; cannot locate modal");
+            std::cout << "[INFO] P09 product editor 1280x" << logicalHeight
+                      << " logical, native " << client.right << "x"
+                      << client.bottom << " pixels\n";
+
+            saveActualComponentState(component.get(), originalState);
+            // A visible, stateful control independently proves that the
+            // native pointer reaches the live controller AND the processor.
+            // If it fails, don't interpret GENERATE/APPLY state as a plugin
+            // defect: this host cannot yet reproduce real GUI input.
+            const auto baseline = captureActualComponentState(component.get());
+            clickRealDrumatorGui(child, 1122.5, 29.0,
+                                 "CONTROL: toggle LIMIT OFF to ON");
+            const auto afterLimiter = captureActualComponentState(component.get());
+            require(afterLimiter != baseline,
+                    "P09 GUI input bridge failed: LIMIT click produced no component change");
+            std::cout << "[PASS] P09 positive control: actual GUI limiter click "
+                         "changed processor state\n";
+            clickRealDrumatorGui(child, 1122.5, 29.0,
+                                 "CONTROL: restore limiter OFF");
+            const auto restored = captureActualComponentState(component.get());
+            require(restored == baseline,
+                    "P09 limiter reversal failed to restore original project state");
+            std::cout << "[PASS] P09 positive control: limiter toggled back to baseline\n";
+            // Click real production Beat Creator button at its 1280px
+            // logical header coordinates (center x=769,y=115).
+            clickRealDrumatorGui(child, 769.0, 115.0, "OPEN Beat Creator");
+            // Dialog is 820x252 centered, independent of editor height.
+            const double footerY = (logicalHeight - 252.0) / 2.0 + 233.5;
+            clickRealDrumatorGui(child, 522.5, footerY, "GENERATE A/B/C");
+            clickRealDrumatorGui(child, 756.5, footerY, "CANCEL generator");
+            saveActualComponentState(component.get(), canceledState);
+            clickRealDrumatorGui(child, 769.0, 115.0, "REOPEN Beat Creator");
+            clickRealDrumatorGui(child, 522.5, footerY, "GENERATE A/B/C again");
+            // Factory pattern A already contains kick notes. Product UI
+            // explicitly requires a second APPLY click to confirm overwriting
+            // occupied A/B/C slots. One click only opens the confirmation.
+            clickRealDrumatorGui(child, 639.5, footerY,
+                                 "APPLY: request occupied-pattern confirmation");
+            clickRealDrumatorGui(child, 639.5, footerY,
+                                 "CONFIRM: overwrite occupied A/B/C");
+            pump(250);
+            saveActualComponentState(component.get(), appliedState);
+            require(view->removed() == kResultTrue,
+                    "P09 product IPlugView::removed failed");
+            attached = false;
+            require(view->setFrame(nullptr) == kResultTrue,
+                    "P09 product IPlugView::setFrame(nullptr) failed");
+            frameAssigned = false;
+            frame->release();
+            frame = nullptr;
+        } catch (...) {
+            if (attached) (void)view->removed();
+            if (frameAssigned) (void)view->setFrame(nullptr);
+            if (frame) frame->release();
+            view->release();
+            throw;
+        }
+        view->release();
+        controller.close();
+        require(component->terminate() == kResultOk, "P09 component terminate failed");
+        std::cout << "[PASS] P09 real Drumator GUI HWND opened, "
+                     "CANCEL and APPLY action sequences dispatched\n";
+        return;
+    }
+    throw std::runtime_error("P09 no audio plugin class found");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
+    std::cout << std::unitbuf;
+    std::cerr << std::unitbuf;
     try {
+        ComApartment guiCom;
+        if (argc == 6 && std::string(argv[1]) == "--drumator-beat-creator") {
+            runRealDrumatorGui(argv[2], argv[3], argv[4], argv[5]);
+            return 0;
+        }
         if (argc == 3 && std::string(argv[1]) == "--probe")
             return run(argv[2], false, 0);
         if (argc == 4 && std::string(argv[1]) == "--prove-click")
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
         std::cerr << "Usage: 125A_Test_Lab_GUI --probe <plugin.vst3>\n"
-                  << "       125A_Test_Lab_GUI --prove-click <plugin.vst3> <param-id>\n";
+                  << "       125A_Test_Lab_GUI --prove-click <plugin.vst3> <param-id>\n"
+                  << "       125A_Test_Lab_GUI --drumator-beat-creator <plugin.vst3> <before.bin> <cancel.bin> <after.bin>\n";
         return 2;
     } catch (const std::exception& ex) {
         const std::string message = ex.what();
