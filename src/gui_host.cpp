@@ -751,8 +751,8 @@ public:
             const std::filesystem::path original(path);
             if (!std::filesystem::is_regular_file(original) ||
                 std::filesystem::file_size(original) <= 128) break;
-            const auto* sourceName = original.filename().c_str();
-            if (std::wstring(sourceName) != expectedSource_) break;
+            const std::wstring sourceName = original.filename().wstring();
+            if (sourceName != expectedSource_) break;
             copied = folder_ / expectedDestination_;
             if (std::filesystem::exists(copied)) break;
             std::filesystem::copy_file(original, copied,
