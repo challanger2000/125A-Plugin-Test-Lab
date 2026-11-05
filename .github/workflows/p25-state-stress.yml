@@ -22,6 +22,10 @@ on:
       - 'tests/test_p32_stale_evidence.py'
       - 'tests/verify_p33_artifacts.py'
       - 'tests/test_p33_artifacts.py'
+      - 'tests/run_p34_capture.py'
+      - 'tests/make_p34_capture_manifest.py'
+      - 'tests/test_p34_capture.py'
+      - 'src/main.cpp'
       - 'tests/make_p32_fixtures.py'
       - '.github/workflows/p25-state-stress.yml'
       - 'CMakeLists.txt'
@@ -55,7 +59,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabStateStress TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
+          cmake --build build --config Release --target TestLabHost TestLabStateStress TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -284,6 +288,31 @@ jobs:
         run: |
           python tests/test_p33_artifacts.py
           if ($LASTEXITCODE -ne 0) { throw 'P33 independent artifact oracle failed' }
+
+      - name: P34 real native VST3 PCM and state capture plus adverse controls
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/test_p34_capture.py
+          if ($LASTEXITCODE -ne 0) { throw 'P34 adverse capture fixtures failed' }
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Host.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_0.vst3')
+          if ($hostExe.Count -ne 1 -or $good.Count -lt 1) { throw 'P34 native host or VST3 fixture missing' }
+          python tests/make_p34_capture_manifest.py --host $hostExe[0].FullName --bundle $good[0].FullName --out artifacts/P34/manifest.json
+          if ($LASTEXITCODE -ne 0) { throw 'P34 manifest creation failed' }
+          python tests/run_p34_capture.py --manifest artifacts/P34/manifest.json --out artifacts/P34/positive
+          if ($LASTEXITCODE -ne 0) { throw 'P34 genuine VST3 capture failed' }
+          $report = Get-Content artifacts/P34/positive/CAPTURE-RESULT.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'PASS' -or $report.capture.gui -ne 'NOT COVERED' -or
+              $report.capture.state -ne 'PASS' -or $report.capture.audio -ne 'PASS') {
+            throw 'P34 incorrect native capture coverage'
+          }
+          $bad = Get-Content artifacts/P34/manifest.json -Raw | ConvertFrom-Json
+          $bad.product.sha256 = 'f' * 64
+          $bad | ConvertTo-Json -Depth 8 | Set-Content artifacts/P34/wrong-hash.json
+          python tests/run_p34_capture.py --manifest artifacts/P34/wrong-hash.json --out artifacts/P34/negative
+          if ($LASTEXITCODE -ne 1) { throw 'P34 wrong native VST3 SHA was accepted' }
+          Write-Host '[PASS] P34 native captured PCM/state with binary SHA and negative controls'
 
       - name: Publish proof even on failure
         if: always()
