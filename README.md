@@ -32,9 +32,13 @@ the resolved tested commit in its artifact.
 | P16 — real OLE integration | **PASS:** ephemeral Windows VM creates its own active RDP desktop, physically drags all four exports from the real Drumator editor and the separate Windows `IDropTarget` records four real `DragEnter`/`Drop` callbacks; received files pass independent validation |
 | P17 — editor lifecycle | 16 actual VST3 editor detach/reattach cycles with valid native HWND each time and byte-identical processor state after every cycle; mandatory Windows P03 integration gate |
 | P18 — fresh-process recall matrix | 0/25/50 Swing states each saved and restored through new VST3 host processes; independently verified DM18 CRC and byte-identical non-silent stereo 24-bit PCM after reload |
+| P19 — real GUI control stress | 96 actual Win32 editor limiter clicks, 48 alternate-state changes and byte-identical processor-state reversals, required by Windows CI |
+| P20 — invalid state matrix | 16 individually corrupted/truncated DM18 project states rejected by the actual VST3 host, no audio files emitted, tested rejection paths |
+| P21 — exact-SHA release evidence | Fail-closed `RELEASE-EVIDENCE.json` generated from 13 independent gate log files, exact product commit recorded; separate DAW/OLE workflow coverage explicitly identified |
 
 **Latest P01–P11 and P13 drag-source PASS:** [Windows Actions 41952977868](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41952977868).
 **True interapplication COM/OLE reception PASS:** [P16 interactive Windows run 41964558955](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41964558955).
+**Latest P17–P21 mandatory Windows integration PASS:** [Actions 42037199490](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42037199490). The artifact contains `RELEASE-EVIDENCE.json` with 13/13 gate entries PASS for the exact pinned product SHA.
 
 P09 required the second APPLY click because the factory Pattern A is already
 occupied. Tests must honor this confirmation rather than bypassing it.
