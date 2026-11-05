@@ -225,6 +225,7 @@ jobs:
             artifacts/P25/
             artifacts/P26/
             artifacts/P27/
+            artifacts/P30/
             artifacts/P28/
           if-no-files-found: warn
           retention-days: 14
