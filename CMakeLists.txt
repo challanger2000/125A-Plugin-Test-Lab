@@ -70,7 +70,7 @@ target_link_libraries(TestLabGUI PRIVATE Vst3WinModule sdk_hosting sdk_common ba
 target_compile_definitions(TestLabGUI PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
 if(MSVC)
   target_compile_options(TestLabGUI PRIVATE /W4 /permissive- /utf-8)
-  target_compile_options(TestLabGUI PRIVATE /FIshlobj.h) # P15 DROPFILES Windows Shell SDK
+  target_compile_options(TestLabGUI PRIVATE /FI${CMAKE_CURRENT_SOURCE_DIR}/src/p15_dropfiles.h) # P15 isolated DROPFILES layout
 endif()
 
 smtg_add_vst3plugin(QAGuiClick
