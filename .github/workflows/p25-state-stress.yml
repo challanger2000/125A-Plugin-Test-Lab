@@ -12,6 +12,9 @@ on:
       - 'tests/verify_recovery_adapter.py'
       - 'src/rate_block.cpp'
       - 'tests/verify_rate_block.py'
+      - 'src/controller_recovery.cpp'
+      - 'tests/controller_recovery_fixture.cpp'
+      - 'tests/verify_controller_recovery.py'
       - '.github/workflows/p25-state-stress.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
