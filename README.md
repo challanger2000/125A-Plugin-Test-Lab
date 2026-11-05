@@ -88,6 +88,21 @@ processor/controller/PCM oracle. A deliberately stale indicator is detected.
 [Windows P31 PASS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42060095211).
 Other product editor semantics remain NOT COVERED without adapters.
 
+## P32 — External adapters for real production plugins
+
+P32 pins the exact VST3 module by SHA-256 and accepts an independent JSON
+adapter with a declared product version and source commit. It invokes
+the native stress host **without synthetic state injection** and checks
+500 project saves against externally specified expectations while audio
+callbacks run. Missing expectations, altered modules and bad saves fail closed.
+
+[Verified P32 Windows suite](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42063464726):
+one good real VST3 fixture PASS, a broken-save VST3 FAIL (100/500
+rejections), and wrong-hash/missing-oracle adapters rejected. See
+[adapter format and exact coverage](docs/P32-PRODUCT-ADAPTERS.md).
+Product-specific bank/program correctness, musical PCM, polyphony, and
+GUI status are explicitly **NOT COVERED** without their own oracles.
+
 ## What actually passed
 
 All gates below have verified Windows GitHub Actions evidence, not just
