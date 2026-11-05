@@ -83,6 +83,36 @@ one, domain correctness is NOT COVERED. P25 does not yet include maximum
 voices or GUI/controller failure-recovery acceptance. Details and the
 requirement-to-evidence table: docs/P25-UNIVERSAL-COVERAGE.md.
 
+## P26–P28 — Universal recovery, PCM equivalence and callback deadlines
+
+P26 records a genuine VST3 control/audio sequence: load valid state A,
+process audio, reject an invalid state, verify byte-identical state and PCM
+after the failed operation, load valid state B, then restore A. Expected
+state SHA-256 and expected 128 stereo float samples per stage are supplied
+by an independent JSON adapter, **not guessed by the host**. A deliberately
+broken VST3 that changes its state despite returning an error is rejected.
+Verified: [P26 Windows run 42048372929](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42048372929).
+
+P27 records 250 ms of native VST3 stereo PCM for each sample rate
+44.1/48/96 kHz and host partition 17/127/512, including zero-frame calls.
+The independent oracle validates the sample-accurate time curve and exact
+PCM identity between block partitions. Both intentionally incorrect
+sample-rate and block-count smoothing fixtures are detected.
+Verified: [P27 Windows run 42049745921](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42049745921).
+
+P28 adds preallocated callback timing instrumentation, p95/p99/max and
+an opt-in strict audio-deadline gate. A defective VST3 intentionally sleeps
+inside process() to prove that this is not silently reported as PASS.
+Consult the P25 Windows workflow for its actual run result; CI timing is
+not equivalent to a certified low-latency DAW machine.
+
+The portable native hosts are general-purpose VST3 executables, but their
+synthetic paired-state and envelope reference functions apply **only**
+when an external product adapter supplies the matching contract.
+Maximum-voice event orchestration and controller/GUI transport-recovery
+remain NOT COVERED. The complete matrix is in
+docs/P25-UNIVERSAL-COVERAGE.md.
+
 ## Generic plugin discovery
 
 ```powershell
