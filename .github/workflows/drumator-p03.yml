@@ -239,6 +239,9 @@ jobs:
           "[PASS] P20 all 16 invalid VST3 project states rejected with no audio output" |
             Set-Content build/p20-summary.log
           Write-Host (Get-Content build/p20-summary.log -Raw)
+          # The final deliberate negative host returns 1; reset the CI step
+          # only after all 16 expected rejections have been asserted.
+          exit 0
 
       - name: P05 real Drumator musical and process-buffer matrix (36 scenarios)
         shell: pwsh
