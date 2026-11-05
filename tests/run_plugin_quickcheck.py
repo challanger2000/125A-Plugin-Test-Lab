@@ -130,10 +130,30 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         elif native.get("release_approved") is not False:
             summary["reason"] = "native host improperly approved release"
         else:
-            summary["status"] = "TECHNICAL_PASS"
-            summary["coverage"]["api_playback_save"] = "PASS"
-            summary["coverage"]["sample_rate_buffer_matrix"] = "PASS"
-            summary["coverage"]["native_audio_state_capture"] = "PASS"
+            matrix_report = out / "native" / "P32" / "ADAPTER-RESULT.json"
+            if not matrix_report.is_file():
+                summary["reason"] = "six-case real playback/save matrix evidence missing"
+            else:
+                matrix = json.loads(matrix_report.read_text(encoding="utf-8"))
+                expected_ids = {case["id"] for case in p32["cases"]}
+                cases = matrix.get("cases")
+                observed_ids = (
+                    {item["id"] for item in cases
+                     if isinstance(item, dict) and isinstance(item.get("id"), str)}
+                    if isinstance(cases, list) else set()
+                )
+                if (matrix.get("status") != "PASS" or
+                        matrix.get("verified_vst3_sha256") != sha or
+                        not isinstance(cases, list) or len(cases) != len(expected_ids) or
+                        observed_ids != expected_ids or
+                        any(item.get("status") != "PASS" for item in cases)):
+                    summary["reason"] = "six-case real playback/save matrix incomplete or failed"
+                else:
+                    summary["status"] = "TECHNICAL_PASS"
+                    summary["coverage"]["api_playback_save"] = "PASS"
+                    summary["coverage"]["sample_rate_buffer_matrix"] = "PASS"
+                    summary["coverage"]["native_audio_state_capture"] = "PASS"
+                    summary["sample_rate_buffer_matrix_cases"] = len(expected_ids)
     # Reopen a captured project state in TWO independent native host processes.
     # Never equate successful IComponent::setState calls with musical correctness.
     if summary["status"] == "TECHNICAL_PASS":
