@@ -27,6 +27,8 @@ on:
       - 'tests/run_product_qa.py'
       - 'docs/PRODUCT-USER-ACCEPTANCE.md'
       - 'tests/run_p34_capture.py'
+      - 'tests/run_state_reload.py'
+      - 'tests/test_state_reload.py'
       - 'tests/make_p34_capture_manifest.py'
       - 'tests/test_p34_capture.py'
       - 'src/main.cpp'
@@ -347,6 +349,32 @@ jobs:
             throw 'Product QA mismatch negative control did not fail closed'
           }
           Write-Host '[PASS] Real product QA technical runner and release gate negative proof'
+          exit 0
+
+      - name: Real VST3 fresh-process save and reload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/test_state_reload.py
+          if ($LASTEXITCODE -ne 0) { throw 'Fresh-process recall negative controls failed' }
+          $capture = Get-Content artifacts/P34/manifest.json -Raw | ConvertFrom-Json
+          $manifest = @{
+            schema = '125a-state-reload-v1'
+            product = $capture.product
+            host = $capture.host
+            initial_state = (Resolve-Path artifacts/P34/positive/captured-state.bin).Path
+            deterministic_audio = $true
+          }
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content artifacts/P34/recall-manifest.json
+          python tests/run_state_reload.py --manifest artifacts/P34/recall-manifest.json --out artifacts/P34/recall
+          if ($LASTEXITCODE -ne 0) { throw 'Native VST3 fresh-process recall failed' }
+          $report = Get-Content artifacts/P34/recall/RECALL-RESULT.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'PASS' -or $report.new_process_instances -ne 2 -or
+              $report.fresh_process_recall -ne 'PASS' -or $report.audio_determinism -ne 'PASS' -or
+              $report.musical_correctness -ne 'NOT COVERED') {
+            throw 'Fresh-process recall evidence is incomplete or falsely asserts musical correctness'
+          }
+          Write-Host '[PASS] Real VST3 state reload into two separate host processes and repeatable PCM'
           exit 0
 
       - name: Publish proof even on failure
