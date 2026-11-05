@@ -7,6 +7,18 @@ suite. It supplements the [125A Plugin Tester](https://github.com/challanger2000
 and the Steinberg VST3 validator; it does not replace a complete commercial-DAW
 compatibility test.
 
+## Universal VST3 inspection (P22)
+
+Run `125A_Test_Lab_Host.exe --inspect "<path-to-plugin.vst3>"` for
+**any Windows x64 VST3 module**, without a Drumator-specific fixture.
+The host enumerates all audio classes, processor interfaces, 32/64-bit
+processing support and audio/event inputs/outputs with bus/channel counts.
+`tests/verify_universal_discovery.py` independently validates its machine
+records and produces JSON with applicable test families. Capability
+discovery is **not** a claim that an unexecuted DSP, GUI or recall test passed.
+The Windows P02 workflow proves P22 against two distinct real VST3
+fixtures and rejects a deliberately invalid module.
+
 ## What actually passed
 
 All gates below have verified Windows GitHub Actions evidence, not just
@@ -34,6 +46,7 @@ the resolved tested commit in its artifact.
 | P18 — fresh-process recall matrix | 0/25/50 Swing states each saved and restored through new VST3 host processes; independently verified DM18 CRC and byte-identical non-silent stereo 24-bit PCM after reload |
 | P19 — real GUI control stress | 96 actual Win32 editor limiter clicks, 48 alternate-state changes and byte-identical processor-state reversals, required by Windows CI |
 | P20 — invalid state matrix | 16 individually corrupted/truncated DM18 project states rejected by the actual VST3 host, no audio files emitted, tested rejection paths |
+| P22 — universal class/bus discovery | Product-neutral inspection of VST3 processor sample formats and all audio/event buses; independent eligibility JSON and invalid-module negative control in Windows CI |
 | P21 — exact-SHA release evidence | Fail-closed `RELEASE-EVIDENCE.json` generated from 13 independent gate log files, exact product commit recorded; separate DAW/OLE workflow coverage explicitly identified |
 
 **Latest P01–P11 and P13 drag-source PASS:** [Windows Actions 41952977868](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41952977868).

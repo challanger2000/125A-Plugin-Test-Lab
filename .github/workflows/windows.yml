@@ -70,6 +70,42 @@ jobs:
           Write-Host "[PASS] P02 real processing + independent waveform oracle + deliberately corrupt VST3 detection"
           exit 0 # Clear expected native exit=1 from deliberately corrupt fixture
 
+      - name: P22 universal VST3 topology discovery and independent capability oracle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Host.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_SignalGood.vst3')
+          $bad = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_SignalBad.vst3')
+          if ($hostExe.Count -ne 1 -or $good.Count -ne 1 -or $bad.Count -ne 1) {
+            throw 'P22 test host or general-purpose VST3 fixtures missing'
+          }
+          New-Item -ItemType Directory -Force build/p22 | Out-Null
+          foreach ($fixture in @(@{id='good';plugin=$good[0].FullName},@{id='bad';plugin=$bad[0].FullName})) {
+            $log = "build/p22/$($fixture.id)-inspection.log"
+            $json = "build/p22/$($fixture.id)-capabilities.json"
+            & $hostExe[0].FullName --inspect $fixture.plugin > $log
+            if ($LASTEXITCODE -ne 0) { throw "P22 cannot inspect $($fixture.id) fixture" }
+            python tests/verify_universal_discovery.py $log $json
+            if ($LASTEXITCODE -ne 0) { throw "P22 invalid topology for $($fixture.id)" }
+            $report = Get-Content $json -Raw | ConvertFrom-Json
+            if ($report.classes.Count -ne 1 -or
+                $report.classes[0].buses.audio_output.Count -ne 1 -or
+                $report.classes[0].buses.audio_output[0].channels -ne 2 -or
+                $report.classes[0].buses.event_input.Count -ne 1 -or
+                $report.classes[0].recommended_gates.midi_input -ne 'ELIGIBLE') {
+              throw "P22 unexpected fixture class/bus topology: $($fixture.id)"
+            }
+          }
+          # Negative fixture must NOT report discovery success.
+          'invalid binary' | Set-Content build/p22/not-a-vst3.vst3
+          & $hostExe[0].FullName --inspect build/p22/not-a-vst3.vst3 > build/p22/invalid-inspection.log 2>&1
+          if ($LASTEXITCODE -eq 0) { throw 'P22 invalid module erroneously accepted' }
+          $invalidLog = Get-Content build/p22/invalid-inspection.log -Raw
+          if (-not $invalidLog.Contains('[FAIL]')) { throw 'P22 negative control did not fail explicitly' }
+          Write-Host '[PASS] P22 universal class/bus/processing discovery, independent capability JSON and invalid-module rejection'
+          exit 0
+
       - name: Stage executable and P02 evidence
         shell: pwsh
         run: |
@@ -78,6 +114,7 @@ jobs:
           if (-not $hostExe) { throw "Host executable missing" }
           Copy-Item $hostExe.FullName artifact\
           Copy-Item START-HERE.md artifact\
+          Copy-Item -Path build/p22 -Destination artifact/P22 -Recurse
           Copy-Item build\p02-good.wav artifact\P02-Reference-Render.wav
           Copy-Item build\p02-good-host.log, build\p02-good-oracle.log, build\p02-bad-host.log artifact\
           Get-FileHash $hostExe.FullName -Algorithm SHA256 | Format-List | Out-File artifact\SHA256.txt
