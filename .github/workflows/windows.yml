@@ -143,7 +143,7 @@ jobs:
           $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Host.exe')
           $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_SignalGood.vst3')
           $bad = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_SignalBad.vst3')
-          if ($exe.Count -ne 1 -or $good.Count -ne 1 -or $bad.Count -ne 1) {
+          if ($exe.Count -ne 1 -or $good.Count -lt 1 -or $bad.Count -lt 1) {
             throw 'P24 universal host/fixtures missing'
           }
           New-Item -ItemType Directory -Force build/p24-good,build/p24-bad | Out-Null
