@@ -67,6 +67,21 @@ workflows. Check those runs separately when assessing a full release.
 A manual P03 run can select a newer product SHA.
 
 
+## Generic plugin discovery
+
+```powershell
+.\125A_Test_Lab_Host.exe --inspect "C:\\VST3\\SomePlugin.vst3" > capabilities.log
+python tests/verify_universal_discovery.py capabilities.log capabilities.json
+```
+
+P22 requires no Drumator-specific source, project state or DAW. It reports
+audio classes, processing sample formats, audio/event bus topologies and which
+test families may apply. An `ELIGIBLE` result means the capability exists,
+**not** that an interactive, audio or state test was executed. Unsupported
+or unmeasured operations remain NOT_APPLICABLE or NOT_YET_DETERMINED.
+The GitHub P02 workflow tests P22 with two independent VST3 fixtures
+and a malformed-module negative control.
+
 ## Standalone Windows CLI
 
 Extract the corresponding GitHub Actions artifact before running:
