@@ -30,8 +30,10 @@ presets' audible behavior or full DAW session is correct. Because many
 plugins use randomized synthesis, this generic quickcheck does not
 require identical PCM across independent runs: repeatable PCM and
 musical correctness remain `NOT COVERED` without a trusted
-product-specific deterministic reference. Empty captured states or states 128 MiB and larger cannot be tested by this current
-host and are explicitly `NOT COVERED` rather than called PASS.
+product-specific deterministic reference. The native host rejects empty
+component-state streams and state blobs of 128 MiB or more. Such failures
+remain **FAIL**, never a green result. Product-specific musical correctness
+remains `NOT COVERED` without a trusted external oracle.
 
 `QUICKCHECK-RESULT.json` reports `TECHNICAL_PASS` only when both native
 stages pass and their reports identify that exact module. Missing,
