@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'src/gui_host.cpp'
+      - 'tests/run_gui_control_matrix.py'
       - 'tests/gui_fixture.cpp'
       - 'CMakeLists.txt'
       - '.github/workflows/gui-p04.yml'
@@ -79,6 +80,45 @@ jobs:
             throw "Editorless fixture was not explicitly classified INCONCLUSIVE"
           }
           Write-Host "[PASS] P04 actual GUI HWND, two click cycles, VST3 parameter observation, inert negative control, editorless INCONCLUSIVE"
+          exit 0
+
+      - name: Native GUI control-coordinate oracle, real and broken fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force artifact/gui-matrix | Out-Null
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Click.vst3')
+          $inert = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Inert.vst3')
+          if ($exe.Count -ne 1 -or $good.Count -ne 1 -or $inert.Count -ne 1) {
+            throw 'GUI control matrix native fixture missing'
+          }
+          function Write-ControlManifest($bundle, $expected, $x, $out) {
+            $modules = @(Get-ChildItem -LiteralPath $bundle -Recurse -File -Filter '*.vst3')
+            if ($modules.Count -ne 1) { throw 'GUI fixture module missing or ambiguous' }
+            @{
+              schema = '125a-gui-controls-v1'
+              product = @{ binary = $modules[0].FullName; sha256 = (Get-FileHash $modules[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+              gui_host = $exe[0].FullName
+              controls = @(@{ id = 'native_click'; param_id = 9001; x = $x; y = 90; expected_normalized = $expected })
+            } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $out
+          }
+          Write-ControlManifest $good[0].FullName 1.0 160 artifact/gui-matrix/good.json
+          python tests/run_gui_control_matrix.py --manifest artifact/gui-matrix/good.json --out artifact/gui-matrix/good
+          if ($LASTEXITCODE -ne 0) { throw 'Real GUI parameter click failed' }
+          $report = Get-Content artifact/gui-matrix/good/GUI-CONTROL-RESULT.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'TECHNICAL_PASS' -or $report.all_product_controls -ne 'NOT COVERED' -or
+              $report.tested_controls -ne 1) { throw 'GUI matrix falsely claimed full product coverage' }
+          Write-ControlManifest $inert[0].FullName 1.0 160 artifact/gui-matrix/inert.json
+          Write-ControlManifest $good[0].FullName 0.5 160 artifact/gui-matrix/wrong-expected.json
+          Write-ControlManifest $good[0].FullName 1.0 500 artifact/gui-matrix/outside.json
+          foreach ($negative in @('inert','wrong-expected','outside')) {
+            python tests/run_gui_control_matrix.py --manifest "artifact/gui-matrix/$negative.json" --out "artifact/gui-matrix/$negative"
+            if ($LASTEXITCODE -ne 1) { throw "GUI matrix did not reject $negative" }
+            $failed = Get-Content "artifact/gui-matrix/$negative/GUI-CONTROL-RESULT.json" -Raw | ConvertFrom-Json
+            if ($failed.status -ne 'FAIL') { throw "GUI negative $negative was not classified FAIL" }
+          }
+          Write-Host '[PASS] Native GUI coordinates, actual parameter observation and three negative controls'
           exit 0
 
       - name: Collect logs and proven GUI executable

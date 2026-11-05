@@ -200,7 +200,8 @@ void acquireController(IComponent* component,
     }
 }
 
-void runView(IEditController* controller, int cycle, bool checkClick, ParamID paramID) {
+void runView(IEditController* controller, int cycle, bool checkClick, ParamID paramID,
+             int clickX = -1, int clickY = -1, double expectedValue = 1.0) {
     IPlugView* view = controller->createView(ViewType::kEditor);
     if (!view) throw std::runtime_error("plugin supplies no editor view (INCONCLUSIVE)");
     bool frameSet = false;
@@ -235,14 +236,21 @@ void runView(IEditController* controller, int cycle, bool checkClick, ParamID pa
             RECT rect{};
             require(GetClientRect(child, &rect) != 0 && rect.right > 10 && rect.bottom > 10,
                     "GUI child has invalid mouse coordinates");
-            const LPARAM coordinate = MAKELPARAM(rect.right / 2, rect.bottom / 2);
+            require(std::isfinite(expectedValue) && expectedValue >= 0.0 &&
+                    expectedValue <= 1.0 && expectedValue != before,
+                    "Invalid or non-observable expected GUI control result");
+            const int x = clickX < 0 ? rect.right / 2 : clickX;
+            const int y = clickY < 0 ? rect.bottom / 2 : clickY;
+            require(x >= 0 && x < rect.right && y >= 0 && y < rect.bottom,
+                    "GUI click location outside native editor HWND");
+            const LPARAM coordinate = MAKELPARAM(x, y);
             // Direct native HWND messages, not a fake controller parameter write.
             SendMessageW(child, WM_MOUSEMOVE, 0, coordinate);
             SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, coordinate);
             SendMessageW(child, WM_LBUTTONUP, 0, coordinate);
             pump(40);
             const auto after = controller->getParamNormalized(paramID);
-            require(std::isfinite(after) && after == 1.0,
+            require(std::isfinite(after) && std::abs(after - expectedValue) < 0.00001,
                     "GUI parameter unchanged after native click");
             std::cout << "[PASS] P04 cycle " << cycle
                       << ": native click changed VST3 parameter " << paramID
@@ -270,7 +278,8 @@ void runView(IEditController* controller, int cycle, bool checkClick, ParamID pa
     view->release();
 }
 
-int run(const std::string& pluginPath, bool checkClick, ParamID paramID) {
+int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
+        int clickX = -1, int clickY = -1, double expectedValue = 1.0) {
     std::string error;
     auto module = Module::create(pluginPath, error);
     require(static_cast<bool>(module), ("Cannot load VST3: " + error).c_str());
@@ -289,7 +298,8 @@ int run(const std::string& pluginPath, bool checkClick, ParamID paramID) {
             Controller controller;
             acquireController(component.get(), factory, &host, controller);
             for (int cycle = 1; cycle <= 2; ++cycle)
-                runView(controller.ptr, cycle, checkClick, paramID);
+                runView(controller.ptr, cycle, checkClick, paramID,
+                        clickX, clickY, expectedValue);
             controller.close();
         }
         require(component->terminate() == kResultOk,
@@ -1548,12 +1558,23 @@ int main(int argc, char** argv) {
             runRealDrumatorGui(argv[2], argv[3], argv[4], argv[5]);
             return 0;
         }
+        if (argc == 7 && std::string(argv[1]) == "--prove-click-at") {
+            const int x = std::stoi(argv[4]);
+            const int y = std::stoi(argv[5]);
+            const double expected = std::stod(argv[6]);
+            require(x >= 0 && y >= 0 && std::isfinite(expected) &&
+                    expected > 0.0 && expected <= 1.0,
+                    "invalid GUI control coordinates or expected normalized value");
+            return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])),
+                       x, y, expected);
+        }
         if (argc == 3 && std::string(argv[1]) == "--probe")
             return run(argv[2], false, 0);
         if (argc == 4 && std::string(argv[1]) == "--prove-click")
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
         std::cerr << "Usage: 125A_Test_Lab_GUI --probe <plugin.vst3>\n"
                   << "       125A_Test_Lab_GUI --prove-click <plugin.vst3> <param-id>\n"
+                  << "       125A_Test_Lab_GUI --prove-click-at <plugin.vst3> <param-id> <x> <y> <expected-normalized>\n"
                   << "       125A_Test_Lab_GUI --drumator-beat-creator <plugin.vst3> <before.bin> <cancel.bin> <after.bin>\n"
                   << "       125A_Test_Lab_GUI --drumator-export-dialog-cancel <plugin.vst3> <evidence-folder>\n"
                   << "       125A_Test_Lab_GUI --drumator-export-dialog-save <plugin.vst3> <state.bin> <output-folder>\n"
