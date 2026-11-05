@@ -1,70 +1,85 @@
 # START HERE — 125A Plugin Test Lab
 
-## Purpose
-Independent Windows x64 test host for VST3 functionality, audio timing and
-reproducible state restore. It is **not** a complete consumer DAW.
+## Established and verified
 
-## Current milestones
-- P02 PASS: real controlled VST3 render and independent PCM24 oracle;
-  deliberately defective VST3 detected.
-- P03 PASS: exact Drumator V1.5 source SHA
-  `e22e65517e3e61d5e55e29b0ee7e34ea9b856a3c`
-  built and processed under a separate Windows workflow.
-- Independent musical oracle: 0% vs 50% swing shifts an eighth offbeat by
-  **3,675 samples** at 44.1 kHz and 120 BPM in all four bars.
-- Fresh VST3 instance `getState()/setState()` recall returns **identical PCM24
-  stereo audio** across all 352,800 frames, saved state CRC verifies.
-- Bad state CRC rejected by actual Drumator; no output WAV produced.
+P01–P09 test infrastructure exists on Windows x64 and all listed test
+gates passed in [Actions run 41938707186](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41938707186),
+with standalone P02 and P04 regression checks also successful.
+The **real-product GUI integration P09** proved Limiter and Beat Creator
+state changes, including GENERATE / CANCEL / APPLY / CONFIRM.
 
-- P04 PASS: native Win32 VST3 GUI click-to-controller parameter verified
-  across two real window lifecycle cycles, plus a deliberately inert negative
-  VST3; evidence in Actions run 41921967133.
+Pinned tested product source: `challanger2000/125A-Drumator-Final`,
+SHA `6184718dda4a725fe4892a9e76533ec24dfa2f17`.
+This is not a floating/latest-commit test. Tests of a newer product commit
+must explicitly update the pinned SHA and rerun the acceptance suite.
 
-## Windows CLI
+## Run workflows
+
+From the repository's **Actions** tab, use **Run workflow** for
+`P03 Real Drumator Swing Host Test`. The workflow checks out the pinned
+product source and creates all test binaries, synthetic drum kits and test
+vectors without requiring the user's computer or installed DAW.
+
+The report names the exact commit and gives PASS/FAIL evidence for:
+- host VST3 component lifecycle and genuine DSP processing
+- 36 combinations of tempo, Swing and audio process-buffer partitions
+- real audio, saved state, rejected corrupted state
+- MIDI/WAV export core and independent file/timing checks
+- Beat Creator A/B/C algorithm stress and five-point Complexity helper
+- real Win32 editor, Limiter, Beat Creator GENERATE/CANCEL/APPLY/CONFIRM
+- negative audio/MIDI/WAV/GUI fixtures and explicit INCONCLUSIVE cases
+
+The P04 and P02 workflows separately check the GUI-host and audio-host
+infrastructure itself.
+
+## Standalone Windows CLI
+
+Extract the corresponding GitHub Actions artifact before running:
+
 ```powershell
 .\125A_Test_Lab_Host.exe --selftest
 .\125A_Test_Lab_Host.exe --render "C:\Path\Plugin.vst3" ".\render.wav"
 .\125A_Test_Lab_Host.exe --render-state "C:\Path\Plugin.vst3" ".\kit.bin" ".\render.wav"
-.\125A_Test_Lab_Host.exe --render-state-save "C:\Path\Plugin.vst3" ".\kit.bin" ".\render.wav" ".\saved-kit.bin"
+.\125A_Test_Lab_Host.exe --render-state-save "C:\Path\Plugin.vst3" ".\kit.bin" ".\render.wav" ".\saved-state.bin"
+.\125A_Test_Lab_Host.exe --render-state-at "C:\Path\Plugin.vst3" ".\kit.bin" ".\render.wav" 120 127
+
+.\125A_Test_Lab_GUI.exe --probe "C:\Path\Plugin.vst3"
+.\125A_Test_Lab_GUI.exe --prove-click "C:\Path\125A_QA_GUI_Click.vst3" 9001
 ```
 
-P04 GUI executable commands:
-```powershell
-.\\125A_Test_Lab_GUI.exe --probe "C:\\Path\\Plugin.vst3"
-.\\125A_Test_Lab_GUI.exe --prove-click ".\\125A_QA_GUI_Click.vst3" 9001
-```
-The `--prove-click` mode is intended for plugins exposing a known testable
-controller parameter. It does not automatically discover product GUI controls.
-No-editor returns **INCONCLUSIVE (10)**. Actual attach/click assertion failure
-returns **FAIL (1)**.
+For `--prove-click`, use only a specially prepared VST3 exposing a
+documented controller parameter that switches from 0 to 1 when clicked.
+The main host's `--render-state-at` supports sample-exact tempos 60–240
+and blocks of 16–2048 frames, with audio at 44.1 kHz and a 4/4 host.
 
-P03 synthetic kits are generated in CI by
-`python tests/make_drumator_state.py build/p03-state`.
-The CI verifier scripts check swing timing and audio recall independently
-from the plugin DSP implementation.
+The P09 real-product GUI test runs from source under the pinned CI
+workflow because it requires a complete VST3 bundle with the actual
+`Contents/Resources` tree, a COM-initialized Win32 UI thread, a connected
+controller and processor, and a state oracle. Do not point the GUI host
+at an unbundled DLL and expect a complete editor.
 
-Fixed P03 host scenario: Windows x64, 44,100 Hz, 120 BPM, 4/4, four bars,
-512-sample blocks, 24-bit stereo WAV. Host-only MIDI is disabled when
-rendering a supplied kit state so genuine Drumator pattern scheduling is heard.
+## Outcome semantics
 
-## Interpretation
-- PASS proves only the named behavior under the exact tested conditions.
-- Silent render is inconclusive for musical function.
-- FAIL can indicate a plugin bug, host defect, or unsupported scenario;
-  reproduce and classify before assigning fault.
-- P04 proves a synthetic GUI click, not the actual Drumator GUI buttons;
-  P03 **does not test** Beat Creator UI, preset browser,
-  internal export, or Fender Studio Pro-specific integration.
-- No FINAL release or sales update is authorized by this test.
+**PASS** — independent, observed expected behavior under tested conditions.
 
-## Security
-VST3s are native executable code; only trusted, isolated binaries should be
-run. The public repository does not contain any licensed sample library,
-DAW license, credentials or private presets. The P03 synthetic WAV sample
-is generated by the test script without third-party assets.
+**FAIL** — test assertion, plugin behavior, environment or test-host error
+must be diagnosed; no approval until resolved.
 
-## Next features
-- Fully independent Beat Creator feature assertions and audio patterns.
-- Real GUI automation on a proven interactive Windows session.
-- Stress, parameter/preset/transport, WAV and MIDI export integration,
-  with negative fixtures and a secondary DAW cross-check.
+**INCONCLUSIVE** — the scenario was attempted but cannot be determined;
+for instance, the plugin does not expose an editor.
+
+**NOT COVERED** — no verified test exists for that behavior.
+
+A green CI run does not imply complete GUI menu, drag-and-drop, file chooser
+or proprietary DAW workflow coverage. Export core validation P06/P08 is
+**not** proof that a user can trigger those exports from the editor.
+
+## Security and policy
+
+This repository is public. Do not commit purchased samples, user kits,
+private plugins, personal data, licenses or credentials. The test kits
+are synthesised, and third-party plugins execute as native code.
+Use sandboxed runners for untrusted binaries.
+
+Test Lab is a quality-assurance system, **not** the product release
+repository or Gumroad release process.
