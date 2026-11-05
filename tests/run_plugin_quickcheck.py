@@ -21,7 +21,8 @@ def digest(path):
     return h.hexdigest()
 
 
-def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run):
+def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
+        gui_host=None, gui_controls=None):
     bundle = bundle.resolve(strict=True)
     host = host.resolve(strict=True)
     stress_host = stress_host.resolve(strict=True)
@@ -36,6 +37,12 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run):
         raise ValueError("exactly one VST3 processor module expected in bundle")
     binary = binaries[0].resolve()
     sha = digest(binary)
+    if gui_controls is not None and gui_host is None:
+        raise ValueError("GUI controls require an actual native GUI host")
+    if gui_host is not None:
+        gui_host = Path(gui_host).resolve(strict=True)
+        if not gui_host.is_file():
+            raise ValueError("native GUI host missing")
     out.mkdir(parents=True, exist_ok=True)
     p32 = {
         "schema": "125a-p32-adapter-v1",
@@ -88,6 +95,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run):
             "native_audio_state_capture": "NOT EXECUTED",
             "independent_musical_audio": "NOT COVERED",
             "product_gui_controls": "NOT COVERED",
+            "native_gui_lifecycle": "NOT COVERED",
             "midi_wav_export": "NOT COVERED",
             "preset_semantics": "NOT COVERED",
             "commercial_daw_integration": "NOT COVERED"
@@ -129,9 +137,12 @@ def main():
     p.add_argument("--stress-host", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--timeout", type=int, default=120)
+    p.add_argument("--gui-host", type=Path)
+    p.add_argument("--gui-controls", type=Path)
     a = p.parse_args()
     try:
-        result = run(a.plugin, a.host, a.stress_host, a.out, a.timeout)
+        result = run(a.plugin, a.host, a.stress_host, a.out, a.timeout,
+                     gui_host=a.gui_host, gui_controls=a.gui_controls)
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired,
             json.JSONDecodeError) as error:
         a.out.mkdir(parents=True, exist_ok=True)
