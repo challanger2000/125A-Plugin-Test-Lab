@@ -80,6 +80,14 @@ regressions. This verifies the **connection/control-state contract**,
 not arbitrary GUI pixels or product-specific error semantics. Those
 remain NOT COVERED without their own independent adapter.
 
+## P31 native GUI recovery
+
+P31 uses a real VST3 IPlugView on Win32 HWND, samples actual painted RGB
+after controller disconnect/reconnect and checks it against an independent
+processor/controller/PCM oracle. A deliberately stale indicator is detected.
+[Windows P31 PASS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42060095211).
+Other product editor semantics remain NOT COVERED without adapters.
+
 ## What actually passed
 
 All gates below have verified Windows GitHub Actions evidence, not just
