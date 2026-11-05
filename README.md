@@ -30,6 +30,7 @@ the resolved tested commit in its artifact.
 | P13 — source | Four actual GUI drag gestures generated and independently verified Pattern/Song MIDI/WAV transient files on the regular Windows CI host |
 | P15 — receiver contract | Four native `CF_HDROP` receiver callback/file-copy checks using a synthetic COM data object, run unattended on Windows |
 | P16 — real OLE integration | **PASS:** ephemeral Windows VM creates its own active RDP desktop, physically drags all four exports from the real Drumator editor and the separate Windows `IDropTarget` records four real `DragEnter`/`Drop` callbacks; received files pass independent validation |
+| P17 — editor lifecycle | 16 actual VST3 editor detach/reattach cycles with valid native HWND each time and byte-identical processor state after every cycle; mandatory Windows P03 integration gate |
 
 **Latest P01–P11 and P13 drag-source PASS:** [Windows Actions 41952977868](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41952977868).
 **True interapplication COM/OLE reception PASS:** [P16 interactive Windows run 41964558955](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41964558955).
