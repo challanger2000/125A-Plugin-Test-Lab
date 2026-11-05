@@ -136,6 +136,39 @@ jobs:
           Write-Host '[PASS] P23 multi-plugin discovery, per-process isolation and fail-closed JSON report'
           exit 0
 
+      - name: P24 universal isolated audio-smoke checks (good and NaN fixtures)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Host.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_SignalGood.vst3')
+          $bad = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_SignalBad.vst3')
+          if ($exe.Count -ne 1 -or $good.Count -lt 1 -or $bad.Count -lt 1) {
+            throw 'P24 universal host/fixtures missing'
+          }
+          New-Item -ItemType Directory -Force build/p24-good,build/p24-bad | Out-Null
+          Copy-Item -LiteralPath $good[0].FullName -Destination build/p24-good -Recurse
+          python tests/run_vst3_batch.py --host $exe[0].FullName --root build/p24-good --out build/p24-good-report --audio-smoke
+          if ($LASTEXITCODE -ne 0) { throw 'P24 valid VST3 render failed' }
+          $positive = Get-Content build/p24-good-report/BATCH-RESULT.json -Raw | ConvertFrom-Json
+          if ($positive.status -ne 'PASS' -or $positive.modules.Count -ne 1 -or
+              $positive.modules[0].audio_smoke -ne 'PASS') {
+            throw 'P24 required non-silent PCM24 audio evidence missing'
+          }
+          Copy-Item -LiteralPath $bad[0].FullName -Destination build/p24-bad -Recurse
+          python tests/run_vst3_batch.py --host $exe[0].FullName --root build/p24-bad --out build/p24-bad-report --audio-smoke
+          if ($LASTEXITCODE -ne 1) { throw 'P24 deliberately nonfinite VST3 did not cause failure' }
+          $negative = Get-Content build/p24-bad-report/BATCH-RESULT.json -Raw | ConvertFrom-Json
+          if ($negative.status -ne 'FAIL' -or $negative.modules.Count -ne 1 -or
+              $negative.modules[0].audio_smoke -ne 'FAIL') {
+            throw 'P24 did not distinguish valid capability discovery from broken DSP'
+          }
+          if (-not (Get-Content build/p24-bad-report/module-001-render.log -Raw).Contains('nonfinite audio emitted by plugin')) {
+            throw 'P24 failed for the wrong reason'
+          }
+          Write-Host '[PASS] P24 automatic real PCM render on eligible VST3, nonfinite audio detected independently'
+          exit 0
+
       - name: Stage executable and P02 evidence
         shell: pwsh
         run: |
@@ -147,6 +180,8 @@ jobs:
           Copy-Item -Path build/p22 -Destination artifact/P22 -Recurse
           Copy-Item -Path build/p23-pass-report -Destination artifact/P23-PASS -Recurse
           Copy-Item -Path build/p23-fail-report -Destination artifact/P23-Negative-Control -Recurse
+          Copy-Item -Path build/p24-good-report -Destination artifact/P24-Audio-Smoke-PASS -Recurse
+          Copy-Item -Path build/p24-bad-report -Destination artifact/P24-Audio-Smoke-Negative -Recurse
           Copy-Item build\p02-good.wav artifact\P02-Reference-Render.wav
           Copy-Item build\p02-good-host.log, build\p02-good-oracle.log, build\p02-bad-host.log artifact\
           Get-FileHash $hostExe.FullName -Algorithm SHA256 | Format-List | Out-File artifact\SHA256.txt
