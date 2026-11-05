@@ -19,6 +19,7 @@ on:
       - 'tests/gui_recovery_fixture.cpp'
       - 'tests/verify_gui_recovery.py'
       - 'tests/run_product_adapter.py'
+      - 'tests/test_p32_stale_evidence.py'
       - 'tests/make_p32_fixtures.py'
       - '.github/workflows/p25-state-stress.yml'
       - 'CMakeLists.txt'
@@ -253,6 +254,8 @@ jobs:
           if ($hostExe.Count -ne 1 -or $good.Count -lt 1 -or $bad.Count -lt 1) {
             throw 'P32 native host or real VST3 fixtures missing'
           }
+          python tests/test_p32_stale_evidence.py
+          if ($LASTEXITCODE -ne 0) { throw 'P32 stale evidence negative control failed' }
           python tests/make_p32_fixtures.py --host $hostExe[0].FullName --good $good[0].FullName --bad $bad[0].FullName --out artifacts/P32/manifests
           if ($LASTEXITCODE -ne 0) { throw 'P32 manifest generation failed' }
           python tests/run_product_adapter.py --adapter artifacts/P32/manifests/good.json --out artifacts/P32/good
