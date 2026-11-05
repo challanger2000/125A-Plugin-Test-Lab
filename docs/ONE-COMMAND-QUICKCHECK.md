@@ -14,8 +14,13 @@ If running directly from a source checkout rather than the portable package, use
 
 It discovers exactly one .vst3 binary inside the bundle, calculates the
 real file SHA-256, generates pinned intermediate manifests, and launches
-native VST3 processing. P32 performs 2500 audio callbacks with 500
-project-state saves. P34 captures real 24-bit stereo PCM at 44.1 kHz
+native VST3 processing. P32 performs **six distinct real VST3 stress runs**, at
+44.1, 48 and 96 kHz with both 64- and 512-sample buffers. Each run
+requires exactly 2,500 successful audio callbacks and 500 successful
+project-state saves, for 15,000 callbacks and 3,000 verified saves in
+total. Missing just one case or one saved state makes the result FAIL.
+Each case is checked independently against the actual native host report,
+not against an overall success string. P34 captures real 24-bit stereo PCM at 44.1 kHz
 and real processor-state bytes.
 
 When the captured state has a supported size, the same invocation now
