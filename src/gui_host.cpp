@@ -1049,6 +1049,12 @@ void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
                 "P13 cannot translate source to actual monitor location");
         require(SetCursorPos(screen.x,screen.y)!=0,
                 "P13 source pointer position refused");
+        // Match the P13 verified source-side gesture: VSTGUI must receive
+        // a hover over the popup item BEFORE the left-button press.
+        // Without it, onMouseMoved returns and no OLE drag ever starts.
+        const LPARAM hoverAt = MAKELPARAM(source.x,source.y);
+        (void)SendMessageW(nativeChild, WM_MOUSEMOVE, 0, hoverAt);
+        pump(70);
         drop.target().setExpected(originalNames[i], outputNames[i]);
         const unsigned previous = drop.target().accepted();
         // OLE QueryContinueDrag inspects the *real* Windows keyboard state.
