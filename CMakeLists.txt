@@ -132,3 +132,10 @@ smtg_add_vst3plugin(QAStateMode6
     SOURCES_LIST tests/state_race_fixture.cpp)
 target_link_libraries(QAStateMode6 PRIVATE sdk)
 target_compile_definitions(QAStateMode6 PRIVATE NOMINMAX QA_STATE_MODE=6)
+
+# P28: intentionally illegal blocking VST3 callback to prove timing gate.
+smtg_add_vst3plugin(QAStateMode7
+    PACKAGE_NAME "125A_QA_State_7"
+    SOURCES_LIST tests/state_race_fixture.cpp)
+target_link_libraries(QAStateMode7 PRIVATE sdk)
+target_compile_definitions(QAStateMode7 PRIVATE NOMINMAX QA_STATE_MODE=7)
