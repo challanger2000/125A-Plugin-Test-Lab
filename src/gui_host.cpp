@@ -23,6 +23,8 @@
 #include <cwchar>
 #include <atomic>
 #include <thread>
+#include <memory>
+#include <cstring>
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -458,11 +460,238 @@ void runNativeExportDialogCancel(
                  "opened native Win32 Save dialog; CANCEL non-destructive\n";
 }
 
+
+// P11: real VST3 processor time context and real product project-state
+// restoration. No tempo is injected into Drumator private objects.
+class ProductGuiClock {
+public:
+    ProductGuiClock(IComponent* component, IEditController* controller,
+                    const std::filesystem::path& statePath)
+        : component_(component) {
+        require(component_->queryInterface(IAudioProcessor::iid,
+                    reinterpret_cast<void**>(&processor_)) == kResultTrue &&
+                    processor_, "P11 GUI product has no real IAudioProcessor");
+        ProcessSetup setup{};
+        setup.processMode = kRealtime;
+        setup.symbolicSampleSize = kSample32;
+        setup.maxSamplesPerBlock = 512;
+        setup.sampleRate = 44100.0;
+        require(processor_->setupProcessing(setup) == kResultOk,
+                "P11 cannot configure host processing");
+        std::ifstream source(statePath, std::ios::binary | std::ios::ate);
+        require(source.good(), "P11 synthetic product project state missing");
+        const auto len = source.tellg();
+        require(len > 0 && len < 16 * 1024 * 1024,
+                "P11 synthetic state has invalid length");
+        std::vector<char> bytes(static_cast<size_t>(len));
+        source.seekg(0);
+        source.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        require(source.good(), "P11 failed to read product state");
+        auto transfer = [&](IBStream* output) {
+            int32 done{};
+            require(output->write(bytes.data(),
+                    static_cast<int32>(bytes.size()), &done) == kResultOk &&
+                    done == static_cast<int32>(bytes.size()),
+                    "P11 cannot prepare IBStream project bytes");
+            require(output->seek(0, IBStream::kIBSeekSet, nullptr) == kResultOk,
+                    "P11 IBStream rewind failed");
+        };
+        ResizableMemoryIBStream processorState(bytes.size());
+        transfer(&processorState);
+        require(component_->setState(&processorState) == kResultOk,
+                "P11 processor rejected rights-free state");
+        ResizableMemoryIBStream controllerState(bytes.size());
+        transfer(&controllerState);
+        require(controller->setComponentState(&controllerState) == kResultOk,
+                "P11 VST3 controller refused synchronized product state");
+        require(component_->setActive(true) == kResultOk,
+                "P11 VST3 product activation rejected");
+        active_ = true;
+        require(processor_->setProcessing(true) == kResultOk,
+                "P11 VST3 product processing rejected");
+        processing_ = true;
+        publishTempo();
+        std::cout << "[INFO] P11 real processor/controller state synchronized "
+                     "with 120 BPM host transport\n";
+    }
+    ~ProductGuiClock() {
+        if (processing_) (void)processor_->setProcessing(false);
+        if (active_) (void)component_->setActive(false);
+        if (processor_) processor_->release();
+    }
+    void publishTempo() {
+        // The product explicitly accepts zero-frame host callbacks. Tempo
+        // is conveyed via VST3 ProcessContext and confirmed by the
+        // controller's normal MeterSnapshot request/response path.
+        ProcessContext context{};
+        context.state = ProcessContext::kPlaying | ProcessContext::kTempoValid |
+                        ProcessContext::kTimeSigValid |
+                        ProcessContext::kProjectTimeMusicValid;
+        context.sampleRate = 44100.0;
+        context.projectTimeMusic = 0.;
+        context.projectTimeSamples = 0;
+        context.tempo = 120.;
+        context.timeSigNumerator = 4;
+        context.timeSigDenominator = 4;
+        ProcessData data{};
+        data.processMode = kRealtime;
+        data.symbolicSampleSize = kSample32;
+        data.numSamples = 0;
+        data.processContext = &context;
+        require(processor_->process(data) == kResultOk,
+                "P11 product rejected sample-exact host tempo observation");
+    }
+private:
+    IComponent* component_{};
+    IAudioProcessor* processor_{};
+    bool active_{false};
+    bool processing_{false};
+};
+
+// File dialogs are system COM objects. Observe and interact with their
+// *real* HWND child controls, not a test-replacement IFileDialog.
+struct GuiFileNameControl {
+    HWND preferred{};
+    HWND fallback{};
+    unsigned candidates{};
+};
+BOOL CALLBACK findSaveFilenameEdit(HWND h, LPARAM arg) {
+    auto* v = reinterpret_cast<GuiFileNameControl*>(arg);
+    wchar_t className[64]{};
+    if (!GetClassNameW(h, className, 64) || wcscmp(className, L"Edit"))
+        return TRUE;
+    ++v->candidates;
+    if (!v->fallback) v->fallback = h;
+    const int id = GetDlgCtrlID(h);
+    if (id == 1001 || id == 1152) v->preferred = h;
+    std::wcout << L"[INFO] P11 native dialog Edit id=" << id
+               << L" hwnd=" << static_cast<void*>(h) << L"\n";
+    return TRUE;
+}
+struct GuiSaveButton {
+    HWND choice{};
+};
+BOOL CALLBACK findSaveButton(HWND h, LPARAM arg) {
+    auto* v = reinterpret_cast<GuiSaveButton*>(arg);
+    wchar_t className[64]{};
+    if (!GetClassNameW(h, className, 64) ||
+        wcscmp(className, L"Button")) return TRUE;
+    const int id = GetDlgCtrlID(h);
+    wchar_t caption[96]{};
+    (void)GetWindowTextW(h, caption, 96);
+    if (id == IDOK || wcscmp(caption, L"Save") == 0 ||
+        wcscmp(caption, L"&Save") == 0) v->choice = h;
+    return TRUE;
+}
+bool saveNativeShellDialog(const std::wstring& title,
+                           const std::filesystem::path& target) {
+    const ULONGLONG deadline = GetTickCount64() + 9000;
+    while (GetTickCount64() < deadline) {
+        SaveDialogSearch query{GetCurrentProcessId(), title, nullptr};
+        EnumWindows(findExportDialog, reinterpret_cast<LPARAM>(&query));
+        if (query.window) {
+            GuiFileNameControl filename{};
+            EnumChildWindows(query.window, findSaveFilenameEdit,
+                             reinterpret_cast<LPARAM>(&filename));
+            const HWND edit = filename.preferred ? filename.preferred : filename.fallback;
+            if (!edit) {
+                (void)PostMessageW(query.window, WM_CLOSE, 0, 0);
+                std::cerr << "[FAIL] P11 FileSaveDialog has no accessible "
+                             "native filename edit control\n";
+                return false;
+            }
+            const auto native = std::filesystem::absolute(target).wstring();
+            if (!SendMessageW(edit, WM_SETTEXT, 0,
+                              reinterpret_cast<LPARAM>(native.c_str()))) {
+                (void)PostMessageW(query.window, WM_CLOSE, 0, 0);
+                return false;
+            }
+            GuiSaveButton button{};
+            EnumChildWindows(query.window, findSaveButton,
+                             reinterpret_cast<LPARAM>(&button));
+            std::wcout << L"[INFO] P11 entered real Save As filename: "
+                       << native << L"\n";
+            if (button.choice)
+                (void)PostMessageW(button.choice, BM_CLICK, 0, 0);
+            else
+                (void)PostMessageW(query.window, WM_COMMAND,
+                                   MAKEWPARAM(IDOK, BN_CLICKED), 0);
+            for (unsigned i = 0; i < 35; ++i) {
+                if (!IsWindow(query.window)) {
+                    std::wcout << L"[INFO] P11 Windows Save As dialog accepted\n";
+                    return true;
+                }
+                Sleep(100);
+            }
+            (void)PostMessageW(query.window, WM_CLOSE, 0, 0);
+            return false;
+        }
+        Sleep(40);
+    }
+    return false;
+}
+void runNativeGuiExportSave(HWND child, IComponent* component,
+                            ProductGuiClock& clock, double logicalHeight,
+                            const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    const auto unchanged = captureActualComponentState(component);
+    const std::array<const wchar_t*, 4> titles{
+        L"125A Drumator - Export PATTERN",
+        L"125A Drumator - Export PATTERN",
+        L"125A Drumator - Export SONG",
+        L"125A Drumator - Export SONG"
+    };
+    const std::array<const char*, 4> labels{
+        "PATTERN MIDI", "PATTERN WAV", "SONG MIDI", "SONG WAV"
+    };
+    const std::array<const wchar_t*, 4> filenames{
+        L"pattern-midi.mid", L"pattern-wav.wav",
+        L"song-midi.mid", L"song-wav.wav"
+    };
+    for (size_t option = 0; option < labels.size(); ++option) {
+        const auto dest = folder / filenames[option];
+        require(!std::filesystem::exists(dest),
+                "P11 must never overwrite an existing export");
+        clock.publishTempo();
+        pump(200);
+        clickRealDrumatorGui(child, 957., logicalHeight - 26.,
+                             "OPEN actual EXPORT popup");
+        std::atomic<bool> accepted{false};
+        std::thread saver([&] {
+            accepted.store(saveNativeShellDialog(titles[option], dest),
+                           std::memory_order_release);
+        });
+        try {
+            clickRealDrumatorGui(child, 900.,
+                                 logicalHeight - 149. + 26. * option,
+                                 labels[option]);
+        } catch (...) {
+            saver.join();
+            throw;
+        }
+        saver.join();
+        require(accepted.load(std::memory_order_acquire),
+                "P11 real Windows Save As control was not accepted");
+        pump(80);
+        require(std::filesystem::is_regular_file(dest) &&
+                std::filesystem::file_size(dest) > 128,
+                "P11 GUI Save As returned without writing a real export file");
+        require(captureActualComponentState(component) == unchanged,
+                "P11 exporting unexpectedly mutated plugin project state");
+        std::cout << "[PASS] P11 real GUI Save As " << labels[option]
+                  << ": saved " << std::filesystem::file_size(dest)
+                  << " bytes, project state preserved\n";
+    }
+    std::cout << "[PASS] P11 four actual product GUI file exports written "
+                 "via native Windows Shell Save dialog\n";
+}
+
 void runRealDrumatorGui(const std::string& path,
                         const std::filesystem::path& originalState,
                         const std::filesystem::path& canceledState,
                         const std::filesystem::path& appliedState,
-                        bool exportDialogCancel = false) {
+                        bool exportDialogCancel = false,
+                        const std::filesystem::path& exportSaveState = {}) {
     std::cout << "[INFO] P09 load source-built packaged VST3 from " << path << "\n";
     std::string error;
     auto module = Module::create(path, error);
@@ -486,6 +715,11 @@ void runRealDrumatorGui(const std::string& path,
                 "P09 controller not connected to processor (fail closed)");
         std::cout << "[INFO] P09 controller connected to component\n";
 
+        std::unique_ptr<ProductGuiClock> tempoClock;
+        if (!exportSaveState.empty()) {
+            tempoClock = std::make_unique<ProductGuiClock>(
+                component.get(), controller.ptr, exportSaveState);
+        }
         IPlugView* view = controller.ptr->createView(ViewType::kEditor);
         require(view != nullptr, "P09 no real product editor");
         std::cout << "[INFO] P09 product IPlugView created\n";
@@ -540,7 +774,10 @@ void runRealDrumatorGui(const std::string& path,
                       << " logical, native " << client.right << "x"
                       << client.bottom << " pixels\n";
 
-            if (exportDialogCancel) {
+            if (tempoClock) {
+                runNativeGuiExportSave(child, component.get(), *tempoClock,
+                                       logicalHeight, originalState.parent_path());
+            } else if (exportDialogCancel) {
                 runNativeExportDialogCancel(child, component.get(), logicalHeight,
                                             originalState.parent_path());
             } else {
@@ -615,6 +852,13 @@ int main(int argc, char** argv) {
     std::cerr << std::unitbuf;
     try {
         ComApartment guiCom;
+        if (argc == 5 && std::string(argv[1]) == "--drumator-export-dialog-save") {
+            const std::filesystem::path folder = argv[4];
+            runRealDrumatorGui(argv[2], folder / "before.bin",
+                              folder / "cancel.bin", folder / "after.bin",
+                              false, argv[3]);
+            return 0;
+        }
         if (argc == 4 && std::string(argv[1]) == "--drumator-export-dialog-cancel") {
             const std::filesystem::path folder = argv[3];
             runRealDrumatorGui(argv[2], folder / "before.bin",
@@ -632,7 +876,8 @@ int main(int argc, char** argv) {
         std::cerr << "Usage: 125A_Test_Lab_GUI --probe <plugin.vst3>\n"
                   << "       125A_Test_Lab_GUI --prove-click <plugin.vst3> <param-id>\n"
                   << "       125A_Test_Lab_GUI --drumator-beat-creator <plugin.vst3> <before.bin> <cancel.bin> <after.bin>\n"
-                  << "       125A_Test_Lab_GUI --drumator-export-dialog-cancel <plugin.vst3> <evidence-folder>\n";
+                  << "       125A_Test_Lab_GUI --drumator-export-dialog-cancel <plugin.vst3> <evidence-folder>\n"
+                  << "       125A_Test_Lab_GUI --drumator-export-dialog-save <plugin.vst3> <state.bin> <output-folder>\n";
         return 2;
     } catch (const std::exception& ex) {
         const std::string message = ex.what();
