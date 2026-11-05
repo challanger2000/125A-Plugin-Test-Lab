@@ -56,6 +56,20 @@ For complete release acceptance, see
 [PRODUCT-USER-ACCEPTANCE.md](PRODUCT-USER-ACCEPTANCE.md) and implement
 trusted product-specific oracles for all applicable user-facing functions.
 
+## Lesbares Testergebnis statt technischer Protokolle
+
+Nach dem Ablegen eines Plugins auf `Run-VST3-Test.cmd` erstellt das
+portable Test Lab automatisch `RESULTS/<Plugin>/TESTERGEBNIS.html` und
+oeffnet diese Ergebnis-Seite im Browser. Sie zeigt auf Deutsch klar
+unterschiedene Ergebnisse: **BESTANDEN**, **FEHLER** und **NICHT
+GEPRUEFT**. Auch bei einem Absturz oder fehlerhaftem technischen Test
+wird, sofern Python noch verfuegbar ist, ein Fehlerbericht erzeugt.
+
+Die Seite markiert immer **KEINE PRODUKTFREIGABE**, auch wenn alle
+ausgefuehrten technischen Tests bestehen. Ein gruenes technisches
+Ergebnis wird nicht als fertige DAW-, Preset- oder GUI-Abnahme
+ausgegeben. Die JSON-Datei bleibt die maschinenlesbare Grundlage.
+
 ## Drag-and-drop Windows launcher
 
 You can now drag an installed, trusted `.vst3` **folder** onto

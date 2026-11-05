@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""No misleading green UI or unsafe HTML content in human QA summary."""
+import importlib.util
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("report", Path(__file__).with_name("write_user_report.py"))
+report = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(report)
+
+passed = {
+    "status": "TECHNICAL_PASS",
+    "product": "<script>alert(1)</script>",
+    "verified_module_sha256": "a" * 64,
+    "coverage": {
+        "api_playback_save": "PASS",
+        "sample_rate_buffer_matrix": "PASS",
+        "fresh_process_project_recall": "PASS",
+        "native_gui_lifecycle": "PASS",
+        "product_gui_controls": "NOT COVERED",
+        "commercial_daw_integration": "NOT COVERED",
+    }
+}
+page = report.report_html(passed)
+assert "Technische Pruefungen bestanden" in page
+assert "KEINE PRODUKTFREIGABE" in page
+assert "NICHT GEPRUEFT" in page
+assert "<script>alert(1)</script>" not in page
+assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
+assert "Freigabe des Plugins" in page
+assert page.count("BESTANDEN") == 4
+
+bad = {
+    "status": "FAIL",
+    "product": "Instrument",
+    "reason": "<broken> corrupted saves",
+    "coverage": {"api_playback_save": "FAIL",
+                 "native_audio_state_capture": "PASS"}
+}
+page = report.report_html(bad)
+assert "Technische Pruefung fehlgeschlagen" in page
+assert "&lt;broken&gt;" in page
+assert "<broken>" not in page
+assert "KEINE PRODUKTFREIGABE" in page
+assert "FEHLER" in page
+
+invalid = report.report_html({"status": "TECHNICAL_PASS", "coverage": {
+    "product_gui_controls": "unknown value", "commercial_daw_integration": "PASS"}})
+assert "KEINE PRODUKTFREIGABE" in invalid
+assert "NICHT GEPRUEFT" in invalid
+
+assert "KEINE PRODUKTFREIGABE" in report.report_html(
+    {"status": "FAIL", "error": "file missing"})
+print("[PASS] plain-language result distinguishes technical PASS, failure, missing coverage and release NO-GO")
