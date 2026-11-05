@@ -20,6 +20,8 @@ on:
       - 'src/gui_host.cpp'
       - 'tests/verify_drumator_gui.py'
       - 'tests/verify_export_dialogs.py'
+      - 'tests/make_gui_export_state.py'
+      - 'tests/verify_gui_save_as.py'
       - '.github/workflows/drumator-p03.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -315,6 +317,31 @@ jobs:
           Write-Host '[PASS] P10: real native Save dialog opened & canceled for four export options'
           exit 0
 
+      - name: P11 actual GUI Save As creates pattern/song MIDI and WAV files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $bundle = Join-Path $PWD 'build/p09-bundle/125A Drumator.vst3/Contents/x86_64-win/125A Drumator.vst3'
+          if ($gui.Count -ne 1 -or -not (Test-Path -LiteralPath $bundle)) {
+            throw 'P11 genuine editor host or complete resources missing'
+          }
+          python tests/make_gui_export_state.py build/p03-state/Drumator-Swing-0.bin build/p11-a-rest-a.bin
+          if ($LASTEXITCODE -ne 0) { throw 'P11 synthetic rights-free kit fixture failed' }
+          New-Item -ItemType Directory -Force build/p11-gui-exports | Out-Null
+          & $gui[0].FullName --drumator-export-dialog-save $bundle build/p11-a-rest-a.bin build/p11-gui-exports 2>&1 |
+            Tee-Object -FilePath build/p11-real-save-as.log
+          if ($LASTEXITCODE -ne 0) {
+            throw 'P11 actual GUI Windows Shell Save As failed to produce four files'
+          }
+          python tests/verify_gui_save_as.py build/p11-gui-exports 2>&1 |
+            Tee-Object -FilePath build/p11-independent-export-oracle.log
+          if ($LASTEXITCODE -ne 0) {
+            throw 'P11 independent exported MIDI/WAV musical and file-format oracle failed'
+          }
+          Write-Host '[PASS] P11 four real GUI Save As exports independently validated'
+          exit 0
+
       - name: Collect P03 diagnostic evidence
         if: always()
         shell: pwsh
@@ -350,6 +377,13 @@ jobs:
                              "build/p10-export-dialogs/cancel-1.ok",
                              "build/p10-export-dialogs/cancel-2.ok",
                              "build/p10-export-dialogs/cancel-3.ok",
+                             "build/p11-real-save-as.log",
+                             "build/p11-independent-export-oracle.log",
+                             "build/p11-a-rest-a.bin",
+                             "build/p11-gui-exports/pattern-midi.mid",
+                             "build/p11-gui-exports/pattern-wav.wav",
+                             "build/p11-gui-exports/song-midi.mid",
+                             "build/p11-gui-exports/song-wav.wav",
                              "build/p05-renders/bpm120-swing50-block127.wav")) {
             if (Test-Path $file) { Copy-Item $file artifact/P03/ }
           }
@@ -363,7 +397,8 @@ jobs:
             "P08 checks real WAV export core and independent MIDI/WAV correspondence.",
             "P09 exercises actual product GUI Beat Creator GENERATE/CANCEL/APPLY by native HWND events.",
             "P10 checks actual Windows Shell Save-dialog launch/cancel for all four export menu options.",
-            "P10 does NOT prove successful Save As/export file creation; OLE drag-and-drop remains untested."
+            "P11 verifies four GUI Save As MIDI/WAV exports using independent file and musical-timing oracles.",
+            "OLE drag-and-drop acceptance by an external DAW remains untested."
           ) | Set-Content artifact/P03/REPORT-NOTES.txt
 
       - name: Upload P03 results (even if tests failed)
