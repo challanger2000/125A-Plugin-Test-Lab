@@ -72,6 +72,31 @@ workflow because it requires a complete VST3 bundle with the actual
 controller and processor, and a state oracle. Do not point the GUI host
 at an unbundled DLL and expect a complete editor.
 
+## P14 interactive native OLE acceptance
+
+GitHub Actions **cannot** confirm interapplication OLE acceptance on its
+non-interactive Windows desktop: P13 explicitly marks that result
+**INCONCLUSIVE**. For this single outstanding acceptance criterion, the
+separate **P14 Interactive Windows OLE Acceptance Package** workflow produces
+an extraction-ready ZIP in its GitHub Actions artifacts, including the
+actual pinned source-built Drumator VST3, resources, a synthetic
+A/REST/A test kit, the Win32 OLE receiver, and one-click launcher.
+
+On a normal unlocked Windows 10/11 x64 desktop, extract the complete
+package and double-click `Run-OLE-Test.cmd`. The local runner checks
+**four actual CF_HDROP Drop callbacks** from the plugin into its separate
+native receiver (not just drag-source file creation), verifies received
+MIDI/WAV formats and durations, and records `results/<timestamp>/RESULT.txt`.
+
+`PASS` requires four received files and callbacks; an uninteractive service
+session returns `INCONCLUSIVE` (code 3). A missing callback returns
+`FAIL`. The GitHub Windows workflow itself must validate that it receives
+`INCONCLUSIVE`, **not** manufacture a PASS.
+
+This verifies compatibility with the included independent Win32 receiver,
+not an actual track drop inside Fender Studio Pro or another proprietary DAW.
+DAW-specific drag acceptance remains NOT COVERED until separately measured.
+
 ## Outcome semantics
 
 **PASS** — independent, observed expected behavior under tested conditions.

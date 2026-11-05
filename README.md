@@ -56,6 +56,27 @@ A green P13 drag-source result must **not** be presented as blanket Drumator rel
 For tests not executed in a real interactive desktop or DAW, report
 **INCONCLUSIVE / NOT COVERED**, never PASS.
 
+## P14 interactive Windows acceptance package
+
+The remaining **native OLE receiving** condition cannot be confirmed by an
+unattended GitHub Windows runner. P14 now builds a **self-contained, one-click
+Windows desktop test kit** containing a source-built complete VST3, synthetic
+drum project, native GUI/OLE host and independent PowerShell file integrity
+checks.
+
+The package has been successfully built and published as a GitHub Actions
+artifact: [P14 Windows test package](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41956851846/artifacts/13383507636).
+
+Extract the ZIP from that artifact and double-click `Run-OLE-Test.cmd`
+on an unlocked interactive Windows desktop. A local `PASS` requires all
+four actual COM `CF_HDROP` drop callbacks and the independently verified
+physical MIDI/WAV files. A service or unattended CI session returns
+`INCONCLUSIVE`. The package build passed its negative preflight precisely
+because CI did **not** claim to receive any OLE drops.
+
+An actual drop into Fender Studio Pro remains a separate proprietary-DAW
+integration check; do not claim that P14 proves it.
+
 ## Reproduce
 
 Use the [GitHub Actions workflows](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions):
