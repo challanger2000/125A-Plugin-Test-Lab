@@ -2,14 +2,16 @@
 
 ## Established and verified
 
-P01–P11 test gates passed in [Windows Actions 41944080762](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41944080762).
+P01–P11 plus the P13 **GUI drag-source** test passed in
+[Windows Actions 41952977868](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41952977868).
+External OLE receiver acceptance is **INCONCLUSIVE**, not PASS.
 P09 proved real editor/Beat Creator interaction, P10 proved native Windows
 Save-dialog cancellation, and P11 proved **all four GUI MIDI/WAV Save As
 exports** create correct independent music files. P02/P04 host self-tests
 also passed.
 
 The verified benchmark source was `challanger2000/125A-Drumator-Final`
-SHA `6184718dda4a725fe4892a9e76533ec24dfa2f17`.
+SHA `eed1bf232b61f6fb725ca00d82a99658cfba07e2`.
 **Newer code can be selected manually via GitHub Actions**. PR benchmarks
 continue to pin the above SHA; the manual run logs the SHA it actually
 checked. Never assume a benchmark PASS proves an untested newer build.
@@ -36,7 +38,9 @@ The report names the exact commit and gives PASS/FAIL evidence for:
 - Beat Creator A/B/C algorithm stress and five-point Complexity helper
 - real Win32 editor, Limiter, Beat Creator GENERATE/CANCEL/APPLY/CONFIRM
 - four true Win32 Save As dialogs and non-destructive CANCEL
-- four actual GUI Pattern/Song MIDI/WAV exports and independent musical checks
+- four actual GUI Pattern/Song MIDI/WAV Save As exports and independent musical checks
+- P13 genuine GUI drag-source gesture: four retained MIDI/WAV temp files
+  independently validated; OLE receiving target **INCONCLUSIVE** in CI
 - negative audio/MIDI/WAV/GUI fixtures and explicit INCONCLUSIVE cases
 
 The P04 and P02 workflows separately check the GUI-host and audio-host
@@ -82,8 +86,10 @@ for instance, the plugin does not expose an editor.
 
 A green CI run does not imply comprehensive GUI menu/preset behavior,
 OLE drag-and-drop acceptance into an external DAW, or proprietary DAW
-workflow coverage. **GUI Save As MIDI/WAV has passed P11**, but a drop into
-a real DAW track remains **NOT COVERED**.
+workflow coverage. **GUI Save As MIDI/WAV passed P11, and genuine GUI drag
+source generation passed P13**. The non-interactive GitHub Actions desktop
+cannot verify external COM/OLE delivery; a real DAW track drop remains
+**NOT COVERED**.
 
 ## Security and policy
 

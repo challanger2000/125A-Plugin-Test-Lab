@@ -66,7 +66,7 @@ target_compile_definitions(QASignalBad PRIVATE NOMINMAX QA_DELIBERATE_NAN=1)
 # verified by two independent, source-built synthetic UI fixtures in Actions.
 add_executable(TestLabGUI src/gui_host.cpp)
 set_target_properties(TestLabGUI PROPERTIES OUTPUT_NAME "125A_Test_Lab_GUI")
-target_link_libraries(TestLabGUI PRIVATE Vst3WinModule sdk_hosting sdk_common base pluginterfaces user32 gdi32 ole32)
+target_link_libraries(TestLabGUI PRIVATE Vst3WinModule sdk_hosting sdk_common base pluginterfaces user32 gdi32 ole32 shell32)
 target_compile_definitions(TestLabGUI PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
 if(MSVC)
   target_compile_options(TestLabGUI PRIVATE /W4 /permissive- /utf-8)

@@ -2,6 +2,8 @@
 // parameter assertion. No vendor DAW dependency or product source code.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <ole2.h>
+#include <shellapi.h>
 #include <objbase.h> // CoInitializeEx, COINIT_APARTMENTTHREADED, CoUninitialize
 #include "public.sdk/source/vst/hosting/module.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
@@ -687,12 +689,476 @@ void runNativeGuiExportSave(HWND child, IComponent* component,
                  "via native Windows Shell Save dialog\n";
 }
 
+
+// P13: real COM/OLE IDropTarget registered on a separate visible Win32
+// host window. A product VSTGUI drag must deliver CF_HDROP *through Windows
+// OLE*, not an imitation payload or an exporter called directly.
+class NativeFileDropTarget final : public IDropTarget {
+public:
+    explicit NativeFileDropTarget(std::filesystem::path folder)
+        : folder_(std::move(folder)) {}
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (!out) return E_POINTER;
+        *out = nullptr;
+        if (iid != IID_IUnknown && iid != IID_IDropTarget)
+            return E_NOINTERFACE;
+        *out = static_cast<IDropTarget*>(this);
+        AddRef();
+        return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return refs_.fetch_add(1, std::memory_order_relaxed) + 1;
+    }
+    ULONG STDMETHODCALLTYPE Release() override {
+        const auto count = refs_.fetch_sub(1, std::memory_order_acq_rel) - 1;
+        if (!count) delete this;
+        return count;
+    }
+    HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL,
+                                        DWORD* effect) override {
+        if (!effect) return E_POINTER;
+        *effect = DROPEFFECT_NONE;
+        FORMATETC fmt{CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+        if (!data || FAILED(data->QueryGetData(&fmt))) return S_OK;
+        *effect = DROPEFFECT_COPY;
+        ++entered_;
+        std::cout << "[INFO] P13 OLE receiver saw actual CF_HDROP package\n";
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL, DWORD* effect) override {
+        if (!effect) return E_POINTER;
+        *effect = DROPEFFECT_COPY;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragLeave() override { return S_OK; }
+    HRESULT STDMETHODCALLTYPE Drop(IDataObject* data, DWORD, POINTL,
+                                   DWORD* effect) override {
+        if (!effect) return E_POINTER;
+        *effect = DROPEFFECT_NONE;
+        if (!data) return E_INVALIDARG;
+        FORMATETC fmt{CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+        STGMEDIUM storage{};
+        if (FAILED(data->GetData(&fmt, &storage))) return DV_E_FORMATETC;
+        std::filesystem::path copied;
+        do {
+            if (storage.tymed != TYMED_HGLOBAL) break;
+            auto dropped = static_cast<HDROP>(storage.hGlobal);
+            if (DragQueryFileW(dropped, 0xFFFFFFFF, nullptr, 0) != 1)
+                break;
+            wchar_t path[32768]{};
+            const UINT n = DragQueryFileW(dropped, 0, path, 32768);
+            if (!n || n >= 32768) break;
+            const std::filesystem::path original(path);
+            if (!std::filesystem::is_regular_file(original) ||
+                std::filesystem::file_size(original) <= 128) break;
+            const std::wstring sourceName = original.filename().wstring();
+            if (sourceName != expectedSource_) break;
+            copied = folder_ / expectedDestination_;
+            if (std::filesystem::exists(copied)) break;
+            std::filesystem::copy_file(original, copied,
+                                        std::filesystem::copy_options::none);
+            if (!std::filesystem::is_regular_file(copied)) break;
+            lastSource_ = original;
+            accepted_.fetch_add(1, std::memory_order_release);
+            *effect = DROPEFFECT_COPY;
+            std::wcout << L"[PASS] P13 real OLE CF_HDROP from " <<
+                original.wstring() << L" received and copied\n";
+        } while (false);
+        ReleaseStgMedium(&storage);
+        return copied.empty() ? E_FAIL : S_OK;
+    }
+    void setExpected(const wchar_t* name, const wchar_t* dest) {
+        expectedSource_ = name;
+        expectedDestination_ = dest;
+        lastSource_.clear();
+    }
+    unsigned accepted() const { return accepted_.load(std::memory_order_acquire); }
+    unsigned entered() const { return entered_.load(std::memory_order_acquire); }
+    const std::filesystem::path& source() const { return lastSource_; }
+private:
+    std::atomic<ULONG> refs_{1};
+    std::atomic<unsigned> accepted_{0}, entered_{0};
+    std::filesystem::path folder_,lastSource_;
+    std::wstring expectedSource_,expectedDestination_;
+};
+
+class NativeDropWindow final {
+public:
+    explicit NativeDropWindow(const std::filesystem::path& folder) {
+        // An actual external DAW uses another STA with its own message loop.
+        // A drop target registered on the drag SOURCE thread is not a
+        // representative interapplication OLE test and can be starved by
+        // the synchronous DoDragDrop nested pump on that same thread.
+        receiverThread_ = std::thread([this, folder] {
+            const HRESULT ole = OleInitialize(nullptr);
+            if (FAILED(ole)) {
+                failed_.store(true,std::memory_order_release);
+                ready_.store(true,std::memory_order_release);
+                return;
+            }
+            NativeFileDropTarget* target = new NativeFileDropTarget(folder);
+            HWND w = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+                L"STATIC", L"125A Lab CF_HDROP Receiver", WS_POPUP | WS_VISIBLE,
+                35, 35, 280, 140, nullptr, nullptr,
+                GetModuleHandleW(nullptr), nullptr);
+            const bool ok = w != nullptr && RegisterDragDrop(w,target) == S_OK;
+            if (ok) {
+                ShowWindow(w,SW_SHOWNORMAL);
+                UpdateWindow(w);
+                target_.store(target,std::memory_order_release);
+                window_.store(w,std::memory_order_release);
+            } else {
+                failed_.store(true,std::memory_order_release);
+            }
+            ready_.store(true,std::memory_order_release);
+            if (ok) {
+                MSG msg{};
+                while (!stop_.load(std::memory_order_acquire)) {
+                    while (PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)) {
+                        TranslateMessage(&msg);
+                        DispatchMessageW(&msg);
+                    }
+                    Sleep(6);
+                }
+                (void)RevokeDragDrop(w);
+            }
+            if (w) DestroyWindow(w);
+            target->Release();
+            OleUninitialize();
+        });
+        for (unsigned t=0;t<300 && !ready_.load(std::memory_order_acquire);++t)
+            Sleep(10);
+        if (!ready_.load(std::memory_order_acquire) ||
+            failed_.load(std::memory_order_acquire)) {
+            stop_.store(true,std::memory_order_release);
+            if (receiverThread_.joinable()) receiverThread_.join();
+            throw std::runtime_error(
+                "P13 independent COM/STA receiver thread or HWND failed to start");
+        }
+        std::cout << "[INFO] P13 independent drop receiver ready on "
+                     "separate Win32 STA + message loop\n";
+    }
+    ~NativeDropWindow() {
+        stop_.store(true,std::memory_order_release);
+        if (receiverThread_.joinable()) receiverThread_.join();
+    }
+    NativeFileDropTarget& target() {
+        auto* v=target_.load(std::memory_order_acquire);
+        require(v!=nullptr,"P13 independent receiver has no IDropTarget");
+        return *v;
+    }
+    HWND get() const { return window_.load(std::memory_order_acquire); }
+private:
+    std::thread receiverThread_;
+    std::atomic<HWND> window_{nullptr};
+    std::atomic<NativeFileDropTarget*> target_{nullptr};
+    std::atomic<bool> ready_{false}, failed_{false}, stop_{false};
+};
+
+void injectButton(DWORD flags) {
+    INPUT e{};
+    e.type = INPUT_MOUSE;
+    e.mi.dwFlags = flags;
+    require(SendInput(1, &e, sizeof(e)) == 1,
+            "P13 Windows mouse input injection failed");
+}
+void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
+                          IComponent* processorComponent,
+                          ProductGuiClock& tempo,
+                          double logicalHeight,
+                          const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    // The VST3 editor may be wider than the Windows runner's actual
+    // virtual desktop. GUI SendMessage tests tolerate that, but OLE
+    // DoDragDrop requires a real on-screen cursor over source + target.
+    // Move the *host window*, not the plugin view, so the source menu
+    // remains at its tested logical coordinates and its zoom is unchanged.
+    RECT hostBounds{}, childBounds{};
+    require(GetWindowRect(hostWindow, &hostBounds)!=0 &&
+            GetClientRect(nativeChild, &childBounds)!=0,
+            "P13 cannot position visible physical drag source");
+    const double layoutScale = childBounds.right / 1280.0;
+    POINT screenSource{static_cast<LONG>(900.*layoutScale),
+                       static_cast<LONG>((logicalHeight-149.)*layoutScale)};
+    require(ClientToScreen(nativeChild, &screenSource)!=0,
+            "P13 cannot locate on-screen native source");
+    const int desktopW = GetSystemMetrics(SM_CXSCREEN);
+    const int desktopH = GetSystemMetrics(SM_CYSCREEN);
+    require(desktopW >= 640 && desktopH >= 480,
+            "P13 runner has no usable interactive Windows desktop");
+    const int desiredX = std::max(360, desktopW/2);
+    const int desiredY = std::min(desktopH-180,desktopH*2/3);
+    const int dx = desiredX - screenSource.x;
+    const int dy = desiredY - screenSource.y;
+    require(SetWindowPos(hostWindow,nullptr,
+                         hostBounds.left+dx,hostBounds.top+dy,0,0,
+                         SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE)!=0,
+            "P13 unable to position large VSTGUI popup on visible desktop");
+    pump(80);
+    std::cout << "[INFO] P13 visible desktop " << desktopW << "x" << desktopH
+              << " product host moved dx=" << dx << " dy=" << dy << "\n";
+    // OleInitialize is required on the source STA that invokes DoDragDrop.
+    // The receiving window owns its *own* distinct OLE STA.
+    const HRESULT sourceOle=OleInitialize(nullptr);
+    require(SUCCEEDED(sourceOle),"P13 source OLE apartment init failed");
+    struct SourceOleScope { ~SourceOleScope(){OleUninitialize();} } sourceScope;
+    NativeDropWindow drop(folder);
+    const auto unchanged = captureActualComponentState(processorComponent);
+    const std::array<const wchar_t*, 4> originalNames{
+        L"125A Drumator Pattern.mid", L"125A Drumator Pattern.wav",
+        L"125A Drumator Song.mid", L"125A Drumator Song.wav"
+    };
+    const std::array<const wchar_t*, 4> outputNames{
+        L"pattern-midi.mid", L"pattern-wav.wav",
+        L"song-midi.mid", L"song-wav.wav"
+    };
+    ShowWindow(hostWindow, SW_SHOWNORMAL);
+    SetForegroundWindow(hostWindow);
+    for (size_t i = 0; i < originalNames.size(); ++i) {
+        tempo.publishTempo();
+        pump(250);
+        clickRealDrumatorGui(nativeChild, 957., logicalHeight-26.,
+                             "P13 OPEN EXPORT popup");
+        RECT rect{};
+        require(GetClientRect(nativeChild,&rect)!=0,
+                "P13 cannot obtain plugin child dimensions");
+        const double scale = rect.right/1280.0;
+        POINT source{static_cast<LONG>(900.*scale),
+                     static_cast<LONG>((logicalHeight - 149. + 26.*i)*scale)};
+        POINT moved{source.x + static_cast<LONG>(45.*scale),
+                    source.y - static_cast<LONG>(17.*scale)};
+        POINT screen = source;
+        require(ClientToScreen(nativeChild,&screen)!=0,
+                "P13 cannot translate source to actual monitor location");
+        require(SetCursorPos(screen.x,screen.y)!=0,
+                "P13 source pointer position refused");
+        drop.target().setExpected(originalNames[i], outputNames[i]);
+        const unsigned previous = drop.target().accepted();
+        // OLE QueryContinueDrag inspects the *real* Windows keyboard state.
+        // Synthetic SendMessage(WM_LBUTTONDOWN) alone cannot establish a
+        // physical button hold. Use genuine SendInput + cursor movements.
+        pump(110);
+        injectButton(MOUSEEVENTF_LEFTDOWN);
+        pump(90);
+        // A headless GitHub Windows desktop may update physical button
+        // state via SendInput without delivering the corresponding Win32
+        // message to the plugin child. Bridge only the native window event:
+        // unlike the first attempt, the OS key state is now truly DOWN.
+        const LPARAM at = MAKELPARAM(source.x,source.y);
+        const LPARAM to = MAKELPARAM(moved.x,moved.y);
+        (void)SendMessageW(nativeChild, WM_LBUTTONDOWN, MK_LBUTTON, at);
+        std::cout << "[INFO] P13 real button held + plugin HWND "
+                     "received WM_LBUTTONDOWN\n";
+        POINT screenMoved = moved;
+        require(ClientToScreen(nativeChild,&screenMoved)!=0,
+                "P13 cannot translate OS drag origin");
+        std::cout << "[INFO] P13 physical down="
+                  << ((GetAsyncKeyState(VK_LBUTTON)&0x8000)!=0)
+                  << " source screen=" << screen.x << "," << screen.y
+                  << " -> gesture=" << screenMoved.x << ","
+                  << screenMoved.y << "\n";
+        // The dragging session enters synchronous DoDragDrop. A worker
+        // operates the independent OS cursor while OLE pumps the STA.
+        std::thread mover([&] {
+            Sleep(750);
+            RECT target{};
+            (void)GetWindowRect(drop.get(),&target);
+            for (int step=1;step<=7;++step) {
+                const int x = screen.x+(target.left+140-screen.x)*step/7;
+                const int y = screen.y+(target.top+70-screen.y)*step/7;
+                (void)SetCursorPos(x,y);
+                INPUT motion{};
+                motion.type=INPUT_MOUSE;
+                motion.mi.dwFlags=MOUSEEVENTF_MOVE;
+                motion.mi.dx=1;
+                (void)SendInput(1,&motion,sizeof(motion));
+                Sleep(110);
+            }
+            POINT cursor{};
+            (void)GetCursorPos(&cursor);
+            const HWND hovered=WindowFromPoint(cursor);
+            std::cout << "[INFO] P13 OS cursor at " << cursor.x << ","
+                      << cursor.y << " target-window-hover="
+                      << (hovered==drop.get()) << " OLE-entered="
+                      << drop.target().entered() << "\n";
+            INPUT up{};
+            up.type = INPUT_MOUSE;
+            up.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+            (void)SendInput(1,&up,sizeof(up));
+            Sleep(200);
+            // Send an ESC fallback to prevent indefinite OLE modal hanging.
+            INPUT esc[2]{};
+            esc[0].type=INPUT_KEYBOARD;esc[0].ki.wVk=VK_ESCAPE;
+            esc[1].type=INPUT_KEYBOARD;esc[1].ki.wVk=VK_ESCAPE;
+            esc[1].ki.dwFlags=KEYEVENTF_KEYUP;
+            (void)SendInput(2,esc,sizeof(INPUT));
+        });
+        std::atomic<bool> dragReturned{false};
+        // OLE drag sessions can hang on non-interactive CI desktops.
+        // Do not spend 45 minutes stuck inside a native COM modal loop.
+        std::thread watchdog([&] {
+            for (unsigned t=0;t<90;++t) {
+                if (dragReturned.load(std::memory_order_acquire)) return;
+                Sleep(100);
+            }
+            std::cerr << "[FAIL] P13 OLE modal drag failed to return "
+                         "within 9 seconds; Windows runner cannot complete drop\n";
+            TerminateProcess(GetCurrentProcess(), 14);
+        });
+        try {
+            require(SetCursorPos(screenMoved.x, screenMoved.y)!=0,
+                    "P13 physical drag motion failed");
+            std::cout << "[INFO] P13 requesting live VSTGUI/OLE drag start\n";
+            (void)SendMessageW(nativeChild, WM_MOUSEMOVE, MK_LBUTTON, to);
+            std::cout << "[INFO] P13 live VSTGUI/OLE drag returned\n";
+            pump(230);
+        } catch (...) {
+            dragReturned.store(true, std::memory_order_release);
+            watchdog.join();
+            mover.join();
+            throw;
+        }
+        dragReturned.store(true, std::memory_order_release);
+        watchdog.join();
+        mover.join();
+        pump(100);
+        std::cout << "[INFO] P13 OLE receiver entered="
+                  << drop.target().entered() << " accepted="
+                  << drop.target().accepted() << " expected="
+                  << previous+1 << " held="
+                  << ((GetAsyncKeyState(VK_LBUTTON)&0x8000)!=0) << "\n";
+        const auto root = std::filesystem::temp_directory_path();
+        unsigned exported=0;
+        for(const auto& ent:std::filesystem::directory_iterator(root)) {
+            if (ent.path().filename().wstring().find(L"125A-Drumator-Drag-")==0) {
+                ++exported;
+                if(exported<=5)
+                    std::wcout << L"[INFO] P13 temporary drag folder: "
+                               << ent.path().wstring() << L"\n";
+            }
+        }
+        std::cout << "[INFO] P13 temporary drag folder count=" << exported << "\n";
+        require(drop.target().accepted() == previous + 1,
+                "P13 genuine OLE drop target did not accept one CF_HDROP file");
+        const auto actual = folder/outputNames[i];
+        require(std::filesystem::is_regular_file(actual) &&
+                std::filesystem::file_size(actual)>128,
+                "P13 OLE copy did not produce real exported file");
+        require(std::filesystem::is_regular_file(drop.target().source()),
+                "P13 source was removed before receiving DAW-style OLE drop");
+        require(captureActualComponentState(processorComponent) == unchanged,
+                "P13 drag unexpectedly mutated Drumator's project state");
+        std::cout << "[PASS] P13 native GUI->COM OLE CF_HDROP "
+                  << i << " accepted with retained source file\n";
+    }
+    require(drop.target().entered() >= 4,
+            "P13 no four real OLE drag-enter events occurred");
+    std::cout << "[PASS] P13 all 4 actual VSTGUI OLE CF_HDROP drops "
+                 "accepted by independent native Windows target\n";
+}
+
+
+// P13: deterministic *source-side* test for an ephemeral non-interactive
+// GitHub runner. Exercise real plugin GUI drag start / export / retained file,
+// but DO NOT claim target OLE/DAW delivery. True OLE testing remains available
+// separately in --drumator-ole-drag-drop on an interactive Windows desktop.
+void runActualGuiDragSource(HWND child, IComponent* component,
+                            ProductGuiClock& tempo, double logicalHeight,
+                            const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    const auto baseline = captureActualComponentState(component);
+    const std::array<const wchar_t*,4> names{
+        L"125A Drumator Pattern.mid", L"125A Drumator Pattern.wav",
+        L"125A Drumator Song.mid", L"125A Drumator Song.wav"
+    };
+    const std::array<const wchar_t*,4> out{
+        L"pattern-midi.mid", L"pattern-wav.wav",
+        L"song-midi.mid", L"song-wav.wav"
+    };
+    const auto root = std::filesystem::temp_directory_path();
+    auto find = [&](std::wstring name) {
+        std::vector<std::filesystem::path> paths;
+        for(const auto& dir: std::filesystem::directory_iterator(root)) {
+            if (!dir.is_directory()) continue;
+            const auto folderName = dir.path().filename().wstring();
+            if (folderName.find(L"125A-Drumator-Drag-") != 0) continue;
+            const auto candidate = dir.path()/name;
+            if (std::filesystem::is_regular_file(candidate))
+                paths.push_back(candidate);
+        }
+        return paths;
+    };
+    RECT rect{};
+    require(GetClientRect(child,&rect)!=0, "P13 source editor dimensions missing");
+    const double scale = rect.right / 1280.0;
+    for(size_t i=0;i<names.size();++i) {
+        const auto existing = find(names[i]);
+        tempo.publishTempo();
+        pump(240);
+        clickRealDrumatorGui(child,957.,logicalHeight-26.,
+                             "P13 OPEN export popup for drag source");
+        const int x = static_cast<int>(900.*scale);
+        const int y = static_cast<int>((logicalHeight-149.+26.*i)*scale);
+        const auto at = MAKELPARAM(x,y);
+        const auto to = MAKELPARAM(x+static_cast<int>(42.*scale),
+                                   y-static_cast<int>(14.*scale));
+        (void)SendMessageW(child, WM_MOUSEMOVE, 0, at);
+        injectButton(MOUSEEVENTF_LEFTDOWN);
+        (void)SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, at);
+        // The source VSTGUI state sees a real held logical left click.
+        // Release the PHYSICAL state before entering blocking OLE on this
+        // non-interactive service desktop. This leaves product onMouseMoved
+        // with MK_LBUTTON but causes native OLE to abort immediately.
+        injectButton(MOUSEEVENTF_LEFTUP);
+        std::atomic<bool> completed{false};
+        std::thread watchdog([&] {
+            for(unsigned t=0;t<45;++t) {
+                if(completed.load(std::memory_order_acquire)) return;
+                Sleep(100);
+            }
+            std::cerr << "[FAIL] P13 drag source OLE did not return "
+                         "after 4.5 seconds on headless Windows runner\n";
+            TerminateProcess(GetCurrentProcess(), 15);
+        });
+        (void)SendMessageW(child, WM_MOUSEMOVE, MK_LBUTTON, to);
+        completed.store(true,std::memory_order_release);
+        watchdog.join();
+        pump(180);
+        auto candidates = find(names[i]);
+        candidates.erase(
+            std::remove_if(candidates.begin(),candidates.end(),
+               [&](const auto& candidate) {
+                   return std::find(existing.begin(),existing.end(),candidate)!=
+                          existing.end();
+               }),candidates.end());
+        require(candidates.size()==1,
+                "P13 GUI drag start did not produce exactly one new genuine export file");
+        const auto target = folder/out[i];
+        require(!std::filesystem::exists(target),
+                "P13 test output collision before drag source copy");
+        require(std::filesystem::file_size(candidates[0])>128,
+                "P13 ephemeral drag source file was empty/truncated");
+        std::filesystem::copy_file(candidates[0],target);
+        require(std::filesystem::is_regular_file(candidates[0]),
+                "P13 product deleted ephemeral drag source prematurely");
+        require(captureActualComponentState(component)==baseline,
+                "P13 GUI drag source unexpectedly changed project state");
+        std::cout << "[PASS] P13 actual GUI drag source "<<i
+                  << " exported "<<std::filesystem::file_size(target)
+                  << " bytes, transient source retained\n";
+    }
+    std::cout << "[PASS] P13 source-side GUI drag exports 4 files;"
+                 " external OLE DragEnter/Drop: INCONCLUSIVE on CI\n";
+}
+
 void runRealDrumatorGui(const std::string& path,
                         const std::filesystem::path& originalState,
                         const std::filesystem::path& canceledState,
                         const std::filesystem::path& appliedState,
                         bool exportDialogCancel = false,
-                        const std::filesystem::path& exportSaveState = {}) {
+                        const std::filesystem::path& exportSaveState = {},
+                        bool checkOleDrag = false,
+                        bool checkDragSourceOnly = false) {
     std::cout << "[INFO] P09 load source-built packaged VST3 from " << path << "\n";
     std::string error;
     auto module = Module::create(path, error);
@@ -775,7 +1241,16 @@ void runRealDrumatorGui(const std::string& path,
                       << " logical, native " << client.right << "x"
                       << client.bottom << " pixels\n";
 
-            if (tempoClock) {
+            if (checkDragSourceOnly) {
+                require(tempoClock != nullptr, "P13 source host tempo missing");
+                runActualGuiDragSource(child, component.get(), *tempoClock,
+                                       logicalHeight, originalState.parent_path());
+            } else if (checkOleDrag) {
+                require(tempoClock != nullptr, "P13 host tempo was not initialized");
+                runActualOleDragDrop(child, window.get(), component.get(),
+                                     *tempoClock, logicalHeight,
+                                     originalState.parent_path());
+            } else if (tempoClock) {
                 runNativeGuiExportSave(child, component.get(), *tempoClock,
                                        logicalHeight, originalState.parent_path());
             } else if (exportDialogCancel) {
@@ -855,6 +1330,20 @@ int main(int argc, char** argv) {
     std::cerr << std::unitbuf;
     try {
         ComApartment guiCom;
+        if (argc == 5 && std::string(argv[1]) == "--drumator-drag-source") {
+            const std::filesystem::path folder = argv[4];
+            runRealDrumatorGui(argv[2], folder/"before.bin",
+                              folder/"cancel.bin", folder/"after.bin",
+                              false, argv[3], false, true);
+            return 0;
+        }
+        if (argc == 5 && std::string(argv[1]) == "--drumator-ole-drag-drop") {
+            const std::filesystem::path folder = argv[4];
+            runRealDrumatorGui(argv[2], folder/"before.bin",
+                              folder/"cancel.bin", folder/"after.bin",
+                              false, argv[3], true);
+            return 0;
+        }
         if (argc == 5 && std::string(argv[1]) == "--drumator-export-dialog-save") {
             const std::filesystem::path folder = argv[4];
             runRealDrumatorGui(argv[2], folder / "before.bin",
@@ -880,7 +1369,9 @@ int main(int argc, char** argv) {
                   << "       125A_Test_Lab_GUI --prove-click <plugin.vst3> <param-id>\n"
                   << "       125A_Test_Lab_GUI --drumator-beat-creator <plugin.vst3> <before.bin> <cancel.bin> <after.bin>\n"
                   << "       125A_Test_Lab_GUI --drumator-export-dialog-cancel <plugin.vst3> <evidence-folder>\n"
-                  << "       125A_Test_Lab_GUI --drumator-export-dialog-save <plugin.vst3> <state.bin> <output-folder>\n";
+                  << "       125A_Test_Lab_GUI --drumator-export-dialog-save <plugin.vst3> <state.bin> <output-folder>\n"
+                  << "       125A_Test_Lab_GUI --drumator-ole-drag-drop <plugin.vst3> <state.bin> <output-folder>\n"
+                  << "       125A_Test_Lab_GUI --drumator-drag-source <plugin.vst3> <state.bin> <output-folder>\n";
         return 2;
     } catch (const std::exception& ex) {
         const std::string message = ex.what();

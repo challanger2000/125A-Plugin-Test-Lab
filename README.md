@@ -11,7 +11,7 @@ compatibility test.
 
 All gates below have verified Windows GitHub Actions evidence, not just
 source-level assertions. The reproducible pull-request benchmark checks
-product commit `6184718dda4a725fe4892a9e76533ec24dfa2f17`. A **manual
+product commit `eed1bf232b61f6fb725ca00d82a99658cfba07e2`. A **manual
 Actions run can select another Drumator branch, tag or exact SHA** and records
 the resolved tested commit in its artifact.
 
@@ -27,8 +27,10 @@ the resolved tested commit in its artifact.
 | P09 | **Actual Drumator editor** attached to a Win32 HWND, real mouse clicks toggle and restore Limiter, GENERATE→CANCEL preserves component state, GENERATE→APPLY→CONFIRM changes three distinct A/B/C patterns, D–H and hidden rows remain unchanged |
 | P10 | All four actual GUI export options open a real Windows Shell Save dialog; CANCEL writes no file and keeps the processor's project state identical |
 | P11 | All four GUI Save As options genuinely write pattern/song MIDI/WAV files; independent parsers verify note timing, A/REST/A song, stereo PCM24 audio format, sample-exact attack positions, and immutable project state |
+| P13 — source | Four **actual GUI drag gestures** generated and retained Pattern/Song MIDI/WAV temp files. Independent SMF/PCM24 oracle validated all four real files on Windows Actions. The receiving native COM/OLE target is **INCONCLUSIVE**, not PASS, on the headless runner |
 
-**Latest P01–P11 complete PASS:** [Windows Actions 41944080762](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41944080762).
+**Latest P01–P11 and P13 drag-source PASS:** [Windows Actions 41952977868](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41952977868).
+**Separate Windows COM/OLE target acceptance remains INCONCLUSIVE.**
 
 P09 required the second APPLY click because the factory Pattern A is already
 occupied. Tests must honor this confirmation rather than bypassing it.
@@ -38,8 +40,11 @@ occupied. Tests must honor this confirmation rather than bypassing it.
 **The test environment is not a complete automated release certification.**
 The following remain separate acceptance requirements:
 
-- **OLE drag-and-drop acceptance into an external DAW** (unverified); only
-  normal Save As MIDI/WAV export and cancellation have passed real GUI tests.
+- **OLE drag-and-drop acceptance into an external DAW** remains unverified;
+  genuine GUI drag-start exports are covered, with four files independently validated.
+  Hosted Windows runners did not deliver native `DragEnter`; a modal
+  `DoDragDrop` session could block. The target-acceptance test remains
+  available for an interactive Windows desktop but is not a CI PASS.
 - Full coverage of all plugin popup menus, sample editors, mouse gestures,
   preset browser navigation, zoom variants and plugin window stress.
 - End-to-end compatibility with Fender Studio Pro, including project save,
@@ -47,14 +52,14 @@ The following remain separate acceptance requirements:
 - Every conceivable kit, host tempo, sample rate, export combination and
   randomized stress/failure case.
 
-A green P11 must **not** be presented as blanket Drumator release approval.
+A green P13 drag-source result must **not** be presented as blanket Drumator release approval.
 For tests not executed in a real interactive desktop or DAW, report
 **INCONCLUSIVE / NOT COVERED**, never PASS.
 
 ## Reproduce
 
 Use the [GitHub Actions workflows](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions):
-- `P03 Real Drumator Swing Host Test`: runs P03–P11 genuine product tests
+- `P03 Real Drumator Swing Host Test`: runs P03–P11 plus P13 source tests
   on `windows-2022`. For a manual run, enter a **Drumator branch, tag or full
   commit SHA** in `drumator_ref`; the report identifies the resolved SHA.
   PR checks retain the reproducible pinned baseline.

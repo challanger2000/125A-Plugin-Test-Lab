@@ -52,7 +52,7 @@ jobs:
         with:
           repository: challanger2000/125A-Drumator-Final
           # PR checks use pinned benchmark; manual actions use selected ref.
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.drumator_ref || '6184718dda4a725fe4892a9e76533ec24dfa2f17' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.drumator_ref || 'eed1bf232b61f6fb725ca00d82a99658cfba07e2' }}
           path: drumator-src
           persist-credentials: false
 
@@ -67,7 +67,7 @@ jobs:
             throw "Invalid resolved product SHA: $actual"
           }
           if ($env:GITHUB_EVENT_NAME -ne 'workflow_dispatch' -and
-              $actual -cne '6184718dda4a725fe4892a9e76533ec24dfa2f17') {
+              $actual -cne 'eed1bf232b61f6fb725ca00d82a99658cfba07e2') {
             throw "PR benchmark revision changed unexpectedly: $actual"
           }
           if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
@@ -368,6 +368,29 @@ jobs:
           Write-Host '[PASS] P11 four real GUI Save As exports independently validated'
           exit 0
 
+      - name: P13 real VSTGUI drag-source exports independently audited (OLE target inconclusive)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $bundle = Join-Path $PWD 'build/p09-bundle/125A Drumator.vst3/Contents/x86_64-win/125A Drumator.vst3'
+          if ($exe.Count -ne 1 -or -not (Test-Path -LiteralPath $bundle)) {
+            throw 'P13 actual Drumator GUI or Win32 OLE host missing'
+          }
+          New-Item -ItemType Directory -Force build/p13-ole-drops | Out-Null
+          & $exe[0].FullName --drumator-drag-source $bundle build/p11-a-rest-a.bin build/p13-ole-drops 2>&1 |
+            Tee-Object -FilePath build/p13-ole-drag.log
+          if ($LASTEXITCODE -ne 0) {
+            throw 'P13 actual GUI drag source files failed; separate OLE receiver remains inconclusive'
+          }
+          python tests/verify_gui_save_as.py build/p13-ole-drops 2>&1 |
+            Tee-Object -FilePath build/p13-independent-dropped-midi-wav.log
+          if ($LASTEXITCODE -ne 0) {
+            throw 'P13 dropped MIDI/WAV files failed independent musical and format oracle'
+          }
+          Write-Host '[PASS] P13 four GUI-generated drag-source files validated; external OLE receiver INCONCLUSIVE'
+          exit 0
+
       - name: Collect P03 diagnostic evidence
         if: always()
         shell: pwsh
@@ -410,6 +433,12 @@ jobs:
                              "build/p11-gui-exports/pattern-wav.wav",
                              "build/p11-gui-exports/song-midi.mid",
                              "build/p11-gui-exports/song-wav.wav",
+                             "build/p13-ole-drag.log",
+                             "build/p13-independent-dropped-midi-wav.log",
+                             "build/p13-ole-drops/pattern-midi.mid",
+                             "build/p13-ole-drops/pattern-wav.wav",
+                             "build/p13-ole-drops/song-midi.mid",
+                             "build/p13-ole-drops/song-wav.wav",
                              "build/p05-renders/bpm120-swing50-block127.wav")) {
             if (Test-Path $file) { Copy-Item $file artifact/P03/ }
           }
@@ -424,7 +453,9 @@ jobs:
             "P09 exercises actual product GUI Beat Creator GENERATE/CANCEL/APPLY by native HWND events.",
             "P10 checks actual Windows Shell Save-dialog launch/cancel for all four export menu options.",
             "P11 verifies four GUI Save As MIDI/WAV exports using independent file and musical-timing oracles.",
-            "OLE drag-and-drop acceptance by an external DAW remains untested."
+            "P13 checks native GUI drag source file creation, retention and independent MIDI/WAV quality.",
+            "OLE target acceptance is INCONCLUSIVE on hosted GitHub Windows runner: no DragEnter and DoDragDrop hangs.",
+            "This is not a DAW track import; external drop acceptance remains untested."
           ) | Set-Content artifact/P03/REPORT-NOTES.txt
 
       - name: Upload P03 results (even if tests failed)
