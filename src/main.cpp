@@ -386,7 +386,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                 require(component->getState(&returnedState) == kResultOk,
                         "Plugin failed to save VST3 component state");
                 const auto size = returnedState.getCursor();
-                require(size > 8 && size < 128 * 1024 * 1024,
+                require(size > 0 && size < 128 * 1024 * 1024,
                         "Plugin saved empty or unreasonable component state");
                 std::ofstream dump(stateSnapshotPath, std::ios::binary | std::ios::trunc);
                 require(dump.good(), "Cannot open state snapshot path");
