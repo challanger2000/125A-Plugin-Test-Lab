@@ -17,17 +17,17 @@ An external per-product control map can additionally automate click/pixel
 checks (see `docs/ONE-COMMAND-QUICKCHECK.md`).
 
 **Use without compiling the test host yourself:** download the latest
-successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42094249483),
+successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42098560911),
 open its `PORTABLE` folder, and follow `README.md`. The artifact
-contains both native x64 audio/state hosts, all supporting Python scripts
+contains all three native x64 audio/state/GUI hosts, the drag-and-drop launcher, supporting Python scripts
 and SHA-256 checksums. Python 3 on Windows is required.
 
 ```powershell
 python run_plugin_quickcheck.py --plugin "C:\VST3\Plugin.vst3" --host ".\125A_Test_Lab_Host.exe" --stress-host ".\125A_Test_Lab_State_Stress.exe" --out ".\QA-Results"
 ```
 
-**Native GUI tests:** the separate [P04 Windows GUI artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42092611162)
-contains `125A_Test_Lab_GUI.exe`. The generic click-coordinate and
+**Native GUI tests:** the same portable artifact contains
+`125A_Test_Lab_GUI.exe`. The generic click-coordinate and
 painted-pixel test runner lives in
 [tests/run_gui_control_matrix.py](tests/run_gui_control_matrix.py) with
 [GUI contract](docs/GUI-CONTROL-MATRIX.md). An independently specified
