@@ -192,5 +192,6 @@ jobs:
             artifact/P14-Interactive-OLE/P16-DESKTOP-LOG.txt
             artifact/P14-Interactive-OLE/results/**/RESULT.txt
             artifact/P14-Interactive-OLE/results/**/OLE-TEST-LOG.txt
+            artifact/P14-Interactive-OLE/results/**/OLE-TEST-STDERR.txt
           if-no-files-found: warn
           retention-days: 14
