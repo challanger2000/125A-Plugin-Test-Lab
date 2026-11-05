@@ -12,6 +12,7 @@ release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
 
 sha = "a" * 40
+original_cwd = Path.cwd()
 with tempfile.TemporaryDirectory() as tmp:
     os.chdir(tmp)
     for gate, rel in release.CASES.items():
@@ -60,5 +61,7 @@ with tempfile.TemporaryDirectory() as tmp:
     result = json.loads(output.read_text(encoding="utf-8"))
     assert result["summary"] == "FAIL"
     assert result["checked_gates"]["P08_wav_export"]["status"] == "FAIL"
+
+    os.chdir(original_cwd)  # Windows cannot remove a temporary working directory
 
 print("[PASS] release report refuses wrong, repeated, missing or incomplete domain evidence")
