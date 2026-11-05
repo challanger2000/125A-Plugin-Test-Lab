@@ -227,6 +227,28 @@ revision. P11 Save As, P13 GUI source generation, P15 receiver contract,
 and P16 actual interapplication OLE reception are PASS. Proprietary DAW
 integration and untested GUI workflows are tracked separately.
 
+## P30 — Universal controller connection recovery
+
+The source-built `125A_Test_Lab_Controller_Recovery.exe` runs actual VST3
+`IConnectionPoint::connect/disconnect` on a separate processor and controller,
+rejects an invalid component state while disconnected, reconnects the
+component/controller, restores component state, checks controller parameters
+and renders actual processor PCM. The independent oracle
+`tests/verify_controller_recovery.py` checks four snapshots, including
+normalized controller values, processor state and audio amplitude.
+
+A deliberately faulty controller returns success but retains stale
+parameters. Its API execution succeeds, yet the independent oracle
+detects the erroneous state after reconnection. The positive fixture
+and negative control both passed the [P30 Windows run](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42057621836).
+PR #27 was merged at commit `de4964f937c551717e86ba491c947da67b21744d`.
+
+**Coverage boundary:** this verifies a VST3 connection-point and
+controller-state synchronization scenario, not physical GUI pixels,
+visual status indicators or arbitrary product-specific connection
+errors. Those need a product controller/GUI adapter with its own
+independent oracle; mark such checks NOT COVERED until executed.
+
 ## Security and policy
 
 This repository is public. Do not commit purchased samples, user kits,
