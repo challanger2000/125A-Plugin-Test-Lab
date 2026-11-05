@@ -460,7 +460,13 @@ void runRealDrumatorGui(const std::string& path,
             saveActualComponentState(component.get(), canceledState);
             clickRealDrumatorGui(child, 769.0, 115.0, "REOPEN Beat Creator");
             clickRealDrumatorGui(child, 522.5, footerY, "GENERATE A/B/C again");
-            clickRealDrumatorGui(child, 639.5, footerY, "APPLY generated patterns");
+            // Factory pattern A already contains kick notes. Product UI
+            // explicitly requires a second APPLY click to confirm overwriting
+            // occupied A/B/C slots. One click only opens the confirmation.
+            clickRealDrumatorGui(child, 639.5, footerY,
+                                 "APPLY: request occupied-pattern confirmation");
+            clickRealDrumatorGui(child, 639.5, footerY,
+                                 "CONFIRM: overwrite occupied A/B/C");
             pump(250);
             saveActualComponentState(component.get(), appliedState);
             require(view->removed() == kResultTrue,
