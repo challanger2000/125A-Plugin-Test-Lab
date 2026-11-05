@@ -1281,7 +1281,8 @@ void runRealDrumatorGui(const std::string& path,
                         const std::filesystem::path& exportSaveState = {},
                         bool checkOleDrag = false,
                         bool checkDragSourceOnly = false,
-                        bool checkGuiLifecycle = false) {
+                        bool checkGuiLifecycle = false,
+                        bool checkGuiControlStress = false) {
     std::cout << "[INFO] P09 load source-built packaged VST3 from " << path << "\n";
     std::string error;
     auto module = Module::create(path, error);
@@ -1364,7 +1365,27 @@ void runRealDrumatorGui(const std::string& path,
                       << " logical, native " << client.right << "x"
                       << client.bottom << " pixels\n";
 
-            if (checkGuiLifecycle) {
+            if (checkGuiControlStress) {
+                // P19: exercise the real stateful limiter control repeatedly.
+                // Every odd click must change the processor state; every
+                // even click must restore it byte-for-byte.
+                const auto original = captureActualComponentState(component.get());
+                constexpr int kPairs = 48;
+                for (int pair = 1; pair <= kPairs; ++pair) {
+                    clickRealDrumatorGui(child, 1122.5, 29.0,
+                                         "P19 toggle limiter ON");
+                    require(captureActualComponentState(component.get()) != original,
+                            "P19 real GUI limiter ON failed to change processor state");
+                    clickRealDrumatorGui(child, 1122.5, 29.0,
+                                         "P19 toggle limiter OFF");
+                    require(captureActualComponentState(component.get()) == original,
+                            "P19 real GUI limiter roundtrip corrupted component state");
+                    if (pair % 12 == 0)
+                        std::cout << "[INFO] P19 completed " << pair * 2
+                                  << " actual GUI clicks with exact state recovery\n";
+                }
+                std::cout << "[PASS] P19 96 real GUI clicks and 48 state roundtrips\n";
+            } else if (checkGuiLifecycle) {
                 // P17: stress the actual production editor's VST3 lifecycle
                 // without altering any musical settings. State is captured
                 // from the processor, not inferred from editor appearance.
@@ -1482,6 +1503,13 @@ int main(int argc, char** argv) {
             runOleReceiverContract(argv[2]);
             return 0;
         }
+        if (argc == 4 && std::string(argv[1]) == "--drumator-gui-control-stress") {
+            const std::filesystem::path folder = argv[3];
+            runRealDrumatorGui(argv[2], folder/"before.bin",
+                              folder/"cancel.bin", folder/"after.bin",
+                              false, {}, false, false, false, true);
+            return 0;
+        }
         if (argc == 4 && std::string(argv[1]) == "--drumator-gui-lifecycle") {
             const std::filesystem::path folder = argv[3];
             runRealDrumatorGui(argv[2], folder/"before.bin",
@@ -1531,7 +1559,8 @@ int main(int argc, char** argv) {
                   << "       125A_Test_Lab_GUI --drumator-export-dialog-save <plugin.vst3> <state.bin> <output-folder>\n"
                   << "       125A_Test_Lab_GUI --drumator-ole-drag-drop <plugin.vst3> <state.bin> <output-folder>\n"
                   << "       125A_Test_Lab_GUI --drumator-drag-source <plugin.vst3> <state.bin> <output-folder>\n"
-                  << "       125A_Test_Lab_GUI --drumator-gui-lifecycle <plugin.vst3> <output-folder>\n";
+                  << "       125A_Test_Lab_GUI --drumator-gui-lifecycle <plugin.vst3> <output-folder>\n"
+                  << "       125A_Test_Lab_GUI --drumator-gui-control-stress <plugin.vst3> <output-folder>\n";
         return 2;
     } catch (const std::exception& ex) {
         const std::string message = ex.what();

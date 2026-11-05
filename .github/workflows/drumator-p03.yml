@@ -22,6 +22,8 @@ on:
       - 'tests/verify_export_dialogs.py'
       - 'tests/make_gui_export_state.py'
       - 'tests/verify_gui_save_as.py'
+      - 'tests/make_invalid_state_matrix.py'
+      - 'tests/build_release_report.py'
       - '.github/workflows/drumator-p03.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -209,6 +211,38 @@ jobs:
           }
           Write-Host '[PASS] P18 three separate fresh-host recall tests, exact stereo PCM and state integrity'
 
+      - name: P20 16 corrupted project states rejected without audio or crash
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Host.exe')
+          $plugin = @(Get-ChildItem build-drumator -Recurse -File -Filter 'Drumator.vst3' |
+            Where-Object { $_.FullName -match '[\\/]VST3[\\/]' })
+          if ($exe.Count -ne 1 -or $plugin.Count -ne 1) { throw 'P20 host or real VST3 missing' }
+          python tests/make_invalid_state_matrix.py build/p03-state/Drumator-Swing-0.bin build/p20-invalid
+          if ($LASTEXITCODE -ne 0) { throw 'P20 invalid fixture generation failed' }
+          $fixtures = @(Get-ChildItem build/p20-invalid -File -Filter '*.bin' | Sort-Object Name)
+          if ($fixtures.Count -ne 16) { throw "P20 expected 16 negative cases, got $($fixtures.Count)" }
+          foreach ($fixture in $fixtures) {
+            $wav = "build/p20-invalid/$($fixture.BaseName)-unexpected.wav"
+            $log = "build/p20-invalid/$($fixture.BaseName).log"
+            & $exe[0].FullName --render-state $plugin[0].FullName $fixture.FullName $wav 2>&1 |
+              Tee-Object -FilePath $log | Out-Null
+            if ($LASTEXITCODE -ne 1 -or (Test-Path -LiteralPath $wav)) {
+              throw "P20 did not safely reject corrupt state $($fixture.Name)"
+            }
+            $message = Get-Content -LiteralPath $log -Raw
+            if (-not $message.Contains('Plugin rejected supplied VST3 project state')) {
+              throw "P20 corrupt state $($fixture.Name) failed for unexpected reason"
+            }
+          }
+          "[PASS] P20 all 16 invalid VST3 project states rejected with no audio output" |
+            Set-Content build/p20-summary.log
+          Write-Host (Get-Content build/p20-summary.log -Raw)
+          # The final deliberate negative host returns 1; reset the CI step
+          # only after all 16 expected rejections have been asserted.
+          exit 0
+
       - name: P05 real Drumator musical and process-buffer matrix (36 scenarios)
         shell: pwsh
         run: |
@@ -383,6 +417,24 @@ jobs:
           }
           Write-Host '[PASS] P17 16 real production GUI close/reopen cycles without state corruption'
 
+      - name: P19 real GUI control stress (96 clicks, 48 exact state roundtrips)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $bundle = Join-Path $PWD 'build/p09-bundle/125A Drumator.vst3/Contents/x86_64-win/125A Drumator.vst3'
+          if ($gui.Count -ne 1 -or -not (Test-Path -LiteralPath $bundle)) {
+            throw 'P19 real native GUI host or plugin bundle missing'
+          }
+          New-Item -ItemType Directory -Force build/p19-gui-stress | Out-Null
+          & $gui[0].FullName --drumator-gui-control-stress $bundle build/p19-gui-stress 2>&1 |
+            Tee-Object -FilePath build/p19-control-stress.log
+          if ($LASTEXITCODE -ne 0) { throw 'P19 native GUI control stress failed' }
+          if (-not (Get-Content build/p19-control-stress.log -Raw).Contains('[PASS] P19 96 real GUI clicks and 48 state roundtrips')) {
+            throw 'P19 test returned zero without completing all 48 roundtrips'
+          }
+          Write-Host '[PASS] P19 real production GUI limiter stress and processor state integrity'
+
       - name: P10 actual Win32 Save dialog opens and CANCEL is non-destructive
         shell: pwsh
         run: |
@@ -454,6 +506,17 @@ jobs:
           Write-Host '[PASS] P13 four GUI-generated drag-source files validated; external OLE receiver INCONCLUSIVE'
           exit 0
 
+      - name: P21 fail-closed combined release evidence (exact product revision)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = (git -C drumator-src rev-parse HEAD).Trim()
+          python tests/build_release_report.py $sha artifact/P03/RELEASE-EVIDENCE.json
+          if ($LASTEXITCODE -ne 0) {
+            throw 'P21 required gate evidence is incomplete, contradictory or FAILED'
+          }
+          Write-Host '[PASS] P21 machine-readable release evidence and exact tested product SHA'
+
       - name: Collect P03 diagnostic evidence
         if: always()
         shell: pwsh
@@ -465,7 +528,8 @@ jobs:
                              "build/p03-recall-host.log", "build/p03-recall-oracle.log",
                              "build/p03-recall-negative.log",
                              "build/p18-host.log",
-                             "build/p18-independent-oracle.log", "build/p05-host-renders.log",
+                             "build/p18-independent-oracle.log",
+                             "build/p20-summary.log", "build/p05-host-renders.log",
                              "build/p05-independent-matrix-oracle.log",
                              "build/p05-report.json",
                              "build/p06-real-export.log",
@@ -483,6 +547,7 @@ jobs:
                              "build/p09-real-native-gui.log",
                              "build/p09-independent-gui-oracle.log",
                              "build/p17-gui-stress.log",
+                             "build/p19-control-stress.log",
                              "build/p09-gui/before.bin",
                              "build/p09-gui/cancel.bin",
                              "build/p09-gui/after.bin",
@@ -519,6 +584,9 @@ jobs:
             "P08 checks real WAV export core and independent MIDI/WAV correspondence.",
             "P09 exercises actual product GUI Beat Creator GENERATE/CANCEL/APPLY by native HWND events.",
             "P17 verifies 16 real production editor detach/reattach cycles with byte-identical processor state.",
+            "P19 stress-tests 96 real stateful GUI clicks and 48 reversible limiter state roundtrips.",
+            "P20 rejects 16 independently corrupted project states without any rendered audio.",
+            "P21 emits fail-closed RELEASE-EVIDENCE.json for the exact product SHA, not a blanket DAW certification.",
             "P10 checks actual Windows Shell Save-dialog launch/cancel for all four export menu options.",
             "P11 verifies four GUI Save As MIDI/WAV exports using independent file and musical-timing oracles.",
             "P13 checks native GUI drag source file creation, retention and independent MIDI/WAV quality.",
