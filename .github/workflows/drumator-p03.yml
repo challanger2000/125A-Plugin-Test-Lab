@@ -167,6 +167,48 @@ jobs:
           Write-Host "[PASS] P03 actual Drumator DSP + host-saved kit + sample-exact musical swing and fresh-instance recall oracles"
           exit 0
 
+      - name: P18 multi-state fresh-process project recall (0/25/50 Swing)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Host.exe')
+          $plugin = @(Get-ChildItem build-drumator -Recurse -File -Filter 'Drumator.vst3' |
+            Where-Object { $_.FullName -match '[\\/]VST3[\\/]' })
+          if ($hostExe.Count -ne 1 -or $plugin.Count -ne 1) {
+            throw 'P18 host or actual VST3 missing'
+          }
+          New-Item -ItemType Directory -Force build/p18-recall | Out-Null
+          foreach ($swing in @(0, 25, 50)) {
+            $inputState = "build/p03-state/Drumator-Swing-$swing.bin"
+            if (-not (Test-Path -LiteralPath $inputState)) {
+              throw "P18 missing independently prepared Swing state $swing"
+            }
+            $stateHash = (Get-FileHash -LiteralPath $inputState -Algorithm SHA256).Hash
+            $before = "build/p18-recall/swing$swing-original.wav"
+            $state = "build/p18-recall/swing$swing-saved.bin"
+            $after = "build/p18-recall/swing$swing-recalled.wav"
+            & $hostExe[0].FullName --render-state-save $plugin[0].FullName $inputState $before $state 2>&1 |
+              Out-File -Append build/p18-host.log
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $state)) {
+              throw "P18 render and getState failed for Swing $swing"
+            }
+            & $hostExe[0].FullName --render-state $plugin[0].FullName $state $after 2>&1 |
+              Out-File -Append build/p18-host.log
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $after)) {
+              throw "P18 fresh host process setState failed for Swing $swing"
+            }
+            python tests/verify_drumator_recall.py $before $after $state 2>&1 |
+              Out-File -Append build/p18-independent-oracle.log
+            if ($LASTEXITCODE -ne 0) {
+              throw "P18 real independent sample-exact recall oracle FAILED for Swing $swing"
+            }
+            if ((Get-FileHash -LiteralPath $inputState -Algorithm SHA256).Hash -cne $stateHash) {
+              throw "P18 test unexpectedly modified its source fixture for Swing $swing"
+            }
+            Write-Host "[PASS] P18 Swing $swing saved, restored in fresh plugin host and PCM compared"
+          }
+          Write-Host '[PASS] P18 three separate fresh-host recall tests, exact stereo PCM and state integrity'
+
       - name: P05 real Drumator musical and process-buffer matrix (36 scenarios)
         shell: pwsh
         run: |
@@ -421,7 +463,9 @@ jobs:
                              "build/p03-independent-oracle.log", "build/p03-straight.wav",
                              "build/p03-swing50.wav", "build/p03-recall.wav",
                              "build/p03-recall-host.log", "build/p03-recall-oracle.log",
-                             "build/p03-recall-negative.log", "build/p05-host-renders.log",
+                             "build/p03-recall-negative.log",
+                             "build/p18-host.log",
+                             "build/p18-independent-oracle.log", "build/p05-host-renders.log",
                              "build/p05-independent-matrix-oracle.log",
                              "build/p05-report.json",
                              "build/p06-real-export.log",
@@ -469,6 +513,7 @@ jobs:
             "Actual product SHA $((git -C drumator-src rev-parse HEAD).Trim())",
             "Only synthetic self-created sample content; no proprietary drum kits.",
             "P05 matrix checks timing and block equivalence for 90/120/150 BPM, 0/25/50 swing.",
+            "P18 verifies independent fresh-process recall of three project states (0/25/50 Swing) with byte-identical 24-bit audio.",
             "P06 tests the actual MIDI export core in an independently built harness.",
             "P07 checks product Beat Creator core and 5-point UI complexity function (not live clicks).",
             "P08 checks real WAV export core and independent MIDI/WAV correspondence.",

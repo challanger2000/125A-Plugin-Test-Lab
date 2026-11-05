@@ -43,6 +43,7 @@ The report names the exact commit and gives PASS/FAIL evidence for:
 - P15 synthetic receiver contract for four COM CF_HDROP callbacks
 - P16 actual physical drag-and-drop into separate native COM receiver, four files PASS
 - P17 16 real Drumator editor detach/reattach cycles, each with valid HWND and unchanged processor state
+- P18 three separate Swing 0/25/50% project state save/restore roundtrips in fresh VST3 host processes, with sample-exact stereo PCM and state CRC checks
 - negative audio/MIDI/WAV/GUI fixtures and explicit INCONCLUSIVE cases
 
 The P04 and P02 workflows separately check the GUI-host and audio-host
