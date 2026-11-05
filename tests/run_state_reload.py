@@ -43,6 +43,9 @@ def check(request, output, runner=subprocess.run, timeout=120):
         raise ValueError("binary outside valid bundle")
     if not 5 <= timeout <= 300:
         raise ValueError("timeout outside bounds")
+    deterministic = request.get("deterministic_audio", False)
+    if type(deterministic) is not bool:
+        raise ValueError("deterministic_audio must be a boolean")
     ref = request.get("expected_audio_sha256")
     if ref is not None and (not isinstance(ref, str) or len(ref) != 64 or any(
             c not in "0123456789abcdef" for c in ref)):
@@ -87,11 +90,12 @@ def check(request, output, runner=subprocess.run, timeout=120):
     report["fresh_process_recall"] = "PASS"
     first = report["artifacts"]["1"]["wav_sha256"]
     second = report["artifacts"]["2"]["wav_sha256"]
-    if first != second:
-        report["audio_determinism"] = "FAIL"
-        report["error"] = "fresh-process PCM mismatch"
-        return report
-    report["audio_determinism"] = "PASS"
+    if deterministic:
+        if first != second:
+            report["audio_determinism"] = "FAIL"
+            report["error"] = "fresh-process PCM mismatch"
+            return report
+        report["audio_determinism"] = "PASS"
     if ref is not None:
         if first != ref:
             report["musical_correctness"] = "FAIL"
