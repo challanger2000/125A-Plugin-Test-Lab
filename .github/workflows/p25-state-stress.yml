@@ -25,6 +25,7 @@ on:
       - 'tests/verify_product_acceptance.py'
       - 'tests/test_product_acceptance.py'
       - 'tests/run_product_qa.py'
+      - 'docs/PRODUCT-USER-ACCEPTANCE.md'
       - 'tests/run_p34_capture.py'
       - 'tests/make_p34_capture_manifest.py'
       - 'tests/test_p34_capture.py'
