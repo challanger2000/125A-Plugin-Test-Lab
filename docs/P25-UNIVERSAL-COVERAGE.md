@@ -1,4 +1,4 @@
-# Universal VST3 stress QA — coverage matrix (P25–P29)
+# Universal VST3 stress QA — coverage matrix (P25–P30)
 
 Infrastructure tests do not approve any production plugin. All tests use real VST3 component and processor interfaces on Windows x64 / C++23, with a pinned SDK.
 
@@ -12,6 +12,7 @@ Infrastructure tests do not approve any production plugin. All tests use real VS
 | Real-time deadline | Preallocated callback durations, p95/p99/max, 1024-frame 44.1k deadline, strict overrun gate | QAStateMode0 | QAStateMode7 sleeps 50ms inside process() | P28 implemented; CI evidence required; shared-runner timing is not a certified DAW guarantee |
 | Failed state rollback and subsequent recovery | Exact SHA-256 of saved state and all 512 stereo PCM values across valid A → invalid → valid B → restored A | QAStateMode4 with external JSON adapter | QAStateMode5 changes state despite reported error | Windows CI positive/negative PASS, run 42048372929 |
 | 0/1/8/32 voices + playback saves + fresh recall | Real VST3 MIDI events; 2500 audio callbacks and 500 successful in-playback saves; independent expected per-voice amplitude before/after new-instance setState | QAVoiceMode0 | QAVoiceMode1 refuses 100 saves; QAVoiceMode2 caps at 4 voices | P29 synthetic adapter PASS, Windows run 42054620680; production plugin voice limits NOT COVERED without independent adapter |
+| Controller disconnect/reconnect and stale state | Native VST3 `IConnectionPoint::connect/disconnect`, processor `setState/getState`, controller `setComponentState/getParamNormalized`, PCM; independent expected A/B tuples | QAControllerMode0 | QAControllerMode1 reports successful synchronization but retains stale controller values | P30 Windows PASS run 42057621836; real GUI pixels and product-specific controller faults NOT COVERED |
 | Controller recovery and GUI error | Requires controller GUI adapter and fault injector | Not executed | Not executed | NOT COVERED |
 | Semantic bank/program legality | Paired fixture oracle only verifies two synthetic tuples | Positive fixture | Torn fixture | NOT COVERED for products absent adapters |
 | Reproducible scheduling | Fixed inputs and 2,500 callback / 5,000 writer / 500 save counts; OS interleavings vary | Multiple conditions | Defect fixtures | PARTIAL |
@@ -38,5 +39,7 @@ The P25 Windows workflow exports per-scenario TSV and logs with source commit, r
 - P28: VERIFIED in Windows Actions run 42051397047. The actual 1024-sample / 44.1-kHz callback test recorded p95, p99, maximum time and deadline overruns over 2500 callbacks. A valid VST3 passed while the intentionally blocking VST3 failed the deadline oracle. This does not prove allocation freedom, universal hardware latency, or maximum-voice reliability.
 
 - P29: [Windows Actions 42054620680](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42054620680). All four polyphony tiers (0, 1, 8, 32) passed 500 saves during active playback, 2500 real VST3 audio callbacks and fresh-instance recall. The broken-save instrument reported 100 failed playback saves; the broken-polyphony instrument rendered 0.04 instead of the independent expected 0.32 for 32 voices. No production instrument was certified.
+
+- P30: [Windows Actions 42057621836](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42057621836). Valid VST3 controller disconnect/reconnect kept processor state, normalized parameters and PCM consistent across invalid-state rollback, B recovery and A restoration. A broken controller retained stale values despite successful API returns; the independent oracle rejected it. This does not certify the rendered graphical editor or arbitrary production-parameter semantics.
 
 Do not run the fixture-only paired or ramp oracle against a different plugin without an approved adapter. The generic host is portable; its synthetic state schema is not.
