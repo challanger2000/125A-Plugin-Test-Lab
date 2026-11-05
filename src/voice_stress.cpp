@@ -140,7 +140,7 @@ int run(const std::string& plugin,const std::filesystem::path& out,int voices) {
         require(writeState(component.get(),stableState),"post-playback getState failed");
         const auto stateSize=stableState.getCursor();
         require(stateSize>0&&stateSize<1024*1024,"unreasonable state size");
-        std::vector<char> state(size_t(stateSize));
+        std::vector<char> state(static_cast<size_t>(stateSize), char{});
         std::memcpy(state.data(),stableState.getData(),state.size());
         const float priorAudio=latest.load();
         processor->release();
