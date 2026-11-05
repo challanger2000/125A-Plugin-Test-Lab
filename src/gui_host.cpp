@@ -1063,15 +1063,14 @@ void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
         pump(110);
         injectButton(MOUSEEVENTF_LEFTDOWN);
         pump(90);
-        // A headless GitHub Windows desktop may update physical button
-        // state via SendInput without delivering the corresponding Win32
-        // message to the plugin child. Bridge only the native window event:
-        // unlike the first attempt, the OS key state is now truly DOWN.
-        const LPARAM at = MAKELPARAM(source.x,source.y);
+        // P16 runs in an actual logged-in RDP desktop. SendInput already
+        // dispatches WM_LBUTTONDOWN. A second synthetic WM_LBUTTONDOWN
+        // would click the popup item twice and cancel the drag source.
         const LPARAM to = MAKELPARAM(moved.x,moved.y);
-        (void)SendMessageW(nativeChild, WM_LBUTTONDOWN, MK_LBUTTON, at);
-        std::cout << "[INFO] P13 real button held + plugin HWND "
-                     "received WM_LBUTTONDOWN\n";
+        const auto hoveredSource = WindowFromPoint(screen);
+        std::cout << "[INFO] P16 actual physical button held; source HWND hit="
+                  << (hoveredSource == nativeChild) << " foreground-host="
+                  << (GetForegroundWindow() == hostWindow) << "\n";
         POINT screenMoved = moved;
         require(ClientToScreen(nativeChild,&screenMoved)!=0,
                 "P13 cannot translate OS drag origin");
