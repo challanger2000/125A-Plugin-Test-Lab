@@ -427,7 +427,7 @@ int main(int argc, char** argv) {
         if (argc == 3 && std::string(argv[1]) == "--inspect") return inspect(argv[2]);
         if (argc == 4 && std::string(argv[1]) == "--render")
             return render(argv[2], std::filesystem::path(argv[3]));
-        if (argc == 5 && std::string(argv[1]) == "--render-state")
+        // P34: real PCM and component-state capture, no synthetic state injection.\n        if (argc == 5 && std::string(argv[1]) == "--capture")\n            return render(argv[2], std::filesystem::path(argv[3]), {},\n                          std::filesystem::path(argv[4]));\n        if (argc == 5 && std::string(argv[1]) == "--render-state")
             return render(argv[2], std::filesystem::path(argv[4]),
                           std::filesystem::path(argv[3]));
         if (argc == 6 && std::string(argv[1]) == "--render-state-save")
@@ -440,7 +440,7 @@ int main(int argc, char** argv) {
                           std::stoi(argv[5]), std::stoi(argv[6]));
         std::cerr << "Usage: 125A_Test_Lab_Host --selftest\n"
                   << "       125A_Test_Lab_Host --render <plugin.vst3> <output.wav>\n"
-                  << "       125A_Test_Lab_Host --render-state <plugin.vst3> <state.bin> <output.wav>\n"
+                  << "       125A_Test_Lab_Host --capture <plugin.vst3> <output.wav> <saved-state.bin>\\n"\n                  << "       125A_Test_Lab_Host --render-state <plugin.vst3> <state.bin> <output.wav>\n"
                   << "       125A_Test_Lab_Host --render-state-save <plugin.vst3> <state.bin> <output.wav> <saved-state.bin>\n"
                   << "       125A_Test_Lab_Host --render-state-at <plugin.vst3> <state.bin> <output.wav> <bpm> <block-size>\n";
         return 2;
