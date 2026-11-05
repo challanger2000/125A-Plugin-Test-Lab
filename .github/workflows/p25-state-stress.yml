@@ -18,6 +18,8 @@ on:
       - 'src/gui_recovery.cpp'
       - 'tests/gui_recovery_fixture.cpp'
       - 'tests/verify_gui_recovery.py'
+      - 'tests/run_product_adapter.py'
+      - 'tests/make_p32_fixtures.py'
       - '.github/workflows/p25-state-stress.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -241,6 +243,37 @@ jobs:
           Write-Host '[PASS] P31 real Win32 IPlugView visual status and stale controller color detected'
           exit 0
 
+      - name: P32 external VST3 adapter positive and fail-closed negative gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_0.vst3')
+          $bad = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_2.vst3')
+          if ($hostExe.Count -ne 1 -or $good.Count -lt 1 -or $bad.Count -lt 1) {
+            throw 'P32 native host or real VST3 fixtures missing'
+          }
+          python tests/make_p32_fixtures.py --host $hostExe[0].FullName --good $good[0].FullName --bad $bad[0].FullName --out artifacts/P32/manifests
+          if ($LASTEXITCODE -ne 0) { throw 'P32 manifest generation failed' }
+          python tests/run_product_adapter.py --adapter artifacts/P32/manifests/good.json --out artifacts/P32/good
+          if ($LASTEXITCODE -ne 0) { throw 'P32 correctly implemented VST3 did not pass real playback-save oracle' }
+          $goodReport = Get-Content artifacts/P32/good/ADAPTER-RESULT.json -Raw | ConvertFrom-Json
+          if ($goodReport.status -ne 'PASS' -or $goodReport.coverage.bank_program_semantics -ne 'NOT COVERED') {
+            throw 'P32 positive status or semantic coverage is incorrect'
+          }
+          python tests/run_product_adapter.py --adapter artifacts/P32/manifests/broken.json --out artifacts/P32/broken
+          if ($LASTEXITCODE -ne 1) { throw 'P32 broken-save VST3 was not detected as a test failure' }
+          $brokenReport = Get-Content artifacts/P32/broken/ADAPTER-RESULT.json -Raw | ConvertFrom-Json
+          if ($brokenReport.status -ne 'FAIL' -or -not ($brokenReport.cases[0].faults -join ' ').Contains('save_failures')) {
+            throw 'P32 broken fixture was not rejected for failed playback saves'
+          }
+          foreach ($negative in @('wrong_hash','missing_oracle')) {
+            python tests/run_product_adapter.py --adapter "artifacts/P32/manifests/$negative.json" --out "artifacts/P32/$negative"
+            if ($LASTEXITCODE -ne 2) { throw "P32 $negative invalid adapter accepted" }
+          }
+          Write-Host '[PASS] P32 real native playback saves; exact binary SHA and independent oracle fail closed'
+          exit 0
+
       - name: Publish proof even on failure
         if: always()
         uses: actions/upload-artifact@v4
@@ -252,6 +285,7 @@ jobs:
             artifacts/P27/
             artifacts/P30/
             artifacts/P31/
+            artifacts/P32/
             artifacts/P28/
           if-no-files-found: warn
           retention-days: 14
