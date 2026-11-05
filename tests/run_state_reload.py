@@ -50,11 +50,17 @@ def check(request, output, runner=subprocess.run, timeout=120):
     if ref is not None and (not isinstance(ref, str) or len(ref) != 64 or any(
             c not in "0123456789abcdef" for c in ref)):
         raise ValueError("invalid independent PCM reference")
+    expected_state = request.get("expected_saved_state_sha256")
+    if expected_state is not None and (
+            not isinstance(expected_state, str) or len(expected_state) != 64 or
+            any(c not in "0123456789abcdef" for c in expected_state)):
+        raise ValueError("invalid independently expected saved-state SHA-256")
     report = {"schema": "125a-state-reload-result-v1",
               "status": "FAIL", "verified_vst3_sha256": identity,
               "new_process_instances": 0, "fresh_process_recall": "FAIL",
               "audio_determinism": "NOT COVERED",
               "musical_correctness": "NOT COVERED",
+              "saved_state_integrity": "NOT COVERED",
               "artifacts": {}}
     output.mkdir(parents=True, exist_ok=True)
     for index in (1, 2):
@@ -87,6 +93,13 @@ def check(request, output, runner=subprocess.run, timeout=120):
         except (OSError, ValueError, subprocess.TimeoutExpired, wave.Error) as exc:
             report["error"] = str(exc)
             return report
+    if expected_state is not None:
+        saved_hashes = [report["artifacts"][str(i)]["state_sha256"] for i in (1, 2)]
+        if any(value != expected_state for value in saved_hashes):
+            report["saved_state_integrity"] = "FAIL"
+            report["error"] = "reloaded state differs from independent expected state hash"
+            return report
+        report["saved_state_integrity"] = "PASS"
     report["fresh_process_recall"] = "PASS"
     first = report["artifacts"]["1"]["wav_sha256"]
     second = report["artifacts"]["2"]["wav_sha256"]
