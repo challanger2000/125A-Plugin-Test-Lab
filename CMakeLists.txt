@@ -171,3 +171,19 @@ foreach(mode RANGE 0 1)
   target_link_libraries(QAControllerMode${mode} PRIVATE sdk)
   target_compile_definitions(QAControllerMode${mode} PRIVATE NOMINMAX P30_MODE=${mode})
 endforeach()
+
+# P31: real HWND-based visual indicator and controller-recovery oracle.
+add_executable(TestLabGuiRecovery src/gui_recovery.cpp)
+set_target_properties(TestLabGuiRecovery PROPERTIES OUTPUT_NAME "125A_Test_Lab_Gui_Recovery")
+target_link_libraries(TestLabGuiRecovery PRIVATE Vst3WinModule sdk_hosting sdk_common base pluginterfaces user32 gdi32)
+target_compile_definitions(TestLabGuiRecovery PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+if(MSVC)
+  target_compile_options(TestLabGuiRecovery PRIVATE /W4 /permissive- /utf-8)
+endif()
+foreach(mode RANGE 0 1)
+  smtg_add_vst3plugin(QAGuiRecoveryMode${mode}
+      PACKAGE_NAME "125A_QA_Visual_${mode}"
+      SOURCES_LIST tests/gui_recovery_fixture.cpp)
+  target_link_libraries(QAGuiRecoveryMode${mode} PRIVATE sdk user32 gdi32)
+  target_compile_definitions(QAGuiRecoveryMode${mode} PRIVATE NOMINMAX P30_MODE=${mode})
+endforeach()
