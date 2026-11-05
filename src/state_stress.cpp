@@ -37,6 +37,11 @@ bool pairValid(Pair p) {
            ((p.bank==11 && p.program==22)||(p.bank==33 && p.program==44));
 }
 using Clock=std::chrono::steady_clock;
+void hostPaceMicroseconds(int us) {
+    const auto end=Clock::now()+std::chrono::microseconds(us);
+    while(Clock::now()<end) std::atomic_signal_fence(std::memory_order_seq_cst);
+}
+
 struct Metrics {
     std::atomic<uint32> callbacks{0},processFailures{0},late{0},torn{0},saveFailures{0},saveOK{0},setFailures{0};
     std::atomic<int64> maximumNanoseconds{0};
@@ -138,7 +143,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                     frameIndex+=count;
                     metrics.callbacks.fetch_add(1,std::memory_order_relaxed);
                     // Pacing is OUTSIDE process(), never in the audio callback.
-                    std::this_thread::sleep_for(std::chrono::microseconds(60));
+                    hostPaceMicroseconds(60);
                 }
                 metrics.running.store(false,std::memory_order_release);
             });
@@ -152,7 +157,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                         written!=sizeof(p)) {metrics.setFailures++;continue;}
                     stream.rewind();
                     if(component->setState(&stream)!=kResultOk) metrics.setFailures++;
-                    std::this_thread::sleep_for(std::chrono::microseconds(5));
+                    hostPaceMicroseconds(5);
                 }
             });
             launch.store(true,std::memory_order_release);
@@ -169,7 +174,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                             metrics.torn++;
                     }
                 }
-                std::this_thread::sleep_for(std::chrono::microseconds(75));
+                hostPaceMicroseconds(75);
             }
             writer.join();
             audio.join();
