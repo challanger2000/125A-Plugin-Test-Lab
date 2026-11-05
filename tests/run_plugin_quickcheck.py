@@ -126,6 +126,67 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             summary["status"] = "TECHNICAL_PASS"
             summary["coverage"]["api_playback_save"] = "PASS"
             summary["coverage"]["native_audio_state_capture"] = "PASS"
+    if summary["status"] == "TECHNICAL_PASS" and gui_host is not None:
+        gui_log = out / "gui-lifecycle.log"
+        gui_log.unlink(missing_ok=True)
+        gui_proc = runner([str(gui_host), "--probe", str(bundle)],
+                          capture_output=True, text=True, timeout=timeout,
+                          check=False, errors="replace")
+        gui_text = (gui_proc.stdout or "") + "\n" + (gui_proc.stderr or "")
+        gui_log.write_text(gui_text, encoding="utf-8")
+        if (gui_proc.returncode == 0 and
+                "two actual editor attach/message/input/detach cycles" in gui_text):
+            summary["coverage"]["native_gui_lifecycle"] = "PASS"
+        elif gui_proc.returncode == 10 and "[INCONCLUSIVE]" in gui_text:
+            summary["coverage"]["native_gui_lifecycle"] = "NOT COVERED"
+        else:
+            summary["status"] = "FAIL"
+            summary["reason"] = "actual native editor attach/reopen/detach failed"
+    if summary["status"] == "TECHNICAL_PASS" and gui_controls is not None:
+        control_spec = json.loads(Path(gui_controls).read_text(encoding="utf-8"))
+        if not isinstance(control_spec, dict) or set(control_spec) != {"controls"}:
+            raise ValueError("GUI mapping must contain exactly a controls array")
+        if summary["coverage"]["native_gui_lifecycle"] != "PASS":
+            summary["status"] = "FAIL"
+            summary["reason"] = "requested GUI control assertions require a native editor"
+        else:
+            gui_manifest = {
+                "schema": "125a-gui-controls-v1",
+                "product": {"binary": str(binary), "sha256": sha},
+                "gui_host": str(gui_host),
+                "controls": control_spec["controls"]
+            }
+            gui_manifest_path = manifests / "gui.json"
+            gui_manifest_path.write_text(json.dumps(gui_manifest, indent=2) + "\n",
+                                         encoding="utf-8")
+            gui_dir = out / "gui-controls"
+            gui_result = gui_dir / "GUI-CONTROL-RESULT.json"
+            gui_result.unlink(missing_ok=True)
+            gui_proc = runner([sys.executable, str(Path(__file__).with_name(
+                               "run_gui_control_matrix.py")),
+                               "--manifest", str(gui_manifest_path),
+                               "--out", str(gui_dir), "--timeout", str(timeout)],
+                              capture_output=True, text=True,
+                              timeout=timeout * 128 + 30, check=False, errors="replace")
+            (out / "gui-controls.log").write_text(
+                (gui_proc.stdout or "") + "\n" + (gui_proc.stderr or ""),
+                encoding="utf-8")
+            if not gui_result.is_file():
+                summary["status"] = "FAIL"
+                summary["reason"] = "fresh GUI control evidence missing"
+            else:
+                gui_report = json.loads(gui_result.read_text(encoding="utf-8"))
+                count = len(control_spec["controls"]) if isinstance(
+                    control_spec["controls"], list) else 0
+                if (gui_proc.returncode == 0 and
+                        gui_report.get("status") == "TECHNICAL_PASS" and
+                        gui_report.get("verified_module_sha256") == sha and
+                        gui_report.get("tested_controls") == count and count > 0):
+                    summary["coverage"]["declared_gui_controls"] = "PASS"
+                    summary["declared_gui_controls_checked"] = count
+                else:
+                    summary["status"] = "FAIL"
+                    summary["reason"] = "actual GUI control/pixel oracle failed"
     report_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary
 
