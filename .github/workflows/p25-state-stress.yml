@@ -22,6 +22,10 @@ on:
       - 'tests/test_p32_stale_evidence.py'
       - 'tests/verify_p33_artifacts.py'
       - 'tests/test_p33_artifacts.py'
+      - 'tests/verify_product_acceptance.py'
+      - 'tests/test_product_acceptance.py'
+      - 'tests/run_product_qa.py'
+      - 'docs/PRODUCT-USER-ACCEPTANCE.md'
       - 'tests/run_p34_capture.py'
       - 'tests/make_p34_capture_manifest.py'
       - 'tests/test_p34_capture.py'
@@ -315,6 +319,36 @@ jobs:
           Write-Host '[PASS] P34 native captured PCM/state with binary SHA and negative controls'
           exit 0
 
+      - name: Production acceptance false-PASS negative controls
+        shell: pwsh
+        run: |
+          python tests/test_product_acceptance.py
+          if ($LASTEXITCODE -ne 0) { throw 'Acceptance evidence gate negative controls failed' }
+          exit 0
+
+      - name: One-command real VST3 QA smoke and release NO-GO controls
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/run_product_qa.py --p32 artifacts/P32/manifests/good.json --p34 artifacts/P34/manifest.json --out artifacts/PRODUCT-QA
+          if ($LASTEXITCODE -ne 0) { throw 'Real VST3 product QA runner failed' }
+          $report = Get-Content artifacts/PRODUCT-QA/PRODUCT-QA-RESULT.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'TECHNICAL_PASS' -or $report.release_approved -ne $false -or
+              $report.coverage.user_gui_controls -ne 'NOT COVERED') {
+            throw 'Product QA improperly certified untested GUI or release'
+          }
+          $tampered = Get-Content artifacts/P34/manifest.json -Raw | ConvertFrom-Json
+          $tampered.product.sha256 = '0' * 64
+          $tampered | ConvertTo-Json -Depth 10 | Set-Content artifacts/PRODUCT-QA/wrong-product.json
+          python tests/run_product_qa.py --p32 artifacts/P32/manifests/good.json --p34 artifacts/PRODUCT-QA/wrong-product.json --out artifacts/PRODUCT-QA/negative
+          if ($LASTEXITCODE -ne 1) { throw 'Product QA accepted mismatched binary identities' }
+          $bad = Get-Content artifacts/PRODUCT-QA/negative/PRODUCT-QA-RESULT.json -Raw | ConvertFrom-Json
+          if ($bad.status -ne 'FAIL' -or $bad.release_approved -ne $false) {
+            throw 'Product QA mismatch negative control did not fail closed'
+          }
+          Write-Host '[PASS] Real product QA technical runner and release gate negative proof'
+          exit 0
+
       - name: Publish proof even on failure
         if: always()
         uses: actions/upload-artifact@v4
@@ -329,5 +363,6 @@ jobs:
             artifacts/P32/
             artifacts/P28/
             artifacts/P34/
+            artifacts/PRODUCT-QA/
           if-no-files-found: warn
           retention-days: 14
