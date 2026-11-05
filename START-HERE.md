@@ -44,10 +44,28 @@ The report names the exact commit and gives PASS/FAIL evidence for:
 - P16 actual physical drag-and-drop into separate native COM receiver, four files PASS
 - P17 16 real Drumator editor detach/reattach cycles, each with valid HWND and unchanged processor state
 - P18 three separate Swing 0/25/50% project state save/restore roundtrips in fresh VST3 host processes, with sample-exact stereo PCM and state CRC checks
+- P19 96 real GUI limiter clicks, 48 exact processor state reversals
+- P20 16 corrupted/truncated project states safely rejected without audio
+- P21 fail-closed machine-readable release evidence JSON with 13/13 independent gates and exact product SHA
 - negative audio/MIDI/WAV/GUI fixtures and explicit INCONCLUSIVE cases
 
 The P04 and P02 workflows separately check the GUI-host and audio-host
 infrastructure itself.
+
+## Machine-readable release evidence
+
+The P03 workflow now creates `artifact/P03/RELEASE-EVIDENCE.json`, uploaded
+as part of `125A-Test-Lab-P03-Drumator-Audio-Evidence`. It asserts that every
+expected per-gate log exists and contains PASS without FAIL; otherwise the
+P21 step fails. It records the exact 40-character tested product commit.
+The current verified run is [42037199490](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42037199490):
+all 13 listed integration gates PASS for product SHA
+`eed1bf232b61f6fb725ca00d82a99658cfba07e2`.
+
+This file does not falsely import P02/P04 or P15/P16 results from separate
+workflows. Check those runs separately when assessing a full release.
+A manual P03 run can select a newer product SHA.
+
 
 ## Standalone Windows CLI
 
