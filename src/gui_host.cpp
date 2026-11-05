@@ -830,6 +830,35 @@ void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
                           double logicalHeight,
                           const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
+    // The VST3 editor may be wider than the Windows runner's actual
+    // virtual desktop. GUI SendMessage tests tolerate that, but OLE
+    // DoDragDrop requires a real on-screen cursor over source + target.
+    // Move the *host window*, not the plugin view, so the source menu
+    // remains at its tested logical coordinates and its zoom is unchanged.
+    RECT hostBounds{}, childBounds{};
+    require(GetWindowRect(hostWindow, &hostBounds)!=0 &&
+            GetClientRect(nativeChild, &childBounds)!=0,
+            "P13 cannot position visible physical drag source");
+    const double layoutScale = childBounds.right / 1280.0;
+    POINT screenSource{static_cast<LONG>(900.*layoutScale),
+                       static_cast<LONG>((logicalHeight-149.)*layoutScale)};
+    require(ClientToScreen(nativeChild, &screenSource)!=0,
+            "P13 cannot locate on-screen native source");
+    const int desktopW = GetSystemMetrics(SM_CXSCREEN);
+    const int desktopH = GetSystemMetrics(SM_CYSCREEN);
+    require(desktopW >= 640 && desktopH >= 480,
+            "P13 runner has no usable interactive Windows desktop");
+    const int desiredX = std::max(360, desktopW/2);
+    const int desiredY = std::min(desktopH-180,desktopH*2/3);
+    const int dx = desiredX - screenSource.x;
+    const int dy = desiredY - screenSource.y;
+    require(SetWindowPos(hostWindow,nullptr,
+                         hostBounds.left+dx,hostBounds.top+dy,0,0,
+                         SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE)!=0,
+            "P13 unable to position large VSTGUI popup on visible desktop");
+    pump(80);
+    std::cout << "[INFO] P13 visible desktop " << desktopW << "x" << desktopH
+              << " product host moved dx=" << dx << " dy=" << dy << "\n";
     NativeDropWindow drop(folder);
     const auto unchanged = captureActualComponentState(processorComponent);
     const std::array<const wchar_t*, 4> originalNames{
@@ -895,8 +924,20 @@ void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
                 const int x = screen.x+(target.left+140-screen.x)*step/7;
                 const int y = screen.y+(target.top+70-screen.y)*step/7;
                 (void)SetCursorPos(x,y);
-                Sleep(85);
+                INPUT motion{};
+                motion.type=INPUT_MOUSE;
+                motion.mi.dwFlags=MOUSEEVENTF_MOVE;
+                motion.mi.dx=1;
+                (void)SendInput(1,&motion,sizeof(motion));
+                Sleep(110);
             }
+            POINT cursor{};
+            (void)GetCursorPos(&cursor);
+            const HWND hovered=WindowFromPoint(cursor);
+            std::cout << "[INFO] P13 OS cursor at " << cursor.x << ","
+                      << cursor.y << " target-window-hover="
+                      << (hovered==drop.get()) << " OLE-entered="
+                      << drop.target().entered() << "\n";
             INPUT up{};
             up.type = INPUT_MOUSE;
             up.mi.dwFlags = MOUSEEVENTF_LEFTUP;
