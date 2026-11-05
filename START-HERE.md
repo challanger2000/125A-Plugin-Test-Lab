@@ -188,6 +188,28 @@ The optional P14 portable ZIP and `Run-OLE-Test.cmd` remain available for
 manual reproduction. The native receiver acceptance does not assert
 compatibility with a specific commercial DAW's internal drop target.
 
+## P29 — Universal instrument voice/playback-save and fresh recall
+
+The source-built generic MIDI instrument host `125A_Test_Lab_Voice_Stress.exe`
+uses real VST3 `IEventList` note-on messages, `IComponent::getState`,
+`setState`, and `IAudioProcessor::process` for adapter-approved voice
+tiers of 0, 1, 8 and 32. For each case it executes 2500 audio callbacks,
+500 state saves **while playback is still active**, and recalls the final
+state in a new component instance. An independent Python oracle checks
+the instrument's expected audio values before and after recall.
+
+Two deliberately defective VST3 instruments are required to fail domain
+checks: one refuses 100 of 500 saves; another silently caps active voices
+at four instead of the fixture's declared maximum of 32.
+
+[Verified P29 Windows run](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42054620680) and
+[PR #26](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/26).
+
+This validates a reusable MIDI/voice **test harness** and synthetic oracle.
+It does not verify arbitrary production synthesizers, infer their maximum
+polyphony or establish their musical output without a separate product adapter.
+GUI/controller transport fault recovery is still NOT COVERED.
+
 ## Outcome semantics
 
 **PASS** — independent, observed expected behavior under tested conditions.
