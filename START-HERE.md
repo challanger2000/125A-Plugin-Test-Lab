@@ -249,6 +249,22 @@ visual status indicators or arbitrary product-specific connection
 errors. Those need a product controller/GUI adapter with its own
 independent oracle; mark such checks NOT COVERED until executed.
 
+## P31 — Native GUI status recovery
+
+The P31 fixture opens a real VST3 editor through IPlugView on a
+Win32 child window. It samples the *painted* indicator pixel after
+state rejection, controller disconnect/reconnect and valid recovery.
+The independent oracle checks actual RGB, controller values,
+processor state and rendered PCM. A deliberately stale visual indicator
+must be detected despite successful API return codes.
+
+Windows PASS: https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42060095211
+PR #28 merged in main.
+
+A generic host does not know arbitrary product indicator geometry or
+semantics. Those visual checks require a product-specific oracle and
+remain NOT COVERED otherwise.
+
 ## Security and policy
 
 This repository is public. Do not commit purchased samples, user kits,
