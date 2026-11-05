@@ -1,4 +1,4 @@
-# Universal VST3 stress QA — coverage matrix (P25–P28)
+# Universal VST3 stress QA — coverage matrix (P25–P29)
 
 Infrastructure tests do not approve any production plugin. All tests use real VST3 component and processor interfaces on Windows x64 / C++23, with a pinned SDK.
 
@@ -11,7 +11,7 @@ Infrastructure tests do not approve any production plugin. All tests use real VS
 | Block partition | Exact stereo PCM across 17/127/512 block sizes at 44.1/48/96 kHz, with zero-frame process() calls | QAStateMode0 | QAStateMode6 block-count smoothing | Windows CI positive/negative PASS, run 42049745921 |
 | Real-time deadline | Preallocated callback durations, p95/p99/max, 1024-frame 44.1k deadline, strict overrun gate | QAStateMode0 | QAStateMode7 sleeps 50ms inside process() | P28 implemented; CI evidence required; shared-runner timing is not a certified DAW guarantee |
 | Failed state rollback and subsequent recovery | Exact SHA-256 of saved state and all 512 stereo PCM values across valid A → invalid → valid B → restored A | QAStateMode4 with external JSON adapter | QAStateMode5 changes state despite reported error | Windows CI positive/negative PASS, run 42048372929 |
-| One/max voice and recall audio | Requires musical events, voice capabilities and product adapter | Not executed | Not executed | NOT COVERED |
+| 0/1/8/32 voices + playback saves + fresh recall | Real VST3 MIDI events; 2500 audio callbacks and 500 successful in-playback saves; independent expected per-voice amplitude before/after new-instance setState | QAVoiceMode0 | QAVoiceMode1 refuses 100 saves; QAVoiceMode2 caps at 4 voices | P29 synthetic adapter PASS, Windows run 42054620680; production plugin voice limits NOT COVERED without independent adapter |
 | Controller recovery and GUI error | Requires controller GUI adapter and fault injector | Not executed | Not executed | NOT COVERED |
 | Semantic bank/program legality | Paired fixture oracle only verifies two synthetic tuples | Positive fixture | Torn fixture | NOT COVERED for products absent adapters |
 | Reproducible scheduling | Fixed inputs and 2,500 callback / 5,000 writer / 500 save counts; OS interleavings vary | Multiple conditions | Defect fixtures | PARTIAL |
@@ -27,6 +27,8 @@ An independent product adapter must provide a trusted exact VST3 binary/version/
 
 Verified Windows CI run: https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42046335507 . Its bad-torn fixture produced 21 invalid paired snapshots, bad-save-only produced 100 rejected playback saves of 500, and bad-rate produced a 0.25 ramp value where 0.125 was independently required. Valid fixtures passed. These measured results verify test sensitivity on fixtures only, not any product release.
 
+P29 separately runs .github/workflows/p29-voice-stress.yml and writes independent per-tier state/PCM evidence. Its 32-voice ceiling is **synthetic fixture-specific**, not a universal maximum. For production instruments a trusted adapter must declare the real polyphony cap and expected PCM behavior.
+
 The P25 Windows workflow exports per-scenario TSV and logs with source commit, rate, block, callback count, save attempts, and independently verified acceptance results. Any broken fixture not detected is a test adequacy FAIL. Green compilation alone is not a functional PASS.
 
 ## Confirmed measured follow-up runs
@@ -34,5 +36,7 @@ The P25 Windows workflow exports per-scenario TSV and logs with source commit, r
 - P26: [Windows Actions 42048372929](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42048372929). The positive fixture passed external state SHA256 and 512 exact PCM values. The broken fixture returned an error but silently changed its state; the independent adapter correctly failed at state-after-error.bin. No actual GUI-transport message was injected.
 - P27: [Windows Actions 42049745921](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42049745921). Nine good PCM cases matched time reference; three partitions per rate had identical bytes. Negative sample-rate case deviated by 0.1351563, and negative block-dependent case failed exact partition comparison.
 - P28: VERIFIED in Windows Actions run 42051397047. The actual 1024-sample / 44.1-kHz callback test recorded p95, p99, maximum time and deadline overruns over 2500 callbacks. A valid VST3 passed while the intentionally blocking VST3 failed the deadline oracle. This does not prove allocation freedom, universal hardware latency, or maximum-voice reliability.
+
+- P29: [Windows Actions 42054620680](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42054620680). All four polyphony tiers (0, 1, 8, 32) passed 500 saves during active playback, 2500 real VST3 audio callbacks and fresh-instance recall. The broken-save instrument reported 100 failed playback saves; the broken-polyphony instrument rendered 0.04 instead of the independent expected 0.32 for 32 voices. No production instrument was certified.
 
 Do not run the fixture-only paired or ramp oracle against a different plugin without an approved adapter. The generic host is portable; its synthetic state schema is not.
