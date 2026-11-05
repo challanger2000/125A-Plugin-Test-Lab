@@ -1,4 +1,4 @@
-# Universal VST3 stress QA — coverage matrix (P25–P31)
+# Universal VST3 stress QA — coverage matrix (P25–P32)
 
 Infrastructure tests do not approve any production plugin. All tests use real VST3 component and processor interfaces on Windows x64 / C++23, with a pinned SDK.
 
@@ -18,6 +18,7 @@ Infrastructure tests do not approve any production plugin. All tests use real VS
 | Semantic bank/program legality | Paired fixture oracle only verifies two synthetic tuples | Positive fixture | Torn fixture | NOT COVERED for products absent adapters |
 | Reproducible scheduling | Fixed inputs and 2,500 callback / 5,000 writer / 500 save counts; OS interleavings vary | Multiple conditions | Defect fixtures | PARTIAL |
 | Exact plugin provenance | GitHub run Test Lab SHA and source-built fixture | Workflow metadata | None | PARTIAL |
+| Real production-plugin external adapter | Binary SHA-256 and version/commit declaration, external native save/process assertions, complete evidence, fail-closed missing oracle | P32 positive real VST3 fixture | 100 rejected saves, incorrect binary hash, missing save oracle | Windows suite PASS run 42063464726; domain state/PCM/GUI NOT COVERED until separately adapted |
 
 The explicit paired and ramp oracles are only appropriate for the synthetic fixtures. An oracle named none records domain correctness NOT_COVERED and cannot prove any musical state semantics.
 
@@ -46,3 +47,7 @@ The P25 Windows workflow exports per-scenario TSV and logs with source commit, r
 Do not run the fixture-only paired or ramp oracle against a different plugin without an approved adapter. The generic host is portable; its synthetic state schema is not.
 
 P31 evidence: https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42060095211. A native HWND plugin view was painted and its real pixel sampled. The deliberately stale visual indicator was detected; arbitrary product UI layouts remain NOT COVERED without adapters.
+
+## P32 external adapter evidence
+
+P32 is merged into main (PR #29). [Windows run 42063464726](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42063464726) validates a good real VST3 playback-save scenario and proves that a broken VST3 with 100 refused saves, a changed binary SHA-256, and a manifest missing a required save assertion all fail closed. The standalone format and example live in [P32-PRODUCT-ADAPTERS.md](P32-PRODUCT-ADAPTERS.md). Product version and commit are adapter declarations; only the VST3 module SHA-256 is verified. Semantic state, audible results, polyphony and product GUI remain NOT COVERED without additional independent oracles.
