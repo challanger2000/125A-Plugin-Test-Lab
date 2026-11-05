@@ -265,6 +265,29 @@ A generic host does not know arbitrary product indicator geometry or
 semantics. Those visual checks require a product-specific oracle and
 remain NOT COVERED otherwise.
 
+## P32 — External product adapters (fail closed)
+
+Run `python tests/run_product_adapter.py --adapter adapter.json --out results`
+on Windows x64 with the approved native Test Lab host and an exact trusted
+VST3 module. [Adapter schema, usage and limitations](docs/P32-PRODUCT-ADAPTERS.md).
+
+The independent JSON manifest declares product name/version/source commit,
+pins the actual module binary's SHA-256, and supplies expected native API
+evidence for the supported stereo playback/save scenario. The runner uses
+`--save-only`: **no synthetic bank/program state writes** to an unknown
+product. Missing oracle entries, failed saves, incorrect binary hashes,
+missing host evidence and timeouts all reject the test.
+
+[Verified Windows run 42063464726](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42063464726):
+good VST3 PASS, intentionally broken playback-save VST3 FAIL with 100
+rejected saves out of 500, wrong hash and missing oracle both rejected.
+The declared product version and commit are metadata, not cryptographically
+verified build provenance; the binary file's SHA-256 is verified.
+
+Do not interpret technical API PASS as semantic correctness. Product
+bank/program constraints, audio identity, voice limits and GUI status
+remain NOT COVERED until an approved separate oracle actually runs.
+
 ## Security and policy
 
 This repository is public. Do not commit purchased samples, user kits,
