@@ -1,0 +1,84 @@
+name: P29 Universal Polyphony Playback Save and Recall
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/voice_stress.cpp'
+      - 'tests/voice_fixture.cpp'
+      - 'tests/verify_voice_stress.py'
+      - '.github/workflows/p29-voice-stress.yml'
+      - 'CMakeLists.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p29-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  universal-polyphony:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record exact testlab SHA and test conditions
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/P29 | Out-Null
+          "test_lab_commit=$env:GITHUB_SHA" | Set-Content artifacts/P29/RUN-METADATA.txt
+          "windows=windows-2022 x64" | Add-Content artifacts/P29/RUN-METADATA.txt
+          "compiler=MSVC2022 C++23" | Add-Content artifacts/P29/RUN-METADATA.txt
+          "adapter=synthetic instrument 32-voice maximum, 0.01 amplitude per voice" | Add-Content artifacts/P29/RUN-METADATA.txt
+          "audio=48000 Hz, 64 frames, 2500 callbacks, 500 saves with no automation" | Add-Content artifacts/P29/RUN-METADATA.txt
+      - name: Configure C++23 VST3 Windows host
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P29 configure failure' }
+      - name: Build real universal voice host and three adversarial VST3 fixtures
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --target TestLabVoiceStress QAVoiceMode0 QAVoiceMode1 QAVoiceMode2 --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'P29 compilation failure' }
+      - name: P29 run MIDI voice-tier, playback-save and recall matrix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Voice_Stress.exe')
+          if ($hostExe.Count -ne 1) { throw 'P29 host exe missing/ambiguous' }
+          $plugin = @{}
+          foreach ($mode in @(0,1,2)) {
+            $items = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_Voice_$mode.vst3")
+            if ($items.Count -lt 1) { throw "P29 VST3 fixture missing $mode" }
+            $plugin["$mode"] = $items[0].FullName
+          }
+          $matrix = @(
+            @{case='good-0';mode='0';voices=0;expect='good'},
+            @{case='good-1';mode='0';voices=1;expect='good'},
+            @{case='good-8';mode='0';voices=8;expect='good'},
+            @{case='good-32';mode='0';voices=32;expect='good'},
+            @{case='bad-saves';mode='1';voices=8;expect='broken-saves'},
+            @{case='bad-voice-cap';mode='2';voices=32;expect='broken-voices'}
+          )
+          foreach ($case in $matrix) {
+            $report = "artifacts/P29/$($case.case).tsv"
+            & $hostExe[0].FullName --voices $plugin[$case.mode] $report $case.voices 2>&1 |
+              Tee-Object -FilePath "artifacts/P29/$($case.case).log"
+            if ($LASTEXITCODE -ne 0) { throw "P29 API/lifecycle failure: $($case.case)" }
+            python tests/verify_voice_stress.py $report $case.voices $case.expect 2>&1 |
+              Tee-Object -FilePath "artifacts/P29/$($case.case)-oracle.log"
+            if ($LASTEXITCODE -ne 0) { throw "P29 independent voice/save/recall oracle failure: $($case.case)" }
+          }
+          Write-Host '[PASS] P29 0/1/8/32 voice tiers, 500 concurrent playback saves, 2500 audio callbacks and fresh-instance state/PCM recall; two broken fixtures detected'
+          exit 0
+      - name: Publish actual evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 125A-Test-Lab-P29-Universal-Voice-State-Oracle
+          path: artifacts/P29/
+          if-no-files-found: warn
+          retention-days: 14
