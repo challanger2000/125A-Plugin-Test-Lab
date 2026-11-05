@@ -51,6 +51,20 @@ rejected. P25 does not certify production plugins without adapters,
 instrument voice-limit tests, proprietary GUI recovery or DAW integration.
 See docs/P25-UNIVERSAL-COVERAGE.md for every NOT COVERED item.
 
+## Universal MIDI instrument voice/save/restore stress (P29)
+
+P29 provides a standalone, product-neutral Windows VST3 host that delivers
+actual MIDI note events, performs 500 `getState()` saves during active
+playback (without parameter automation), and verifies fresh-instance
+`setState()` recall against an independent audio oracle. Four approved
+synthetic voice tiers (0, 1, 8, 32) are covered. Two deliberately defective
+test instruments verify that missing voices and save failures are detected.
+
+[Windows CI P29 PASS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42054620680).
+The new test is not specific to Drumator or AWE. **For a production
+instrument, a separate adapter must declare its supported voice limits and
+expected audio**; the synthetic 32-voice limit is not universal.
+
 ## What actually passed
 
 All gates below have verified Windows GitHub Actions evidence, not just
