@@ -868,6 +868,15 @@ void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
         pump(110);
         injectButton(MOUSEEVENTF_LEFTDOWN);
         pump(90);
+        // A headless GitHub Windows desktop may update physical button
+        // state via SendInput without delivering the corresponding Win32
+        // message to the plugin child. Bridge only the native window event:
+        // unlike the first attempt, the OS key state is now truly DOWN.
+        const LPARAM at = MAKELPARAM(source.x,source.y);
+        const LPARAM to = MAKELPARAM(moved.x,moved.y);
+        (void)SendMessageW(nativeChild, WM_LBUTTONDOWN, MK_LBUTTON, at);
+        std::cout << "[INFO] P13 real button held + plugin HWND "
+                     "received WM_LBUTTONDOWN\n";
         POINT screenMoved = moved;
         require(ClientToScreen(nativeChild,&screenMoved)!=0,
                 "P13 cannot translate OS drag origin");
@@ -903,9 +912,13 @@ void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
         try {
             require(SetCursorPos(screenMoved.x, screenMoved.y)!=0,
                     "P13 physical drag motion failed");
-            // The OLE system callback can block the normal message pump
-            // until the secondary thread releases the held mouse button.
-            pump(2100);
+            // The GUI is driven via native input with physical MK_LBUTTON
+            // held. The move needs to reach the child even if the remote
+            // desktop is not forwarding real mouse-motion messages.
+            (void)SendMessageW(nativeChild, WM_MOUSEMOVE, MK_LBUTTON, to);
+            // DoDragDrop may synchronously pump until the worker releases
+            // the button. If it returned without entering OLE, pump once.
+            pump(230);
         } catch (...) {
             mover.join();
             throw;
