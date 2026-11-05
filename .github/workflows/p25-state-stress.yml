@@ -26,6 +26,7 @@ on:
       - 'tests/test_product_acceptance.py'
       - 'tests/run_product_qa.py'
       - 'tests/run_plugin_quickcheck.py'
+      - 'tests/Run-VST3-Test.cmd'
       - 'tests/run_gui_control_matrix.py'
       - 'tests/test_plugin_quickcheck.py'
       - 'docs/PRODUCT-USER-ACCEPTANCE.md'
@@ -423,9 +424,19 @@ jobs:
             if (-not (Test-Path "tests/$script")) { throw "Portable QA script missing: $script" }
             Copy-Item -LiteralPath "tests/$script" -Destination "$dir/$script"
           }
+          Copy-Item tests/Run-VST3-Test.cmd "$dir/Run-VST3-Test.cmd"
           Copy-Item docs/ONE-COMMAND-QUICKCHECK.md "$dir/README.md"
           python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py"
           if ($LASTEXITCODE -ne 0) { throw 'Portable Python scripts syntax check failed' }
+          $launcherText = Get-Content "$dir/Run-VST3-Test.cmd" -Raw
+          if (-not $launcherText.Contains('run_plugin_quickcheck.py') -or
+              -not $launcherText.Contains('--gui-host')) {
+            throw 'Portable Windows launcher does not invoke the combined audio/GUI quickcheck'
+          }
+          $env:CI = 'true'
+          & "$dir/Run-VST3-Test.cmd"
+          if ($LASTEXITCODE -ne 2) { throw 'Windows launcher without a VST3 accepted empty input' }
+          $env:CI = $null
           Get-ChildItem $dir -File | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
