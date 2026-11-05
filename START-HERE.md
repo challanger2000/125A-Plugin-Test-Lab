@@ -4,8 +4,8 @@
 
 ## Current test acceptance and latest proof
 
-**Exact Windows code:** `main` at commit
-`b841783ef3e8855ed353ae7310dbb638ddfad5ea`.
+**Verified Windows code baseline:** commit
+`b841783ef3e8855ed353ae7310dbb638ddfad5ea` (followed by documentation-only updates).
 The complete relevant Windows CI for the latest changes has passed,
 including the real production VST3 GUI/exports regression and all 13
 independent product-domain evidence gates.
