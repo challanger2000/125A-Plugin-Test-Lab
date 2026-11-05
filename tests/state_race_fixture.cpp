@@ -105,7 +105,7 @@ public:
         // Periodic delay stays over a 512-frame 44.1-kHz deadline while
         // keeping this negative CI case bounded in total runtime.
         if(d.numSamples>0 && (++slowBlocks_ % 128)==0)
-            std::this_thread::sleep_for(std::chrono::milliseconds(25));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
 #endif
         // Deliberate concurrent WRITE from the audio callback, not just READ.
 #if QA_STATE_MODE!=4 && QA_STATE_MODE!=5
