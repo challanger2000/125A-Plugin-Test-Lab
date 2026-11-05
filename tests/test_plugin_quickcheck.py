@@ -31,6 +31,22 @@ with tempfile.TemporaryDirectory() as td:
             (target / "PRODUCT-QA-RESULT.json").write_text(
                 json.dumps({"status": "TECHNICAL_PASS", "release_approved": False,
                             "verified_vst3_sha256": sha}), encoding="utf-8")
+            p32_manifest = Path(cmd[cmd.index("--p32") + 1])
+            fixture = json.loads(p32_manifest.read_text(encoding="utf-8"))
+            cases = fixture["cases"]
+            assert {(x["rate"], x["block"]) for x in cases} == {
+                (44100, 64), (44100, 512),
+                (48000, 64), (48000, 512),
+                (96000, 64), (96000, 512)}
+            assert all(x["assertions"]["save_success"] == {"eq": 500}
+                       and x["assertions"]["process_failures"] == {"eq": 0}
+                       for x in cases)
+            adapter_path = target / "P32" / "ADAPTER-RESULT.json"
+            adapter_path.parent.mkdir(parents=True, exist_ok=True)
+            adapter_path.write_text(json.dumps({
+                "status": "PASS", "verified_vst3_sha256": sha,
+                "cases": [{"id": c["id"], "status": "PASS"} for c in cases]
+            }), encoding="utf-8")
             captured = target / "P34" / "captured-state.bin"
             captured.parent.mkdir(parents=True, exist_ok=True)
             captured.write_bytes(b"stored project state fixture")
@@ -49,6 +65,8 @@ with tempfile.TemporaryDirectory() as td:
     assert report["status"] == "TECHNICAL_PASS"
     assert report["release_approved"] is False
     assert report["verified_module_sha256"] == sha
+    assert report["coverage"]["sample_rate_buffer_matrix"] == "PASS"
+    assert report["sample_rate_buffer_matrix_cases"] == 6
     assert report["coverage"]["fresh_process_project_recall"] == "PASS"
     assert report["coverage"]["recall_audio_determinism"] == "NOT COVERED"
     assert report["coverage"]["product_gui_controls"] == "NOT COVERED"
@@ -85,6 +103,24 @@ with tempfile.TemporaryDirectory() as td:
         return synthetic_native(cmd, **kwargs)
     assert quick.run(bundle, host, stress, out, runner=wrong_recall_identity)[
         "status"] == "FAIL", "recall for another plugin accepted"
+
+    # A fabricated top-level green report cannot hide one silently missing
+    # save run, even if the wrapper executed without an exception.
+    def incomplete_matrix(cmd, **kwargs):
+        if cmd[1].endswith("run_product_qa.py"):
+            result = synthetic_native(cmd, **kwargs)
+            target = Path(cmd[cmd.index("--out") + 1])
+            path = target / "P32" / "ADAPTER-RESULT.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["cases"].pop()
+            path.write_text(json.dumps(data), encoding="utf-8")
+            return result
+        return synthetic_native(cmd, **kwargs)
+
+    result = quick.run(bundle, host, stress, out, runner=incomplete_matrix)
+    assert result["status"] == "FAIL", "five of six save matrix cases were accepted"
+    assert result["release_approved"] is False
+    assert result.get("reason") == "six-case real playback/save matrix incomplete or failed"
 
     def mismatched(cmd, **kwargs):
         target = Path(cmd[cmd.index("--out") + 1])

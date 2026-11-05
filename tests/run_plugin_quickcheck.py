@@ -54,21 +54,25 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "sha256": sha
         },
         "host": str(stress_host),
-        "cases": [{
-            "id": "playback_save",
-            "rate": 44100,
-            "block": 64,
-            "iterations": 2500,
-            "mode": "save-only",
-            "assertions": {
-                "result": {"eq": "PASS"},
-                "process_failures": {"eq": 0},
-                "save_failures": {"eq": 0},
-                "save_success": {"eq": 500},
-                "callbacks": {"eq": 2500},
-                "domain_correctness": {"eq": "NOT_COVERED"}
+        "cases": [
+            {
+                "id": f"save_{rate}_{block}",
+                "rate": rate,
+                "block": block,
+                "iterations": 2500,
+                "mode": "save-only",
+                "assertions": {
+                    "result": {"eq": "PASS"},
+                    "process_failures": {"eq": 0},
+                    "save_failures": {"eq": 0},
+                    "save_success": {"eq": 500},
+                    "callbacks": {"eq": 2500},
+                    "domain_correctness": {"eq": "NOT_COVERED"}
+                }
             }
-        }]
+            for rate in (44100, 48000, 96000)
+            for block in (64, 512)
+        ]
     }
     p34 = {
         "schema": "125a-p34-capture-v1",
@@ -92,6 +96,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         "product": bundle.stem,
         "coverage": {
             "api_playback_save": "NOT EXECUTED",
+            "sample_rate_buffer_matrix": "NOT EXECUTED",
             "native_audio_state_capture": "NOT EXECUTED",
             "fresh_process_project_recall": "NOT EXECUTED",
             "recall_audio_determinism": "NOT COVERED",
@@ -107,6 +112,8 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
     report_path.unlink(missing_ok=True)
     native_path = out / "native" / "PRODUCT-QA-RESULT.json"
     native_path.unlink(missing_ok=True)  # never reuse a previous fake PASS
+    adapter_path = out / "native" / "P32" / "ADAPTER-RESULT.json"
+    adapter_path.unlink(missing_ok=True)  # reject last run's old case matrix
     proc = runner([sys.executable, str(Path(__file__).with_name("run_product_qa.py")),
                    "--p32", str(p32_path), "--p34", str(p34_path),
                    "--out", str(out / "native"), "--timeout", str(timeout)],
@@ -125,9 +132,30 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         elif native.get("release_approved") is not False:
             summary["reason"] = "native host improperly approved release"
         else:
-            summary["status"] = "TECHNICAL_PASS"
-            summary["coverage"]["api_playback_save"] = "PASS"
-            summary["coverage"]["native_audio_state_capture"] = "PASS"
+            matrix_report = out / "native" / "P32" / "ADAPTER-RESULT.json"
+            if not matrix_report.is_file():
+                summary["reason"] = "six-case real playback/save matrix evidence missing"
+            else:
+                matrix = json.loads(matrix_report.read_text(encoding="utf-8"))
+                expected_ids = {case["id"] for case in p32["cases"]}
+                cases = matrix.get("cases")
+                observed_ids = (
+                    {item["id"] for item in cases
+                     if isinstance(item, dict) and isinstance(item.get("id"), str)}
+                    if isinstance(cases, list) else set()
+                )
+                if (matrix.get("status") != "PASS" or
+                        matrix.get("verified_vst3_sha256") != sha or
+                        not isinstance(cases, list) or len(cases) != len(expected_ids) or
+                        observed_ids != expected_ids or
+                        any(item.get("status") != "PASS" for item in cases)):
+                    summary["reason"] = "six-case real playback/save matrix incomplete or failed"
+                else:
+                    summary["status"] = "TECHNICAL_PASS"
+                    summary["coverage"]["api_playback_save"] = "PASS"
+                    summary["coverage"]["sample_rate_buffer_matrix"] = "PASS"
+                    summary["coverage"]["native_audio_state_capture"] = "PASS"
+                    summary["sample_rate_buffer_matrix_cases"] = len(expected_ids)
     # Reopen a captured project state in TWO independent native host processes.
     # Never equate successful IComponent::setState calls with musical correctness.
     if summary["status"] == "TECHNICAL_PASS":
