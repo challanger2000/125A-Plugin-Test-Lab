@@ -48,6 +48,16 @@ jobs:
           cmake --build build --config Release --target TestLabGUI --parallel 3
           if ($LASTEXITCODE -ne 0) { throw 'P14 genuine Win32 GUI host failed compilation' }
 
+      - name: P15 unattended COM CF_HDROP receiver contract (not OS drag)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          if ($gui.Count -ne 1) { throw 'P15 native GUI test host missing' }
+          & $gui[0].FullName --ole-receiver-contract 'build/p15-receiver-contract'
+          if ($LASTEXITCODE -ne 0) { throw 'P15 native OLE receiver contract failed' }
+          Write-Host '[PASS] P15 receiver contract; real DoDragDrop remains INCONCLUSIVE'
+
       - name: Build actual Drumator VST3 module from selected source
         shell: pwsh
         run: |

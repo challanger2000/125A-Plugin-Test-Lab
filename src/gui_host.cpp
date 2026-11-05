@@ -782,6 +782,123 @@ private:
     std::wstring expectedSource_,expectedDestination_;
 };
 
+// P15: fully unattended receiver CONTRACT test. Direct callback invocation
+// is deliberately not presented as a real shell DoDragDrop or DAW acceptance.
+class ContractFileDataObject final : public IDataObject {
+public:
+    explicit ContractFileDataObject(std::wstring path) : path_(std::move(path)) {}
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (!out) return E_POINTER;
+        *out = nullptr;
+        if (iid != IID_IUnknown && iid != IID_IDataObject) return E_NOINTERFACE;
+        *out = static_cast<IDataObject*>(this);
+        AddRef();
+        return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
+    ULONG STDMETHODCALLTYPE Release() override {
+        const ULONG n = --refs_;
+        if (!n) delete this;
+        return n;
+    }
+    HRESULT STDMETHODCALLTYPE QueryGetData(FORMATETC* format) override {
+        if (!format) return E_POINTER;
+        return format->cfFormat == CF_HDROP &&
+            (format->tymed & TYMED_HGLOBAL) &&
+            format->dwAspect == DVASPECT_CONTENT ? S_OK : DV_E_FORMATETC;
+    }
+    HRESULT STDMETHODCALLTYPE GetData(FORMATETC* format, STGMEDIUM* medium) override {
+        if (!medium) return E_POINTER;
+        *medium = {};
+        if (FAILED(QueryGetData(format))) return DV_E_FORMATETC;
+        const SIZE_T bytes = sizeof(DROPFILES) +
+            (path_.size() + 2) * sizeof(wchar_t);
+        HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes);
+        if (!h) return E_OUTOFMEMORY;
+        auto* p = static_cast<BYTE*>(GlobalLock(h));
+        if (!p) { GlobalFree(h); return E_OUTOFMEMORY; }
+        auto* drop = reinterpret_cast<DROPFILES*>(p);
+        drop->pFiles = sizeof(DROPFILES);
+        drop->fWide = TRUE;
+        std::memcpy(p + sizeof(DROPFILES), path_.c_str(),
+                    (path_.size() + 1) * sizeof(wchar_t));
+        GlobalUnlock(h);
+        medium->tymed = TYMED_HGLOBAL;
+        medium->hGlobal = h;
+        medium->pUnkForRelease = nullptr;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetDataHere(FORMATETC*, STGMEDIUM*) override {
+        return DATA_E_FORMATETC;
+    }
+    HRESULT STDMETHODCALLTYPE GetCanonicalFormatEtc(FORMATETC*,FORMATETC* out) override {
+        if (out) out->ptd = nullptr;
+        return DATA_S_SAMEFORMATETC;
+    }
+    HRESULT STDMETHODCALLTYPE SetData(FORMATETC*,STGMEDIUM*,BOOL) override {
+        return E_NOTIMPL;
+    }
+    HRESULT STDMETHODCALLTYPE EnumFormatEtc(DWORD,IEnumFORMATETC**) override {
+        return E_NOTIMPL;
+    }
+    HRESULT STDMETHODCALLTYPE DAdvise(FORMATETC*,DWORD,IAdviseSink*,DWORD*) override {
+        return OLE_E_ADVISENOTSUPPORTED;
+    }
+    HRESULT STDMETHODCALLTYPE DUnadvise(DWORD) override {
+        return OLE_E_ADVISENOTSUPPORTED;
+    }
+    HRESULT STDMETHODCALLTYPE EnumDAdvise(IEnumSTATDATA**) override {
+        return OLE_E_ADVISENOTSUPPORTED;
+    }
+private:
+    std::atomic<ULONG> refs_{1};
+    std::wstring path_;
+};
+
+void runOleReceiverContract(const std::filesystem::path& base) {
+    std::filesystem::create_directories(base);
+    const auto input = base / "sources";
+    const auto output = base / "received";
+    std::filesystem::create_directories(input);
+    std::filesystem::create_directories(output);
+    NativeFileDropTarget target(output);
+    const std::array<const wchar_t*,4> from{
+        L"125A Drumator Pattern.mid", L"125A Drumator Pattern.wav",
+        L"125A Drumator Song.mid", L"125A Drumator Song.wav"};
+    const std::array<const wchar_t*,4> to{
+        L"pattern-midi.mid", L"pattern-wav.wav",
+        L"song-midi.mid", L"song-wav.wav"};
+    for (size_t i = 0; i < from.size(); ++i) {
+        const auto original = input / from[i];
+        {
+            std::ofstream file(original, std::ios::binary);
+            require(file.good(), "P15 cannot create synthetic source fixture");
+            const std::array<char,256> fixture{};
+            file.write(fixture.data(), fixture.size());
+            require(file.good(), "P15 fixture write failed");
+        }
+        target.setExpected(from[i],to[i]);
+        auto* data = new ContractFileDataObject(original.wstring());
+        FORMATETC unsupported{CF_UNICODETEXT,nullptr,DVASPECT_CONTENT,-1,TYMED_HGLOBAL};
+        require(data->QueryGetData(&unsupported) == DV_E_FORMATETC,
+                "P15 receiver fixture did not reject unsupported format");
+        DWORD effect = DROPEFFECT_COPY;
+        POINTL point{};
+        require(target.DragEnter(data,0,point,&effect) == S_OK &&
+                effect == DROPEFFECT_COPY,"P15 CF_HDROP DragEnter rejected");
+        effect = DROPEFFECT_COPY;
+        require(target.Drop(data,0,point,&effect) == S_OK &&
+                effect == DROPEFFECT_COPY,"P15 CF_HDROP Drop rejected");
+        data->Release();
+        require(std::filesystem::file_size(output/to[i]) == 256,
+                "P15 received file differs from synthetic source");
+        require(target.accepted() == i+1 && target.entered() == i+1,
+                "P15 expected OLE receiver callbacks not recorded");
+    }
+    std::cout << "[PASS] P15 four native IDropTarget contract callbacks and "
+                 "four independent CF_HDROP copies (NOT a system DoDragDrop)\n";
+}
+
 class NativeDropWindow final {
 public:
     explicit NativeDropWindow(const std::filesystem::path& folder) {
@@ -1330,6 +1447,10 @@ int main(int argc, char** argv) {
     std::cerr << std::unitbuf;
     try {
         ComApartment guiCom;
+        if (argc == 3 && std::string(argv[1]) == "--ole-receiver-contract") {
+            runOleReceiverContract(argv[2]);
+            return 0;
+        }
         if (argc == 5 && std::string(argv[1]) == "--drumator-drag-source") {
             const std::filesystem::path folder = argv[4];
             runRealDrumatorGui(argv[2], folder/"before.bin",
