@@ -862,11 +862,20 @@ void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
                 "P13 source pointer position refused");
         drop.target().setExpected(originalNames[i], outputNames[i]);
         const unsigned previous = drop.target().accepted();
-        const auto at = MAKELPARAM(source.x,source.y);
-        const auto to = MAKELPARAM(moved.x,moved.y);
-        (void)SendMessageW(nativeChild, WM_MOUSEMOVE,0,at);
-        (void)SendMessageW(nativeChild, WM_LBUTTONDOWN,MK_LBUTTON,at);
+        // OLE QueryContinueDrag inspects the *real* Windows keyboard state.
+        // Synthetic SendMessage(WM_LBUTTONDOWN) alone cannot establish a
+        // physical button hold. Use genuine SendInput + cursor movements.
+        pump(110);
         injectButton(MOUSEEVENTF_LEFTDOWN);
+        pump(90);
+        POINT screenMoved = moved;
+        require(ClientToScreen(nativeChild,&screenMoved)!=0,
+                "P13 cannot translate OS drag origin");
+        std::cout << "[INFO] P13 physical down="
+                  << ((GetAsyncKeyState(VK_LBUTTON)&0x8000)!=0)
+                  << " source screen=" << screen.x << "," << screen.y
+                  << " -> gesture=" << screenMoved.x << ","
+                  << screenMoved.y << "\n";
         // The dragging session enters synchronous DoDragDrop. A worker
         // operates the independent OS cursor while OLE pumps the STA.
         std::thread mover([&] {
@@ -892,13 +901,33 @@ void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
             (void)SendInput(2,esc,sizeof(INPUT));
         });
         try {
-            (void)SendMessageW(nativeChild,WM_MOUSEMOVE,MK_LBUTTON,to);
+            require(SetCursorPos(screenMoved.x, screenMoved.y)!=0,
+                    "P13 physical drag motion failed");
+            // The OLE system callback can block the normal message pump
+            // until the secondary thread releases the held mouse button.
+            pump(2100);
         } catch (...) {
             mover.join();
             throw;
         }
         mover.join();
         pump(100);
+        std::cout << "[INFO] P13 OLE receiver entered="
+                  << drop.target().entered() << " accepted="
+                  << drop.target().accepted() << " expected="
+                  << previous+1 << " held="
+                  << ((GetAsyncKeyState(VK_LBUTTON)&0x8000)!=0) << "\n";
+        const auto root = std::filesystem::temp_directory_path();
+        unsigned exported=0;
+        for(const auto& ent:std::filesystem::directory_iterator(root)) {
+            if (ent.path().filename().wstring().find(L"125A-Drumator-Drag-")==0) {
+                ++exported;
+                if(exported<=5)
+                    std::wcout << L"[INFO] P13 temporary drag folder: "
+                               << ent.path().wstring() << L"\n";
+            }
+        }
+        std::cout << "[INFO] P13 temporary drag folder count=" << exported << "\n";
         require(drop.target().accepted() == previous + 1,
                 "P13 genuine OLE drop target did not accept one CF_HDROP file");
         const auto actual = folder/outputNames[i];
