@@ -106,6 +106,36 @@ jobs:
           Write-Host '[PASS] P22 universal class/bus/processing discovery, independent capability JSON and invalid-module rejection'
           exit 0
 
+      - name: P23 independent multi-VST3 folder scan (positive and negative)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Host.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_SignalGood.vst3')
+          $bad = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_SignalBad.vst3')
+          if ($hostExe.Count -ne 1 -or $good.Count -ne 1 -or $bad.Count -ne 1) {
+            throw 'P23 cannot find isolated host or known VST3 bundles'
+          }
+          New-Item -ItemType Directory -Force build/p23-positive,build/p23-negative | Out-Null
+          Copy-Item -LiteralPath $good[0].FullName -Destination build/p23-positive -Recurse
+          Copy-Item -LiteralPath $bad[0].FullName -Destination build/p23-positive -Recurse
+          python tests/run_vst3_batch.py --host $hostExe[0].FullName --root build/p23-positive --out build/p23-pass-report
+          if ($LASTEXITCODE -ne 0) { throw 'P23 multiple real VST3 plugin scan did not PASS' }
+          $goodReport = Get-Content build/p23-pass-report/BATCH-RESULT.json -Raw | ConvertFrom-Json
+          if ($goodReport.discovered -ne 2 -or $goodReport.passed -ne 2 -or $goodReport.failed -ne 0) {
+            throw 'P23 expected both independent VST3 modules to be detected and passed'
+          }
+          Copy-Item -LiteralPath $good[0].FullName -Destination build/p23-negative -Recurse
+          'not a real DLL' | Set-Content build/p23-negative/Invalid.vst3
+          python tests/run_vst3_batch.py --host $hostExe[0].FullName --root build/p23-negative --out build/p23-fail-report
+          if ($LASTEXITCODE -ne 1) { throw 'P23 invalid VST3 was not surfaced as batch failure' }
+          $failed = Get-Content build/p23-fail-report/BATCH-RESULT.json -Raw | ConvertFrom-Json
+          if ($failed.discovered -ne 2 -or $failed.passed -ne 1 -or $failed.failed -ne 1) {
+            throw 'P23 failed to isolate invalid module from independently valid module'
+          }
+          Write-Host '[PASS] P23 multi-plugin discovery, per-process isolation and fail-closed JSON report'
+          exit 0
+
       - name: Stage executable and P02 evidence
         shell: pwsh
         run: |
@@ -115,6 +145,8 @@ jobs:
           Copy-Item $hostExe.FullName artifact\
           Copy-Item START-HERE.md artifact\
           Copy-Item -Path build/p22 -Destination artifact/P22 -Recurse
+          Copy-Item -Path build/p23-pass-report -Destination artifact/P23-PASS -Recurse
+          Copy-Item -Path build/p23-fail-report -Destination artifact/P23-Negative-Control -Recurse
           Copy-Item build\p02-good.wav artifact\P02-Reference-Render.wav
           Copy-Item build\p02-good-host.log, build\p02-good-oracle.log, build\p02-bad-host.log artifact\
           Get-FileHash $hostExe.FullName -Algorithm SHA256 | Format-List | Out-File artifact\SHA256.txt
