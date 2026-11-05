@@ -59,4 +59,19 @@ with tempfile.TemporaryDirectory() as td:
         pass
     else:
         raise AssertionError("unknown requirement accepted")
+    # Fully populated independent evidence index is an explicit acceptance of
+    # report coverage (not cryptographic validation of its producing host).
+    m["checks"].clear()
+    for requirement in accept.REQUIREMENTS:
+        file = root / (requirement + ".json")
+        file.write_text(json.dumps({"status": "PASS", "product_sha256": sha,
+                                   "requirement": requirement, "oracle": "independent",
+                                   "negative_control": "DETECTED"}), encoding="utf-8")
+        m["checks"][requirement] = {
+            "plugin_sha256": sha, "source": "real-vst3",
+            "report": file.name,
+            "report_sha256": hashlib.sha256(file.read_bytes()).hexdigest()}
+    assert accept.evaluate(m, root)["status"] == "PASS", "complete evidence index refused"
+    m["checks"].pop("gui_all_controls")
+    assert accept.evaluate(m, root)["status"] == "NO-GO", "one missing GUI domain accepted"
 print("[PASS] production acceptance gate rejects missing, stale, synthetic and counterfeit evidence")
