@@ -24,6 +24,7 @@ on:
       - 'tests/verify_gui_save_as.py'
       - 'tests/make_invalid_state_matrix.py'
       - 'tests/build_release_report.py'
+      - 'tests/test_release_evidence_gate.py'
       - '.github/workflows/drumator-p03.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -504,6 +505,16 @@ jobs:
             throw 'P13 dropped MIDI/WAV files failed independent musical and format oracle'
           }
           Write-Host '[PASS] P13 four GUI-generated drag-source files validated; external OLE receiver INCONCLUSIVE'
+          exit 0
+
+      - name: Release-gate independent false-PASS and incomplete-oracle tests
+        shell: pwsh
+        run: |
+          python tests/test_release_evidence_gate.py
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Release evidence verifier accepted fake or incomplete independent domain proof'
+          }
+          Write-Host '[PASS] release gate rejects wrong, stale, duplicated and missing domain proof'
           exit 0
 
       - name: P21 fail-closed combined release evidence (exact product revision)
