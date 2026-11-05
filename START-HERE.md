@@ -67,6 +67,22 @@ workflows. Check those runs separately when assessing a full release.
 A manual P03 run can select a newer product SHA.
 
 
+## P25 — Universal concurrency and playback-save stress
+
+The independent Windows x64 C++23 state-stress executable is
+`125A_Test_Lab_State_Stress.exe`; use
+`.github/workflows/p25-state-stress.yml` for its verified positive and
+negative fixtures. The host invokes real VST3 process()/setState()/getState(),
+including 500 saves during playback, 44.1/48/96 kHz processing, zero-frame
+calls, and sample-rate-sensitive reference measurements.
+[Verified Windows run 42046335507](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42046335507).
+
+The built-in paired/ramp oracles are synthetic test-fixture-specific.
+Production plugins need separate approved state and audio oracles; without
+one, domain correctness is NOT COVERED. P25 does not yet include maximum
+voices or GUI/controller failure-recovery acceptance. Details and the
+requirement-to-evidence table: docs/P25-UNIVERSAL-COVERAGE.md.
+
 ## Generic plugin discovery
 
 ```powershell
