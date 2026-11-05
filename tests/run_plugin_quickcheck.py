@@ -54,21 +54,25 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "sha256": sha
         },
         "host": str(stress_host),
-        "cases": [{
-            "id": "playback_save",
-            "rate": 44100,
-            "block": 64,
-            "iterations": 2500,
-            "mode": "save-only",
-            "assertions": {
-                "result": {"eq": "PASS"},
-                "process_failures": {"eq": 0},
-                "save_failures": {"eq": 0},
-                "save_success": {"eq": 500},
-                "callbacks": {"eq": 2500},
-                "domain_correctness": {"eq": "NOT_COVERED"}
+        "cases": [
+            {
+                "id": f"save_{rate}_{block}",
+                "rate": rate,
+                "block": block,
+                "iterations": 2500,
+                "mode": "save-only",
+                "assertions": {
+                    "result": {"eq": "PASS"},
+                    "process_failures": {"eq": 0},
+                    "save_failures": {"eq": 0},
+                    "save_success": {"eq": 500},
+                    "callbacks": {"eq": 2500},
+                    "domain_correctness": {"eq": "NOT_COVERED"}
+                }
             }
-        }]
+            for rate in (44100, 48000, 96000)
+            for block in (64, 512)
+        ]
     }
     p34 = {
         "schema": "125a-p34-capture-v1",
@@ -92,6 +96,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         "product": bundle.stem,
         "coverage": {
             "api_playback_save": "NOT EXECUTED",
+            "sample_rate_buffer_matrix": "NOT EXECUTED",
             "native_audio_state_capture": "NOT EXECUTED",
             "fresh_process_project_recall": "NOT EXECUTED",
             "recall_audio_determinism": "NOT COVERED",
@@ -127,6 +132,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         else:
             summary["status"] = "TECHNICAL_PASS"
             summary["coverage"]["api_playback_save"] = "PASS"
+            summary["coverage"]["sample_rate_buffer_matrix"] = "PASS"
             summary["coverage"]["native_audio_state_capture"] = "PASS"
     # Reopen a captured project state in TWO independent native host processes.
     # Never equate successful IComponent::setState calls with musical correctness.
