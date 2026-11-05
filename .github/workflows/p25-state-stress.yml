@@ -10,6 +10,8 @@ on:
       - 'src/state_recovery.cpp'
       - 'tests/make_recovery_fixtures.py'
       - 'tests/verify_recovery_adapter.py'
+      - 'src/rate_block.cpp'
+      - 'tests/verify_rate_block.py'
       - '.github/workflows/p25-state-stress.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -42,7 +44,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabStateStress TestLabRecovery QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 --parallel 4
+          cmake --build build --config Release --target TestLabStateStress TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -121,6 +123,53 @@ jobs:
           Write-Host '[PASS] P26 real invalid state rejection, transactional rollback, recovery and PCM; defective VST3 independently detected'
           exit 0
 
+      - name: P27 independent 44.1/48/96-kHz and host-block partition PCM validation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Rate_Block.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_0.vst3')
+          $badRate = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_3.vst3')
+          $badBlock = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_6.vst3')
+          if ($hostExe.Count -ne 1 -or $good.Count -lt 1 -or
+              $badRate.Count -lt 1 -or $badBlock.Count -lt 1) {
+            throw 'P27 native VST3 PCM recorder or fixtures missing'
+          }
+          $exe = $hostExe[0].FullName
+          New-Item -ItemType Directory -Force artifacts/P27 | Out-Null
+          foreach ($rate in @(44100,48000,96000)) {
+            foreach ($block in @(17,127,512)) {
+              $out = "artifacts/P27/good-$rate-$block.f32"
+              & $exe --pcm $good[0].FullName $out $rate $block 2>&1 |
+                Tee-Object -FilePath "artifacts/P27/good-$rate-$block.log"
+              if ($LASTEXITCODE -ne 0) { throw "P27 good VST3 crashed or failed $rate/$block" }
+            }
+          }
+          python tests/verify_rate_block.py good artifacts/P27 artifacts/P27/MATRIX-RESULT.json
+          if ($LASTEXITCODE -ne 0) { throw 'P27 independent good VST3 time/partition oracle failed' }
+          & $exe --pcm $badRate[0].FullName artifacts/P27/bad-rate-96000.f32 96000 127 2>&1 |
+            Tee-Object -FilePath artifacts/P27/bad-rate-host.log
+          if ($LASTEXITCODE -ne 0) { throw 'P27 broken sample-rate fixture failed to generate PCM' }
+          python tests/verify_rate_block.py single artifacts/P27/bad-rate-96000.f32 96000 2>&1 |
+            Tee-Object -FilePath artifacts/P27/bad-rate-oracle.log
+          if ($LASTEXITCODE -ne 1) { throw 'P27 broken host-rate DSP was not detected' }
+          if (-not (Get-Content artifacts/P27/bad-rate-oracle.log -Raw).Contains('time-ramp mismatch')) {
+            throw 'P27 broken sample-rate fixture rejected for unrelated reason'
+          }
+          foreach ($block in @(17,512)) {
+            & $exe --pcm $badBlock[0].FullName "artifacts/P27/bad-block-$block.f32" 44100 $block 2>&1 |
+              Tee-Object -FilePath "artifacts/P27/bad-block-$block.log"
+            if ($LASTEXITCODE -ne 0) { throw 'P27 broken host-block fixture did not generate PCM' }
+          }
+          python tests/verify_rate_block.py compare artifacts/P27/bad-block-17.f32 artifacts/P27/bad-block-512.f32 44100 2>&1 |
+            Tee-Object -FilePath artifacts/P27/bad-block-oracle.log
+          if ($LASTEXITCODE -ne 1) { throw 'P27 host-block-dependent DSP was not detected' }
+          if (-not (Get-Content artifacts/P27/bad-block-oracle.log -Raw).Contains('block partition mismatch')) {
+            throw 'P27 broken block fixture rejected for unrelated reason'
+          }
+          Write-Host '[PASS] P27 9 positive true VST3 PCM matrix cases plus both negative DSP defects'
+          exit 0
+
       - name: Publish proof even on failure
         if: always()
         uses: actions/upload-artifact@v4
@@ -129,5 +178,6 @@ jobs:
           path: |
             artifacts/P25/
             artifacts/P26/
+            artifacts/P27/
           if-no-files-found: warn
           retention-days: 14
