@@ -21,8 +21,9 @@ post-reload state artifacts to catch silent state corruption.
 The real Drumator P21 report no longer treats arbitrary `[PASS]` log
 text as release evidence. Each of its 13 gates now demands its own
 complete independent oracle marker; multi-recall demands three
-observations. Wrong, duplicated, stale, missing or contradictory proof
-fails the automated gate. [Verified Windows P03 run](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42102036359).
+observations. Wrong, duplicated, incomplete, missing or contradictory gate markers
+fail the automated gate. A complete log copied from another run cannot
+be cryptographically excluded by marker checks alone. [Verified Windows P03 run](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42102036359).
 
 **Remaining hard boundary:** success in the standalone host does not
 prove product-specific musical semantics, every UI control, commercial
