@@ -82,6 +82,21 @@ or unmeasured operations remain NOT_APPLICABLE or NOT_YET_DETERMINED.
 The GitHub P02 workflow tests P22 with two independent VST3 fixtures
 and a malformed-module negative control.
 
+## P23 — Batch inspection of arbitrary VST3 plugins
+
+```powershell
+python tests/run_vst3_batch.py --host "C:\\TestLab\\125A_Test_Lab_Host.exe" --root "C:\\MyVST3" --out "C:\\TestLabResults" --timeout 30
+```
+
+Run only with VST3 modules you trust: each native plugin executes in
+a separate subprocess. A crash, timeout, invalid binary or failed
+VST3 initialization is isolated and recorded without losing the
+results for the remaining plugins. The final `BATCH-RESULT.json`
+lists every discovered bundle and its class/bus capabilities,
+explicitly marking audio, GUI and state tests as NOT_EXECUTED.
+A bad module produces an overall FAIL but never a false PASS.
+P23 verified Windows run: [42041631444](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42041631444).
+
 ## Standalone Windows CLI
 
 Extract the corresponding GitHub Actions artifact before running:
