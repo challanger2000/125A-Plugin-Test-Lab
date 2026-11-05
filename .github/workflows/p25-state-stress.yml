@@ -7,6 +7,9 @@ on:
       - 'src/state_stress.cpp'
       - 'tests/state_race_fixture.cpp'
       - 'tests/verify_state_stress.py'
+      - 'src/state_recovery.cpp'
+      - 'tests/make_recovery_fixtures.py'
+      - 'tests/verify_recovery_adapter.py'
       - '.github/workflows/p25-state-stress.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -39,7 +42,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabStateStress QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 --parallel 4
+          cmake --build build --config Release --target TestLabStateStress TestLabRecovery QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -84,11 +87,47 @@ jobs:
           }
           Write-Host '[PASS] P25 eleven real VST3 concurrent playback/state and sample-rate cases, including three deliberate defects'
           exit 0
+      - name: P26 real VST3 state rejection, rollback, recovery, independent PCM adapter
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Recovery.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_4.vst3')
+          $broken = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_5.vst3')
+          if ($hostExe.Count -ne 1 -or $good.Count -lt 1 -or $broken.Count -lt 1) {
+            throw 'P26 generic recovery host or VST3 fixtures missing'
+          }
+          $exe = $hostExe[0].FullName
+          python tests/make_recovery_fixtures.py artifacts/P26/fixtures
+          if ($LASTEXITCODE -ne 0) { throw 'P26 cannot generate independent state oracle fixtures' }
+          $src = 'artifacts/P26/fixtures'
+          $a = "$src/A.bin"; $b = "$src/B.bin"; $invalid = "$src/invalid.bin"
+          & $exe --recover $good[0].FullName $a $b $invalid artifacts/P26/good 2>&1 |
+            Tee-Object -FilePath artifacts/P26/good.log
+          if ($LASTEXITCODE -ne 0) { throw 'P26 real valid VST3 recovery scenario failed' }
+          python tests/verify_recovery_adapter.py "$src/adapter.json" artifacts/P26/good 2>&1 |
+            Tee-Object -FilePath artifacts/P26/good-oracle.log
+          if ($LASTEXITCODE -ne 0) { throw 'P26 positive independent state+PCM recovery oracle failed' }
+          & $exe --recover $broken[0].FullName $a $b $invalid artifacts/P26/broken 2>&1 |
+            Tee-Object -FilePath artifacts/P26/broken.log
+          if ($LASTEXITCODE -ne 0) { throw 'P26 broken fixture did not execute complete API lifecycle' }
+          python tests/verify_recovery_adapter.py "$src/adapter.json" artifacts/P26/broken 2>&1 |
+            Tee-Object -FilePath artifacts/P26/broken-oracle.log
+          if ($LASTEXITCODE -ne 1) { throw 'P26 failed to detect deliberately corrupted rollback' }
+          $badLog = Get-Content artifacts/P26/broken-oracle.log -Raw
+          if (-not $badLog.Contains('state-after-error.bin')) {
+            throw 'P26 broken fixture rejected for unrelated reason'
+          }
+          Write-Host '[PASS] P26 real invalid state rejection, transactional rollback, recovery and PCM; defective VST3 independently detected'
+          exit 0
+
       - name: Publish proof even on failure
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: 125A-Universal-VST3-State-Stress-P25
-          path: artifacts/P25/
+          path: |
+            artifacts/P25/
+            artifacts/P26/
           if-no-files-found: warn
           retention-days: 14
