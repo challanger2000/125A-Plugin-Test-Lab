@@ -136,6 +136,77 @@ int32_t pcm24(Sample32 input) {
     return static_cast<int32_t>(std::llround(clamped * 8388607.0));
 }
 
+// P22: topology discovery is product-agnostic and deliberately read-only.
+// Machine-readable rows are parsed by a separate Python gate. Do not
+// claim GUI, MIDI or DSP tests PASS solely from advertised capabilities.
+int inspect(const std::string& pluginPath) {
+    std::string error;
+    auto module = Module::create(pluginPath, error);
+    require(static_cast<bool>(module), "P22 cannot load VST3 module");
+    HostApplication host;
+    auto factory = module->getFactory();
+    factory.setHostContext(&host);
+    unsigned found = 0;
+    std::cout << "P22_FORMAT\t1\n";
+    for (const auto& cls : factory.classInfos()) {
+        if (cls.category() != kVstAudioEffectClass) continue;
+        auto component = factory.createInstance<IComponent>(cls.ID());
+        require(static_cast<bool>(component), "P22 cannot create audio component");
+        require(component->initialize(&host) == kResultOk,
+                "P22 component initialization failed");
+        bool initialized = true;
+        try {
+            IAudioProcessor* processor = nullptr;
+            const bool hasProcessor =
+                component->queryInterface(IAudioProcessor::iid,
+                    reinterpret_cast<void**>(&processor)) == kResultOk &&
+                processor != nullptr;
+            const bool sample32 = hasProcessor &&
+                processor->canProcessSampleSize(kSample32) == kResultTrue;
+            const bool sample64 = hasProcessor &&
+                processor->canProcessSampleSize(kSample64) == kResultTrue;
+            if (processor) processor->release();
+            ++found;
+            std::cout << "P22_CLASS\t" << found << "\t" << hasProcessor
+                      << "\t" << sample32 << "\t" << sample64 << "\n";
+            for (int media = 0; media < 2; ++media) {
+                const MediaType kind = media == 0 ? kAudio : kEvent;
+                for (int dir = 0; dir < 2; ++dir) {
+                    const BusDirection direction = dir == 0 ? kInput : kOutput;
+                    const int32 n = component->getBusCount(kind, direction);
+                    require(n >= 0 && n <= 64, "P22 invalid bus count");
+                    std::cout << "P22_BUS_COUNT\t" << found << "\t"
+                              << (media == 0 ? "audio" : "event") << "\t"
+                              << (dir == 0 ? "input" : "output") << "\t"
+                              << n << "\n";
+                    for (int32 i = 0; i < n; ++i) {
+                        BusInfo info{};
+                        require(component->getBusInfo(kind, direction, i, info) == kResultOk,
+                                "P22 getBusInfo failed");
+                        require(info.channelCount >= 0 && info.channelCount <= 64,
+                                "P22 invalid channel count");
+                        std::cout << "P22_BUS\t" << found << "\t"
+                                  << (media == 0 ? "audio" : "event") << "\t"
+                                  << (dir == 0 ? "input" : "output") << "\t"
+                                  << i << "\t" << info.channelCount << "\t"
+                                  << ((info.flags & BusInfo::kDefaultActive) != 0)
+                                  << "\n";
+                    }
+                }
+            }
+        } catch (...) {
+            if (initialized) (void)component->terminate();
+            throw;
+        }
+        require(component->terminate() == kResultOk,
+                "P22 component termination failed");
+    }
+    require(found > 0, "P22 no VST3 audio classes discovered");
+    std::cout << "P22_TOTAL\t" << found << "\n";
+    std::cout << "[PASS] P22 discovered all VST3 audio classes without vendor metadata\n";
+    return 0;
+}
+
 int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
            const std::filesystem::path& statePath = {},
            const std::filesystem::path& stateSnapshotPath = {},
@@ -353,6 +424,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
 int main(int argc, char** argv) {
     try {
         if (argc == 2 && std::string(argv[1]) == "--selftest") return selfTest();
+        if (argc == 3 && std::string(argv[1]) == "--inspect") return inspect(argv[2]);
         if (argc == 4 && std::string(argv[1]) == "--render")
             return render(argv[2], std::filesystem::path(argv[3]));
         if (argc == 5 && std::string(argv[1]) == "--render-state")
