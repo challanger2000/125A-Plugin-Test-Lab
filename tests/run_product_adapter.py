@@ -121,6 +121,10 @@ def run(adapter_path, folder, timeout):
     results = []
     for case in manifest["cases"]:
         output = folder / (case["id"] + ".tsv")
+        # Reject stale evidence from any previous attempt. A successful host
+        # exit without producing a fresh report must never reuse old PASS data.
+        if output.exists():
+            output.unlink()
         argv = [str(host), "--stress", str(bundle), str(output), str(case["rate"]),
                 str(case["block"]), str(case["iterations"]), "none", "--save-only"]
         try:
