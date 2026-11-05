@@ -33,6 +33,6 @@ The P25 Windows workflow exports per-scenario TSV and logs with source commit, r
 
 - P26: [Windows Actions 42048372929](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42048372929). The positive fixture passed external state SHA256 and 512 exact PCM values. The broken fixture returned an error but silently changed its state; the independent adapter correctly failed at state-after-error.bin. No actual GUI-transport message was injected.
 - P27: [Windows Actions 42049745921](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42049745921). Nine good PCM cases matched time reference; three partitions per rate had identical bytes. Negative sample-rate case deviated by 0.1351563, and negative block-dependent case failed exact partition comparison.
-- P28: Under implementation. This is an audio-callback elapsed-time/deadline test, **not** proof of allocation freedom, hardware-guaranteed latency, or maximum-voice reliability.
+- P28: VERIFIED in Windows Actions run 42051397047. The actual 1024-sample / 44.1-kHz callback test recorded p95, p99, maximum time and deadline overruns over 2500 callbacks. A valid VST3 passed while the intentionally blocking VST3 failed the deadline oracle. This does not prove allocation freedom, universal hardware latency, or maximum-voice reliability.
 
 Do not run the fixture-only paired or ramp oracle against a different plugin without an approved adapter. The generic host is portable; its synthetic state schema is not.
