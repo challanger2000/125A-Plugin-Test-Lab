@@ -26,6 +26,7 @@ on:
       - 'tests/test_product_acceptance.py'
       - 'tests/run_product_qa.py'
       - 'tests/run_plugin_quickcheck.py'
+      - 'tests/run_gui_control_matrix.py'
       - 'tests/test_plugin_quickcheck.py'
       - 'docs/PRODUCT-USER-ACCEPTANCE.md'
       - 'tests/run_p34_capture.py'
@@ -67,7 +68,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabHost TestLabStateStress TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
+          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick TestLabStateStress TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -399,6 +400,11 @@ jobs:
               $report.coverage.api_playback_save -ne 'PASS') {
             throw 'Quickcheck coverage or release classification incorrect'
           }
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $click = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Click.vst3')
+          if ($gui.Count -ne 1 -or $click.Count -lt 1) { throw 'Portable GUI host or real GUI fixture missing' }
+          & $gui[0].FullName --probe $click[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Portable native GUI probe failed to attach/detach real VST3 editor' }
           Write-Host '[PASS] One command exercises actual VST3 playback-save and PCM/state; no false release approval'
           exit 0
 
@@ -408,17 +414,17 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $dir = 'artifacts/PORTABLE'
           New-Item -ItemType Directory -Force $dir | Out-Null
-          foreach ($binaryName in @('125A_Test_Lab_Host.exe','125A_Test_Lab_State_Stress.exe')) {
+          foreach ($binaryName in @('125A_Test_Lab_Host.exe','125A_Test_Lab_State_Stress.exe','125A_Test_Lab_GUI.exe')) {
             $found = @(Get-ChildItem build -Recurse -File -Filter $binaryName)
             if ($found.Count -ne 1) { throw "Portable Test Lab host missing: $binaryName" }
             Copy-Item -LiteralPath $found[0].FullName -Destination "$dir/$binaryName"
           }
-          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py')) {
+          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','verify_p33_artifacts.py')) {
             if (-not (Test-Path "tests/$script")) { throw "Portable QA script missing: $script" }
             Copy-Item -LiteralPath "tests/$script" -Destination "$dir/$script"
           }
           Copy-Item docs/ONE-COMMAND-QUICKCHECK.md "$dir/README.md"
-          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py"
+          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py"
           if ($LASTEXITCODE -ne 0) { throw 'Portable Python scripts syntax check failed' }
           Get-ChildItem $dir -File | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()

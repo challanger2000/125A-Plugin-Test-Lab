@@ -33,3 +33,39 @@ capture conditions fail instead of generating false green results.
 For complete release acceptance, see
 [PRODUCT-USER-ACCEPTANCE.md](PRODUCT-USER-ACCEPTANCE.md) and implement
 trusted product-specific oracles for all applicable user-facing functions.
+
+## Optional actual Win32 GUI checks in the same command
+
+The portable kit now ships `125A_Test_Lab_GUI.exe` and the independent
+bitmap/control checker. Add `--gui-host ".\\125A_Test_Lab_GUI.exe"` to check
+that an actual VST3 editor opens, detaches, reopens and closes cleanly.
+A plugin with no editor is marked `NOT COVERED`; an editor host failure
+is `FAIL`.
+
+For click and post-click painting checks, also supply a separately prepared
+mapping file with `--gui-controls ".\\controls.json"`:
+
+```json
+{
+  "controls": [{
+    "id": "limiter_enable",
+    "param_id": 9001,
+    "x": 160,
+    "y": 90,
+    "expected_normalized": 1.0,
+    "expected_pixel": {"x": 10, "y": 10, "rgb": [12, 142, 85]}
+  }]
+}
+```
+
+**This is an illustrative fixture mapping, not a real commercial plugin
+mapping.** Obtain coordinates and expected outcomes independently from the
+plugin's specification or approved reference. The runner pins the exact
+plugin binary, launches the actual native GUI, clicks the declared controls
+and checks the resulting controller parameters and actual painted pixels.
+Missing, stale, untestable or wrong results fail. Untested controls remain
+`NOT COVERED`; passing declared controls is *not* complete GUI approval.
+
+A commercial DAW's specific interactions, including its own drag/drop and
+session save/reload, still require an actual DAW-integration test rather
+than an inference from this native GUI host.
