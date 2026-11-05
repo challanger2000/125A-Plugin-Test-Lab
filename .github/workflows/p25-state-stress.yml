@@ -22,6 +22,8 @@ on:
       - 'tests/test_p32_stale_evidence.py'
       - 'tests/verify_p33_artifacts.py'
       - 'tests/test_p33_artifacts.py'
+      - 'tests/verify_product_acceptance.py'
+      - 'tests/test_product_acceptance.py'
       - 'tests/run_p34_capture.py'
       - 'tests/make_p34_capture_manifest.py'
       - 'tests/test_p34_capture.py'
@@ -313,6 +315,13 @@ jobs:
           python tests/run_p34_capture.py --manifest artifacts/P34/wrong-hash.json --out artifacts/P34/negative
           if ($LASTEXITCODE -ne 1) { throw 'P34 wrong native VST3 SHA was accepted' }
           Write-Host '[PASS] P34 native captured PCM/state with binary SHA and negative controls'
+          exit 0
+
+      - name: Production acceptance false-PASS negative controls
+        shell: pwsh
+        run: |
+          python tests/test_product_acceptance.py
+          if ($LASTEXITCODE -ne 0) { throw 'Acceptance evidence gate negative controls failed' }
           exit 0
 
       - name: Publish proof even on failure
