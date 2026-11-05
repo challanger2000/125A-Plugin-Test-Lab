@@ -155,3 +155,19 @@ foreach(mode RANGE 0 2)
   target_link_libraries(QAVoiceMode${mode} PRIVATE sdk)
   target_compile_definitions(QAVoiceMode${mode} PRIVATE NOMINMAX QA_VOICE_MODE=${mode})
 endforeach()
+
+# P30 universal native processor/controller reconnection and stale-state fixture.
+add_executable(TestLabControllerRecovery src/controller_recovery.cpp)
+set_target_properties(TestLabControllerRecovery PROPERTIES OUTPUT_NAME "125A_Test_Lab_Controller_Recovery")
+target_link_libraries(TestLabControllerRecovery PRIVATE Vst3WinModule sdk_hosting sdk_common base pluginterfaces)
+target_compile_definitions(TestLabControllerRecovery PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+if(MSVC)
+  target_compile_options(TestLabControllerRecovery PRIVATE /W4 /permissive- /utf-8)
+endif()
+foreach(mode RANGE 0 1)
+  smtg_add_vst3plugin(QAControllerMode${mode}
+      PACKAGE_NAME "125A_QA_Controller_${mode}"
+      SOURCES_LIST tests/controller_recovery_fixture.cpp)
+  target_link_libraries(QAControllerMode${mode} PRIVATE sdk)
+  target_compile_definitions(QAControllerMode${mode} PRIVATE NOMINMAX P30_MODE=${mode})
+endforeach()
