@@ -25,6 +25,12 @@ on:
       - '.github/workflows/drumator-p03.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
+    inputs:
+      drumator_ref:
+        description: 'Product branch, tag, or commit SHA to test'
+        type: string
+        required: true
+        default: 'develop/beat-creator-10-styles-20261102'
 
 concurrency:
   group: 125a-testlab-${{ github.workflow }}-${{ github.ref }}
@@ -45,18 +51,38 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: challanger2000/125A-Drumator-Final
-          ref: 6184718dda4a725fe4892a9e76533ec24dfa2f17
+          # PR checks use pinned benchmark; manual actions use selected ref.
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.drumator_ref || '6184718dda4a725fe4892a9e76533ec24dfa2f17' }}
           path: drumator-src
           persist-credentials: false
 
-      - name: Verify pinned product revision
+      - name: Verify and record exact product revision
         shell: pwsh
+        env:
+          REQUESTED_PRODUCT_REF: ${{ inputs.drumator_ref }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $actual = (git -C drumator-src rev-parse HEAD).Trim()
-          if ($actual -cne "6184718dda4a725fe4892a9e76533ec24dfa2f17") {
-            throw "Wrong Drumator V1.5 revision: $actual"
+          if ($actual.Length -ne 40 -or $actual -cnotmatch '^[0-9a-f]+$') {
+            throw "Invalid resolved product SHA: $actual"
           }
-          Write-Host "P03 product commit: $actual"
+          if ($env:GITHUB_EVENT_NAME -ne 'workflow_dispatch' -and
+              $actual -cne '6184718dda4a725fe4892a9e76533ec24dfa2f17') {
+            throw "PR benchmark revision changed unexpectedly: $actual"
+          }
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $requested = $env:REQUESTED_PRODUCT_REF
+            if ([string]::IsNullOrWhiteSpace($requested) -or
+                $requested.Length -gt 180 -or
+                $requested -cnotmatch '^[A-Za-z0-9._/-]+$') {
+              throw "Invalid product branch/tag/SHA reference"
+            }
+            Write-Host "[INFO] Requested product ref: $requested"
+          }
+          New-Item -ItemType Directory -Force artifact/P03 | Out-Null
+          "Resolved tested product revision: $actual" |
+            Set-Content artifact/P03/TESTED-PRODUCT-REVISION.txt
+          Write-Host "[PASS] Product SHA: $actual"
 
       - name: Configure Test Lab and obtain exact Steinberg SDK
         shell: pwsh
@@ -389,7 +415,7 @@ jobs:
           }
           @(
             "P03 status is the GitHub Actions workflow conclusion; logs alone are not a PASS.",
-            "Product SHA 6184718dda4a725fe4892a9e76533ec24dfa2f17",
+            "Actual product SHA $((git -C drumator-src rev-parse HEAD).Trim())",
             "Only synthetic self-created sample content; no proprietary drum kits.",
             "P05 matrix checks timing and block equivalence for 90/120/150 BPM, 0/25/50 swing.",
             "P06 tests the actual MIDI export core in an independently built harness.",
