@@ -34,6 +34,17 @@ For complete release acceptance, see
 [PRODUCT-USER-ACCEPTANCE.md](PRODUCT-USER-ACCEPTANCE.md) and implement
 trusted product-specific oracles for all applicable user-facing functions.
 
+## Drag-and-drop Windows launcher
+
+You can now drag an installed, trusted `.vst3` **folder** onto
+`Run-VST3-Test.cmd` inside the extracted PORTABLE folder. The launcher
+automatically runs native audio processing, playback saves, state capture
+and real editor open/close checks. You do not need to enter a command.
+Reports are written under `RESULTS/<plugin-name>/`. Python 3 must be
+installed. An absent editor is shown as NOT COVERED rather than success.
+The program always refuses to certify the product release without a
+product-specific acceptance audit.
+
 ## Optional actual Win32 GUI checks in the same command
 
 The portable kit now ships `125A_Test_Lab_GUI.exe` and the independent
