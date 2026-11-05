@@ -1,5 +1,47 @@
 # START HERE — 125A Plugin Test Lab
 
+## Latest usable Windows test kit (5 November 2026)
+
+The currently verified native Windows x64 quickcheck runs a real third-party
+VST3 through 2,500 audio callbacks, 500 playback-time state saves and an
+independent native PCM/state capture. It pins the exact VST3 module SHA-256,
+rejects missing or stale evidence and never treats technical success as full
+product release approval.
+
+**Use without compiling the test host yourself:** download the latest
+successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42094249483),
+open its `PORTABLE` folder, and follow `README.md`. The artifact
+contains both native x64 audio/state hosts, all supporting Python scripts
+and SHA-256 checksums. Python 3 on Windows is required.
+
+```powershell
+python run_plugin_quickcheck.py --plugin "C:\\VST3\\Plugin.vst3" --host ".\\125A_Test_Lab_Host.exe" --stress-host ".\\125A_Test_Lab_State_Stress.exe" --out ".\\QA-Results"
+```
+
+**Native GUI tests:** the separate [P04 Windows GUI artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42092611162)
+contains `125A_Test_Lab_GUI.exe`. The generic click-coordinate and
+painted-pixel test runner lives in
+[tests/run_gui_control_matrix.py](tests/run_gui_control_matrix.py) with
+[GUI contract](docs/GUI-CONTROL-MATRIX.md). An independently specified
+control map is needed; the host cannot automatically infer every knob,
+dialog or product-specific action. A real mouse click, normalized controller
+value and rendered GUI bitmap can be checked in the same host instance.
+A deliberately stale painted UI is detected even when the controller passes.
+
+Real fresh-process state recall is described in
+[REAL-STATE-RELOAD.md](docs/REAL-STATE-RELOAD.md); actual Win32 editor
+capture in [NATIVE-GUI-CAPTURE.md](docs/NATIVE-GUI-CAPTURE.md).
+For the mandatory 18-domain release NO-GO audit, see
+[PRODUCT-USER-ACCEPTANCE.md](docs/PRODUCT-USER-ACCEPTANCE.md).
+
+**Important:** These are infrastructure and user-workflow building blocks.
+Some production-specific MIDI/WAV operations, complete control inventories,
+preset semantics and commercial DAW acceptance still require trusted
+product-specific adapters or a DAW-equipped runner. Missing checks are
+`NOT COVERED`, and no technical quickcheck alone authorizes a release.
+All older milestones below are historical snapshots and their original
+coverage limitations must be read alongside the newer capabilities above.
+
 ## Established and verified
 
 P01–P11 plus the P13 **GUI drag-source** test passed in
