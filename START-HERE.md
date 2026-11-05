@@ -8,6 +8,14 @@ independent native PCM/state capture. It pins the exact VST3 module SHA-256,
 rejects missing or stale evidence and never treats technical success as full
 product release approval.
 
+**Simplest Windows use:** drag the trusted installed `.vst3` **folder**
+onto `Run-VST3-Test.cmd` in the extracted `PORTABLE` package.
+The test runs native audio playback, repeated state saves, rendering,
+state capture and actual editor open/close checks; reports are written
+under `RESULTS`. If the plugin has no editor, GUI is `NOT COVERED`.
+An external per-product control map can additionally automate click/pixel
+checks (see `docs/ONE-COMMAND-QUICKCHECK.md`).
+
 **Use without compiling the test host yourself:** download the latest
 successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42094249483),
 open its `PORTABLE` folder, and follow `README.md`. The artifact
