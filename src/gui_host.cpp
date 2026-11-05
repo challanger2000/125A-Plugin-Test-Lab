@@ -785,36 +785,74 @@ private:
 class NativeDropWindow final {
 public:
     explicit NativeDropWindow(const std::filesystem::path& folder) {
-        const HRESULT ole = OleInitialize(nullptr); // existing STA is legal
-        require(SUCCEEDED(ole), "P13 OLE apartment initialization failed");
-        oleInitialized_ = true;
-        target_ = new NativeFileDropTarget(folder);
-        // This top-most rectangle is a genuine independent target window,
-        // not inside the plugin and not an intercepted export function.
-        HWND w = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-            L"STATIC", L"125A Lab CF_HDROP Receiver", WS_POPUP | WS_VISIBLE,
-            35, 35, 280, 140, nullptr, nullptr,
-            GetModuleHandleW(nullptr), nullptr);
-        require(w != nullptr, "P13 could not create receiving Win32 HWND");
-        window_ = w;
-        require(RegisterDragDrop(window_, target_) == S_OK,
-                "P13 RegisterDragDrop failed on real receiver HWND");
-        registered_ = true;
-        ShowWindow(window_, SW_SHOWNORMAL);
-        UpdateWindow(window_);
+        // An actual external DAW uses another STA with its own message loop.
+        // A drop target registered on the drag SOURCE thread is not a
+        // representative interapplication OLE test and can be starved by
+        // the synchronous DoDragDrop nested pump on that same thread.
+        receiverThread_ = std::thread([this, folder] {
+            const HRESULT ole = OleInitialize(nullptr);
+            if (FAILED(ole)) {
+                failed_.store(true,std::memory_order_release);
+                ready_.store(true,std::memory_order_release);
+                return;
+            }
+            NativeFileDropTarget* target = new NativeFileDropTarget(folder);
+            HWND w = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+                L"STATIC", L"125A Lab CF_HDROP Receiver", WS_POPUP | WS_VISIBLE,
+                35, 35, 280, 140, nullptr, nullptr,
+                GetModuleHandleW(nullptr), nullptr);
+            const bool ok = w != nullptr && RegisterDragDrop(w,target) == S_OK;
+            if (ok) {
+                ShowWindow(w,SW_SHOWNORMAL);
+                UpdateWindow(w);
+                target_.store(target,std::memory_order_release);
+                window_.store(w,std::memory_order_release);
+            } else {
+                failed_.store(true,std::memory_order_release);
+            }
+            ready_.store(true,std::memory_order_release);
+            if (ok) {
+                MSG msg{};
+                while (!stop_.load(std::memory_order_acquire)) {
+                    while (PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)) {
+                        TranslateMessage(&msg);
+                        DispatchMessageW(&msg);
+                    }
+                    Sleep(6);
+                }
+                (void)RevokeDragDrop(w);
+            }
+            if (w) DestroyWindow(w);
+            target->Release();
+            OleUninitialize();
+        });
+        for (unsigned t=0;t<300 && !ready_.load(std::memory_order_acquire);++t)
+            Sleep(10);
+        if (!ready_.load(std::memory_order_acquire) ||
+            failed_.load(std::memory_order_acquire)) {
+            stop_.store(true,std::memory_order_release);
+            if (receiverThread_.joinable()) receiverThread_.join();
+            throw std::runtime_error(
+                "P13 independent COM/STA receiver thread or HWND failed to start");
+        }
+        std::cout << "[INFO] P13 independent drop receiver ready on "
+                     "separate Win32 STA + message loop\n";
     }
     ~NativeDropWindow() {
-        if (registered_) (void)RevokeDragDrop(window_);
-        if (window_) DestroyWindow(window_);
-        if (target_) target_->Release();
-        if (oleInitialized_) OleUninitialize();
+        stop_.store(true,std::memory_order_release);
+        if (receiverThread_.joinable()) receiverThread_.join();
     }
-    NativeFileDropTarget& target() { return *target_; }
-    HWND get() const { return window_; }
+    NativeFileDropTarget& target() {
+        auto* v=target_.load(std::memory_order_acquire);
+        require(v!=nullptr,"P13 independent receiver has no IDropTarget");
+        return *v;
+    }
+    HWND get() const { return window_.load(std::memory_order_acquire); }
 private:
-    HWND window_{};
-    NativeFileDropTarget* target_{};
-    bool oleInitialized_{},registered_{};
+    std::thread receiverThread_;
+    std::atomic<HWND> window_{nullptr};
+    std::atomic<NativeFileDropTarget*> target_{nullptr};
+    std::atomic<bool> ready_{false}, failed_{false}, stop_{false};
 };
 
 void injectButton(DWORD flags) {
@@ -859,6 +897,11 @@ void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
     pump(80);
     std::cout << "[INFO] P13 visible desktop " << desktopW << "x" << desktopH
               << " product host moved dx=" << dx << " dy=" << dy << "\n";
+    // OleInitialize is required on the source STA that invokes DoDragDrop.
+    // The receiving window owns its *own* distinct OLE STA.
+    const HRESULT sourceOle=OleInitialize(nullptr);
+    require(SUCCEEDED(sourceOle),"P13 source OLE apartment init failed");
+    struct SourceOleScope { ~SourceOleScope(){OleUninitialize();} } sourceScope;
     NativeDropWindow drop(folder);
     const auto unchanged = captureActualComponentState(processorComponent);
     const std::array<const wchar_t*, 4> originalNames{
