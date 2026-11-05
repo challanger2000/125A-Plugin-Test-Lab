@@ -34,6 +34,23 @@ that every plugin's audio or GUI behavior passed.
 two real, unrelated VST3 test fixtures PASS together, while a malformed
 module is correctly isolated as FAIL alongside an otherwise healthy one.
 
+## Universal VST3 concurrency and sample-rate stress (P25)
+
+P25 adds a separate C++23 Win32 VST3 host exercising real process() on the
+audio thread while getState()/setState() remain serialized on the main
+control thread, consistent with Steinberg's VST3 threading contract.
+The real VST3 state fixture suite verifies 500 saves per scenario, 2,500
+process callbacks (including zero-frame calls), competing control/RT state
+writers, a save-only normal playback mode, and 44.1/48/96 kHz timing.
+
+The Windows evidence [P25 Actions 42046335507](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42046335507)
+shows 11/11 expected outcomes: all positive fixtures PASS, 21 torn snapshots
+detected in the deliberately defective fixture, 100/500 save failures
+detected in the broken-playback-save fixture, and a wrong 96 kHz timed ramp
+rejected. P25 does not certify production plugins without adapters,
+instrument voice-limit tests, proprietary GUI recovery or DAW integration.
+See docs/P25-UNIVERSAL-COVERAGE.md for every NOT COVERED item.
+
 ## What actually passed
 
 All gates below have verified Windows GitHub Actions evidence, not just

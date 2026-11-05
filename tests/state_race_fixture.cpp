@@ -1,0 +1,149 @@
+// P25/P26 independently specified VST3 state/RT fixtures.
+// No production-plugin code. GOOD uses one atomic transaction. BROKEN uses
+// independently published related fields or arbitrarily refuses playback saves.
+#include "public.sdk/source/main/pluginfactory.h"
+#include "public.sdk/source/vst/vstaudioeffect.h"
+#include "pluginterfaces/base/ibstream.h"
+#include "pluginterfaces/vst/vstspeaker.h"
+#include "pluginterfaces/base/ibstream.h"
+#include <atomic>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <thread>
+using namespace Steinberg;
+using namespace Steinberg::Vst;
+#ifndef QA_STATE_MODE
+#define QA_STATE_MODE 0
+#endif
+namespace {
+const FUID uid(0x125A3525,0x20261105,0x00002500 + QA_STATE_MODE,0xA5000000 + QA_STATE_MODE);
+constexpr int32 kA=11, kB=22, kC=33, kD=44;
+struct State {uint32 magic; int32 bank; int32 program; uint32 check;};
+constexpr uint32 magic=0x125A2526;
+void badFixtureWindow() {
+    // Deliberately incorrect realtime writer publishes two fields apart.
+    // High-resolution delay avoids the 1-16 ms Windows Sleep quantum.
+    const auto until=std::chrono::steady_clock::now()+std::chrono::microseconds(20);
+    while(std::chrono::steady_clock::now()<until)
+        std::atomic_signal_fence(std::memory_order_seq_cst);
+}
+
+State pack(int32 bank,int32 program) {
+    return {magic,bank,program,magic ^ uint32(bank) ^ (uint32(program)<<8)};
+}
+bool valid(State s) {
+    return s.magic==magic && s.check==(magic ^ uint32(s.bank) ^ (uint32(s.program)<<8)) &&
+        ((s.bank==kA && s.program==kB)||(s.bank==kC && s.program==kD));
+}
+class Fixture final : public AudioEffect {
+public:
+    static FUnknown* createInstance(void*) {return static_cast<IAudioProcessor*>(new Fixture);}
+    tresult PLUGIN_API initialize(FUnknown* c) override {
+        if (AudioEffect::initialize(c)!=kResultOk) return kResultFalse;
+        addAudioOutput(STR16("Stereo Out"),SpeakerArr::kStereo);
+        return kResultOk;
+    }
+    tresult PLUGIN_API setupProcessing(ProcessSetup& setup) override {
+        rate_=setup.sampleRate;
+        if (rate_<40000.||rate_>192000.) return kResultFalse;
+        return AudioEffect::setupProcessing(setup);
+    }
+    tresult PLUGIN_API setActive(TBool active) override {
+        if (active) {samples_=0; blocks_=0;}
+        active_.store(active!=0,std::memory_order_release);
+        return AudioEffect::setActive(active);
+    }
+    tresult PLUGIN_API setProcessing(TBool) override {return kResultOk;}
+    tresult PLUGIN_API setState(IBStream* stream) override {
+        if (!stream) return kInvalidArgument;
+        State s{}; int32 n=0;
+        if (stream->read(&s,sizeof(s),&n)!=kResultOk||n!=sizeof(s)||!valid(s))
+            return kResultFalse;
+#if QA_STATE_MODE==1
+        bank_.store(s.bank,std::memory_order_relaxed);
+        badFixtureWindow();
+        program_.store(s.program,std::memory_order_relaxed);
+#else
+        pair_.store((uint64(uint32(s.bank))<<32)|uint32(s.program),std::memory_order_release);
+#endif
+        return kResultOk;
+    }
+    tresult PLUGIN_API getState(IBStream* stream) override {
+        if (!stream) return kInvalidArgument;
+#if QA_STATE_MODE==2
+        if (active_.load(std::memory_order_acquire) &&
+            (++saves_ % 5)==0) return kResultFalse;
+#endif
+        int32 b,p;
+#if QA_STATE_MODE==1
+        b=bank_.load(std::memory_order_relaxed);
+        std::this_thread::yield();
+        p=program_.load(std::memory_order_relaxed);
+#else
+        const auto pair=pair_.load(std::memory_order_acquire);
+        b=int32(pair>>32);p=int32(uint32(pair));
+#endif
+        const State s=pack(b,p);
+        int32 n=0;
+        return stream->write(const_cast<State*>(&s),sizeof(s),&n)==kResultOk &&
+            n==sizeof(s) ? kResultOk : kResultFalse;
+    }
+    tresult PLUGIN_API process(ProcessData& d) override {
+        if (d.symbolicSampleSize!=kSample32||d.numSamples<0||d.numSamples>2048||
+            d.numOutputs!=1||!d.outputs||d.outputs[0].numChannels!=2||
+            !d.outputs[0].channelBuffers32) return kResultFalse;
+        // Deliberate concurrent WRITE from the audio callback, not just READ.
+        if ((++blocks_ & 3)==0) {
+            const bool alternate=(blocks_ & 4)!=0;
+            const int32 bank=alternate?kC:kA, program=alternate?kD:kB;
+#if QA_STATE_MODE==1
+            bank_.store(bank,std::memory_order_relaxed);
+            std::this_thread::yield();
+            program_.store(program,std::memory_order_relaxed);
+#else
+            pair_.store((uint64(uint32(bank))<<32)|uint32(program),std::memory_order_release);
+#endif
+        }
+        auto* left=d.outputs[0].channelBuffers32[0];
+        auto* right=d.outputs[0].channelBuffers32[1];
+        if (!left||!right) return kResultFalse;
+        const double denominator = 0.1 *
+#if QA_STATE_MODE==3
+            44100.0;
+#else
+            rate_;
+#endif
+        for(int i=0;i<d.numSamples;++i) {
+            const auto v=Sample32(0.25*std::min(1.,double(samples_++)/denominator));
+            left[i]=v;right[i]=v;
+        }
+        d.outputs[0].silenceFlags=0;
+        return kResultOk;
+    }
+private:
+    std::atomic<uint64> pair_{(uint64(kA)<<32)|uint32(kB)};
+    std::atomic<int32> bank_{kA}, program_{kB};
+    std::atomic<bool> active_{false};
+    std::atomic<int> saves_{0};
+    double rate_=44100.;
+    int64 samples_=0;
+    uint64 blocks_=0;
+};
+#if QA_STATE_MODE==0
+constexpr const char* name="125A QA Concurrency Good";
+#elif QA_STATE_MODE==1
+constexpr const char* name="125A QA Concurrency Torn State";
+#elif QA_STATE_MODE==2
+constexpr const char* name="125A QA Concurrency Save Refusal";
+#else
+constexpr const char* name="125A QA Concurrency Wrong Rate";
+#endif
+}
+BEGIN_FACTORY_DEF("125A Universal QA","https://github.com/challanger2000","qa@125a.invalid")
+DEF_CLASS2(INLINE_UID_FROM_FUID(uid),PClassInfo::kManyInstances,
+           kVstAudioEffectClass,name,Vst::kDistributable,"Fx","0.1",kVstVersionString,
+           Fixture::createInstance)
+END_FACTORY
