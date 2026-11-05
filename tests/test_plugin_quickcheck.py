@@ -25,18 +25,32 @@ with tempfile.TemporaryDirectory() as td:
     out = root / "result"
 
     def synthetic_native(cmd, **kwargs):
-        assert cmd[1].endswith("run_product_qa.py")
         target = Path(cmd[cmd.index("--out") + 1])
         target.mkdir(parents=True, exist_ok=True)
-        (target / "PRODUCT-QA-RESULT.json").write_text(
-            json.dumps({"status": "TECHNICAL_PASS", "release_approved": False,
-                        "verified_vst3_sha256": sha}), encoding="utf-8")
-        return subprocess.CompletedProcess(cmd, 0, "native smoke passed", "")
+        if cmd[1].endswith("run_product_qa.py"):
+            (target / "PRODUCT-QA-RESULT.json").write_text(
+                json.dumps({"status": "TECHNICAL_PASS", "release_approved": False,
+                            "verified_vst3_sha256": sha}), encoding="utf-8")
+            captured = target / "P34" / "captured-state.bin"
+            captured.parent.mkdir(parents=True, exist_ok=True)
+            captured.write_bytes(b"stored project state fixture")
+            return subprocess.CompletedProcess(cmd, 0, "native smoke passed", "")
+        if cmd[1].endswith("run_state_reload.py"):
+            (target / "RECALL-RESULT.json").write_text(
+                json.dumps({"status": "PASS", "verified_vst3_sha256": sha,
+                            "new_process_instances": 2,
+                            "fresh_process_recall": "PASS",
+                            "audio_determinism": "NOT COVERED",
+                            "musical_correctness": "NOT COVERED"}), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "two fresh native hosts", "")
+        raise AssertionError("unexpected synthetic stage: " + repr(cmd))
 
     report = quick.run(bundle, host, stress, out, runner=synthetic_native)
     assert report["status"] == "TECHNICAL_PASS"
     assert report["release_approved"] is False
     assert report["verified_module_sha256"] == sha
+    assert report["coverage"]["fresh_process_project_recall"] == "PASS"
+    assert report["coverage"]["recall_audio_determinism"] == "NOT COVERED"
     assert report["coverage"]["product_gui_controls"] == "NOT COVERED"
     assert report["coverage"]["commercial_daw_integration"] == "NOT COVERED"
 
@@ -47,6 +61,30 @@ with tempfile.TemporaryDirectory() as td:
     assert bad["status"] == "FAIL" and bad["release_approved"] is False
     assert not (out / "native" / "PRODUCT-QA-RESULT.json").exists(), (
         "stale native report survived a new invocation")
+
+    # A native host that returns success but no new state-recall report must
+    # never reuse old green evidence from an earlier quickcheck.
+    def missing_recall(cmd, **kwargs):
+        if cmd[1].endswith("run_state_reload.py"):
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return synthetic_native(cmd, **kwargs)
+    failed_recall = quick.run(bundle, host, stress, out, runner=missing_recall)
+    assert failed_recall["status"] == "FAIL", "stale recall PASS reused"
+    assert failed_recall["release_approved"] is False
+    assert not (out / "fresh-recall" / "RECALL-RESULT.json").exists()
+
+    def wrong_recall_identity(cmd, **kwargs):
+        if cmd[1].endswith("run_state_reload.py"):
+            target = Path(cmd[cmd.index("--out") + 1])
+            target.mkdir(parents=True, exist_ok=True)
+            (target / "RECALL-RESULT.json").write_text(json.dumps({
+                "status": "PASS", "verified_vst3_sha256": "f" * 64,
+                "new_process_instances": 2, "fresh_process_recall": "PASS"
+            }), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "wrong plugin", "")
+        return synthetic_native(cmd, **kwargs)
+    assert quick.run(bundle, host, stress, out, runner=wrong_recall_identity)[
+        "status"] == "FAIL", "recall for another plugin accepted"
 
     def mismatched(cmd, **kwargs):
         target = Path(cmd[cmd.index("--out") + 1])
