@@ -93,4 +93,27 @@ with tempfile.TemporaryDirectory() as td:
     result = recall.check(product, root / "nondeterministic", runner=fake_host)
     assert result["status"] == "PASS"
     assert result["audio_determinism"] == "NOT COVERED"
+    # VST3 allows small, non-empty opaque state streams. Do not reject
+    # valid one-byte states purely because our old fixtures were larger.
+    state.write_bytes(b"x")
+    result = recall.check(product, root / "tiny_state", runner=fake_host)
+    assert result["status"] == "PASS", "valid one-byte state refused"
+    state.write_bytes(b"")
+    try:
+        recall.check(product, root / "empty_state", runner=fake_host)
+    except ValueError as e:
+        assert "invalid state size" in str(e)
+    else:
+        raise AssertionError("empty plugin state accepted")
+    # Sparse logical file exercises the upper resource bound without making a
+    # 128 MiB memory allocation during unit test.
+    with state.open("wb") as stream:
+        stream.seek(128 * 1024 * 1024 - 1)
+        stream.write(b"X")
+    try:
+        recall.check(product, root / "oversize_state", runner=fake_host)
+    except ValueError as e:
+        assert "invalid state size" in str(e)
+    else:
+        raise AssertionError("state at upper size limit accepted")
 print("[PASS] fresh-process state-recall rejects stale outputs, wrong binary and audio reference")

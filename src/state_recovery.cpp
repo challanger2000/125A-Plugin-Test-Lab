@@ -49,7 +49,7 @@ void saveState(IComponent* c,const std::filesystem::path& path) {
     ResizableMemoryIBStream stream;
     check(c->getState(&stream)==kResultOk,"getState failed after state operation");
     const auto bytes=stream.getCursor();
-    check(bytes>0&&bytes<16*1024*1024,"getState returned unreasonable payload");
+    check(bytes>0&&bytes<128 * 1024 * 1024,"getState returned unreasonable payload");
     dump(path,stream.getData(),static_cast<size_t>(bytes));
 }
 void render(IAudioProcessor* p,const std::filesystem::path& path,int sampleRate) {

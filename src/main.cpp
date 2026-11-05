@@ -271,7 +271,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                 std::ifstream stateFile(statePath, std::ios::binary | std::ios::ate);
                 require(stateFile.good(), "Cannot open state fixture file");
                 const auto length = stateFile.tellg();
-                require(length > 0 && length < 16 * 1024 * 1024,
+                require(length > 0 && length < 128 * 1024 * 1024,
                         "Invalid state fixture size");
                 std::vector<char> bytes(static_cast<size_t>(length));
                 stateFile.seekg(0);
@@ -386,7 +386,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                 require(component->getState(&returnedState) == kResultOk,
                         "Plugin failed to save VST3 component state");
                 const auto size = returnedState.getCursor();
-                require(size > 8 && size < 16 * 1024 * 1024,
+                require(size > 0 && size < 128 * 1024 * 1024,
                         "Plugin saved empty or unreasonable component state");
                 std::ofstream dump(stateSnapshotPath, std::ios::binary | std::ios::trunc);
                 require(dump.good(), "Cannot open state snapshot path");
