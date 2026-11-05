@@ -57,6 +57,56 @@ with tempfile.TemporaryDirectory() as td:
         return subprocess.CompletedProcess(cmd, 0, "fake other plugin", "")
 
     assert quick.run(bundle, host, stress, out, runner=mismatched)["status"] == "FAIL"
+    # The same invocation can prove a real editor's two lifecycle cycles.
+    gui = root / "gui.exe"
+    gui.write_bytes(b"dummy native gui host")
+    controls_file = root / "independent-controls.json"
+    controls_file.write_text(json.dumps({"controls": [
+        {"id": "switch", "param_id": 9001, "x": 120, "y": 80,
+         "expected_normalized": 1.0}]}), encoding="utf-8")
+
+    def all_native_gui(cmd, **kwargs):
+        if cmd[1] == "--probe":
+            return subprocess.CompletedProcess(
+                cmd, 0, "two actual editor attach/message/input/detach cycles", "")
+        if cmd[1].endswith("run_gui_control_matrix.py"):
+            out_name = Path(cmd[cmd.index("--out") + 1])
+            out_name.mkdir(parents=True, exist_ok=True)
+            (out_name / "GUI-CONTROL-RESULT.json").write_text(json.dumps({
+                "status": "TECHNICAL_PASS", "verified_module_sha256": sha,
+                "tested_controls": 1}), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "real native matrix success", "")
+        return synthetic_native(cmd, **kwargs)
+
+    report = quick.run(bundle, host, stress, out, runner=all_native_gui,
+                       gui_host=gui, gui_controls=controls_file)
+    assert report["status"] == "TECHNICAL_PASS"
+    assert report["coverage"]["native_gui_lifecycle"] == "PASS"
+    assert report["coverage"]["declared_gui_controls"] == "PASS"
+    assert report["coverage"]["product_gui_controls"] == "NOT COVERED"
+
+    def gui_not_available(cmd, **kwargs):
+        if cmd[1] == "--probe":
+            return subprocess.CompletedProcess(cmd, 10, "", "[INCONCLUSIVE] no editor")
+        return synthetic_native(cmd, **kwargs)
+
+    result = quick.run(bundle, host, stress, out, runner=gui_not_available,
+                       gui_host=gui)
+    assert result["status"] == "TECHNICAL_PASS"
+    assert result["coverage"]["native_gui_lifecycle"] == "NOT COVERED"
+    result = quick.run(bundle, host, stress, out, runner=gui_not_available,
+                       gui_host=gui, gui_controls=controls_file)
+    assert result["status"] == "FAIL", "requested unexecutable GUI test approved"
+
+    def absent_matrix(cmd, **kwargs):
+        if cmd[1].endswith("run_gui_control_matrix.py"):
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return all_native_gui(cmd, **kwargs)
+
+    result = quick.run(bundle, host, stress, out, runner=absent_matrix,
+                       gui_host=gui, gui_controls=controls_file)
+    assert result["status"] == "FAIL", "stale GUI evidence accepted"
+
     (bundle / "Contents" / "x86_64-win" / "Extra.vst3").write_bytes(b"extra")
     try:
         quick.run(bundle, host, stress, out, runner=synthetic_native)
