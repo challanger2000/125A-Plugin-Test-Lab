@@ -402,6 +402,31 @@ jobs:
           Write-Host '[PASS] One command exercises actual VST3 playback-save and PCM/state; no false release approval'
           exit 0
 
+      - name: Stage portable one-command Windows VST3 quickcheck kit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = 'artifacts/PORTABLE'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          foreach ($binaryName in @('125A_Test_Lab_Host.exe','125A_Test_Lab_State_Stress.exe')) {
+            $found = @(Get-ChildItem build -Recurse -File -Filter $binaryName)
+            if ($found.Count -ne 1) { throw "Portable Test Lab host missing: $binaryName" }
+            Copy-Item -LiteralPath $found[0].FullName -Destination "$dir/$binaryName"
+          }
+          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py')) {
+            if (-not (Test-Path "tests/$script")) { throw "Portable QA script missing: $script" }
+            Copy-Item -LiteralPath "tests/$script" -Destination "$dir/$script"
+          }
+          Copy-Item docs/ONE-COMMAND-QUICKCHECK.md "$dir/README.md"
+          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py"
+          if ($LASTEXITCODE -ne 0) { throw 'Portable Python scripts syntax check failed' }
+          Get-ChildItem $dir -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content "$dir/SHA256.txt"
+          Write-Host '[PASS] Portable Windows native host and scripts staged with SHA256 fingerprints'
+          exit 0
+
       - name: Publish proof even on failure
         if: always()
         uses: actions/upload-artifact@v4
@@ -418,5 +443,6 @@ jobs:
             artifacts/P34/
             artifacts/PRODUCT-QA/
             artifacts/QUICKCHECK/
+            artifacts/PORTABLE/
           if-no-files-found: warn
           retention-days: 14
