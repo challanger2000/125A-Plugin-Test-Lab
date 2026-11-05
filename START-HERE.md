@@ -2,6 +2,36 @@
 
 ## Latest usable Windows test kit (5 November 2026)
 
+## Current test acceptance and latest proof
+
+**Exact Windows code:** `main` at commit
+`b841783ef3e8855ed353ae7310dbb638ddfad5ea`.
+The complete relevant Windows CI for the latest changes has passed,
+including the real production VST3 GUI/exports regression and all 13
+independent product-domain evidence gates.
+
+The one-click Windows test now opens the captured project state in **two
+separate newly launched native VST3 host processes** and re-saves the
+state; rejected loads or missing evidence produce FAIL. The native state
+bounds accept nonempty serialized payloads below **128 MiB**, including
+large instrument state data. For products with an approved byte-exact
+state reference, `expected_saved_state_sha256` additionally checks both
+post-reload state artifacts to catch silent state corruption.
+
+The real Drumator P21 report no longer treats arbitrary `[PASS]` log
+text as release evidence. Each of its 13 gates now demands its own
+complete independent oracle marker; multi-recall demands three
+observations. Wrong, duplicated, stale, missing or contradictory proof
+fails the automated gate. [Verified Windows P03 run](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42102036359).
+
+**Remaining hard boundary:** success in the standalone host does not
+prove product-specific musical semantics, every UI control, commercial
+DAW session recall, or DAW drag-and-drop. These still require independent
+product-specific reference data or real DAW integration. They remain
+`NOT COVERED` rather than being called PASS.
+
+
+
 The currently verified native Windows x64 quickcheck runs a real third-party
 VST3 through 2,500 audio callbacks, 500 playback-time state saves and an
 independent native PCM/state capture. It pins the exact VST3 module SHA-256,
@@ -17,7 +47,7 @@ An external per-product control map can additionally automate click/pixel
 checks (see `docs/ONE-COMMAND-QUICKCHECK.md`).
 
 **Use without compiling the test host yourself:** download the latest
-successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42098560911),
+successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42101336624),
 open its `PORTABLE` folder, and follow `README.md`. The artifact
 contains all three native x64 audio/state/GUI hosts, the drag-and-drop launcher, supporting Python scripts
 and SHA-256 checksums. Python 3 on Windows is required.
