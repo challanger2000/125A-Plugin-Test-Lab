@@ -100,3 +100,20 @@ foreach(mode RANGE 0 3)
   target_link_libraries(QAStateMode${mode} PRIVATE sdk)
   target_compile_definitions(QAStateMode${mode} PRIVATE NOMINMAX QA_STATE_MODE=${mode})
 endforeach()
+
+# P26: real native VST3 failed-state rollback and successful recovery, with
+# expected state and PCM outcomes supplied by an external Python adapter.
+add_executable(TestLabRecovery src/state_recovery.cpp)
+set_target_properties(TestLabRecovery PROPERTIES OUTPUT_NAME "125A_Test_Lab_Recovery")
+target_link_libraries(TestLabRecovery PRIVATE Vst3WinModule sdk_hosting sdk_common base pluginterfaces)
+target_compile_definitions(TestLabRecovery PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+if(MSVC)
+  target_compile_options(TestLabRecovery PRIVATE /W4 /permissive- /utf-8)
+endif()
+foreach(mode RANGE 4 5)
+  smtg_add_vst3plugin(QAStateMode${mode}
+      PACKAGE_NAME "125A_QA_State_${mode}"
+      SOURCES_LIST tests/state_race_fixture.cpp)
+  target_link_libraries(QAStateMode${mode} PRIVATE sdk)
+  target_compile_definitions(QAStateMode${mode} PRIVATE NOMINMAX QA_STATE_MODE=${mode})
+endforeach()
