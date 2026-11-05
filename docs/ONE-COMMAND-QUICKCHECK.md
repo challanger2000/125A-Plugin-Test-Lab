@@ -1,6 +1,6 @@
 # One-command real VST3 technical quickcheck
 
-On Windows x64, given two native Test Lab executables and an installed VST3
+Download the latest successful P25 Windows Actions artifact and extract its `PORTABLE` directory. It contains both native hosts, all required Python scripts, a README, and a SHA-256 inventory. Python 3 is required. Run the following from that directory.\n\nOn Windows x64, given two native Test Lab executables and an installed VST3
 bundle, this command executes the existing P32 playback-save and P34 native
 audio/state capture with no handwritten manifest:
 
