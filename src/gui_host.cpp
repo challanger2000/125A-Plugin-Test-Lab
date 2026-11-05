@@ -291,6 +291,18 @@ int run(const std::string& pluginPath, bool checkClick, ParamID paramID) {
 }
 
 
+std::vector<std::uint8_t> captureActualComponentState(IComponent* component) {
+    ResizableMemoryIBStream stream;
+    require(component->getState(&stream) == kResultOk,
+            "P09 cannot read live VST3 component state");
+    const auto bytes = stream.getCursor();
+    require(bytes > 64 && bytes < 16 * 1024 * 1024,
+            "P09 live project state has invalid size");
+    const auto* begin = static_cast<const std::uint8_t*>(stream.getData());
+    require(begin != nullptr, "P09 live project state has no bytes");
+    return {begin, begin + bytes};
+}
+
 void saveActualComponentState(IComponent* component, const std::filesystem::path& path) {
     ResizableMemoryIBStream stream;
     require(component->getState(&stream) == kResultOk,
@@ -420,6 +432,24 @@ void runRealDrumatorGui(const std::string& path,
                       << client.bottom << " pixels\n";
 
             saveActualComponentState(component.get(), originalState);
+            // A visible, stateful control independently proves that the
+            // native pointer reaches the live controller AND the processor.
+            // If it fails, don't interpret GENERATE/APPLY state as a plugin
+            // defect: this host cannot yet reproduce real GUI input.
+            const auto baseline = captureActualComponentState(component.get());
+            clickRealDrumatorGui(child, 1122.5, 29.0,
+                                 "CONTROL: toggle LIMIT OFF to ON");
+            const auto afterLimiter = captureActualComponentState(component.get());
+            require(afterLimiter != baseline,
+                    "P09 GUI input bridge failed: LIMIT click produced no component change");
+            std::cout << "[PASS] P09 positive control: actual GUI limiter click "
+                         "changed processor state\n";
+            clickRealDrumatorGui(child, 1122.5, 29.0,
+                                 "CONTROL: restore limiter OFF");
+            const auto restored = captureActualComponentState(component.get());
+            require(restored == baseline,
+                    "P09 limiter reversal failed to restore original project state");
+            std::cout << "[PASS] P09 positive control: limiter toggled back to baseline\n";
             // Click real production Beat Creator button at its 1280px
             // logical header coordinates (center x=769,y=115).
             clickRealDrumatorGui(child, 769.0, 115.0, "OPEN Beat Creator");
