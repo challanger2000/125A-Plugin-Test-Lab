@@ -124,7 +124,13 @@ public:
             rate_;
 #endif
         for(int i=0;i<d.numSamples;++i) {
-#if QA_STATE_MODE==4 || QA_STATE_MODE==5
+#if QA_STATE_MODE==6
+            // Broken DSP: advances envelope by one fixed amount per host
+            // callback, not per sample. Zero-frame callbacks also perturb it.
+            const Sample32 v=Sample32(0.25 * std::min(1.0,
+                double(blocks_ * 64) / (0.1 * rate_)));
+            ++samples_;
+#elif QA_STATE_MODE==4 || QA_STATE_MODE==5
             const auto pair=pair_.load(std::memory_order_acquire);
             const auto bank=int32(pair>>32);
             const auto program=int32(uint32(pair));
@@ -160,6 +166,8 @@ constexpr const char* name="125A QA Concurrency Wrong Rate";
 constexpr const char* name="125A QA Recovery Good";
 #elif QA_STATE_MODE==5
 constexpr const char* name="125A QA Recovery Broken Rollback";
+#elif QA_STATE_MODE==6
+constexpr const char* name="125A QA Wrong Host Block Partition";
 #endif
 }
 BEGIN_FACTORY_DEF("125A Universal QA","https://github.com/challanger2000","qa@125a.invalid")

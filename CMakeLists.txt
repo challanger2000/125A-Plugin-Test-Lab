@@ -117,3 +117,18 @@ foreach(mode RANGE 4 5)
   target_link_libraries(QAStateMode${mode} PRIVATE sdk)
   target_compile_definitions(QAStateMode${mode} PRIVATE NOMINMAX QA_STATE_MODE=${mode})
 endforeach()
+
+# P27: product-independent time/partition PCM recorder and known-bad
+# block-dependent VST3 synthetic DSP. Expected math remains external.
+add_executable(TestLabRateBlock src/rate_block.cpp)
+set_target_properties(TestLabRateBlock PROPERTIES OUTPUT_NAME "125A_Test_Lab_Rate_Block")
+target_link_libraries(TestLabRateBlock PRIVATE Vst3WinModule sdk_hosting sdk_common base pluginterfaces)
+target_compile_definitions(TestLabRateBlock PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+if(MSVC)
+  target_compile_options(TestLabRateBlock PRIVATE /W4 /permissive- /utf-8)
+endif()
+smtg_add_vst3plugin(QAStateMode6
+    PACKAGE_NAME "125A_QA_State_6"
+    SOURCES_LIST tests/state_race_fixture.cpp)
+target_link_libraries(QAStateMode6 PRIVATE sdk)
+target_compile_definitions(QAStateMode6 PRIVATE NOMINMAX QA_STATE_MODE=6)
