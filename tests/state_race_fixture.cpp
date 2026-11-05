@@ -6,6 +6,7 @@
 #include "pluginterfaces/vst/vstspeaker.h"
 #include <atomic>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -53,7 +54,7 @@ public:
             return kResultFalse;
 #if QA_STATE_MODE==1
         bank_.store(s.bank,std::memory_order_relaxed);
-        std::this_thread::yield();
+        std::this_thread::sleep_for(std::chrono::microseconds(20));
         program_.store(s.program,std::memory_order_relaxed);
 #else
         pair_.store((uint64(uint32(s.bank))<<32)|uint32(s.program),std::memory_order_release);
