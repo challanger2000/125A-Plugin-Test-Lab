@@ -1,0 +1,161 @@
+name: P14 Interactive Windows OLE Acceptance Package
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/Run-Interactive-OLE.ps1'
+      - 'tools/Run-OLE-Test.cmd'
+      - 'tools/README-INTERACTIVE-OLE.txt'
+      - '.github/workflows/p14-interactive-kit.yml'
+  workflow_dispatch:
+    inputs:
+      drumator_ref:
+        description: 'Drumator branch/tag/commit to package (must also pass P03-P13)'
+        type: string
+        required: true
+        default: 'develop/beat-creator-10-styles-20261102'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 125a-p14-ole-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  interactive-ole-kit:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Test Lab
+        uses: actions/checkout@v4
+
+      - name: Checkout reproducible Drumator source
+        uses: actions/checkout@v4
+        with:
+          repository: challanger2000/125A-Drumator-Final
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.drumator_ref || 'eed1bf232b61f6fb725ca00d82a99658cfba07e2' }}
+          path: drumator-src
+          persist-credentials: false
+
+      - name: Configure and build native Win32 GUI/OLE host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P14 Test Lab configure failed' }
+          cmake --build build --config Release --target TestLabGUI --parallel 3
+          if ($LASTEXITCODE -ne 0) { throw 'P14 genuine Win32 GUI host failed compilation' }
+
+      - name: Build actual Drumator VST3 module from selected source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sdk = (Resolve-Path 'build/_deps/vst3sdk-src').Path
+          cmake -S drumator-src -B build-drumator -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=OFF -DDRUMATOR_BUILD_VST3=ON "-DVST3_SDK_ROOT=$sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'P14 source product configure failed' }
+          cmake --build build-drumator --config Release --target Drumator --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'P14 source-built product compilation failed' }
+
+      - name: Generate synthetic rights-clean test kit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/make_drumator_state.py build/p03-state
+          if ($LASTEXITCODE -ne 0) { throw 'P14 synthetic DM18 kit generation failed' }
+          python tests/make_gui_export_state.py build/p03-state/Drumator-Swing-0.bin build/p14-a-rest-a.bin
+          if ($LASTEXITCODE -ne 0) { throw 'P14 A/REST/A rights-free song state failed' }
+
+      - name: Assemble full standalone native test kit and prove headless result cannot be PASS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = 'artifact/P14-Interactive-OLE'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $plugin = @(Get-ChildItem build-drumator -Recurse -File -Filter 'Drumator.vst3' |
+            Where-Object { $_.FullName -match '[\/]VST3[\/]' })
+          if ($gui.Count -ne 1 -or $plugin.Count -ne 1) {
+            throw 'P14 GUI host or source-built VST3 missing or ambiguous'
+          }
+          Copy-Item -LiteralPath $gui[0].FullName -Destination (Join-Path $out '125A_Test_Lab_GUI.exe')
+          $bundle = Join-Path $out '125A Drumator.vst3'
+          $binaryDir = Join-Path $bundle 'Contents/x86_64-win'
+          $resourceDir = Join-Path $bundle 'Contents/Resources'
+          New-Item -ItemType Directory -Force $binaryDir,$resourceDir | Out-Null
+          Copy-Item -LiteralPath $plugin[0].FullName -Destination (Join-Path $binaryDir '125A Drumator.vst3')
+          $required = @(
+            'Drumator.uidesc',
+            '125A_Drumator_Knob.png', '125A_Drumator_Screw.png',
+            '125A_Drumator_Faceplate.png',
+            'Futuristische industrielle Metalloberfläche.png',
+            '125A_Dark_Button_83x32_Normal_1x.png',
+            '125A_Dark_Button_83x32_Normal_4x.png',
+            '125A_Dark_Button_83x32_Aktiv_1x.png',
+            '125A_Dark_Button_83x32_Aktiv_4x.png',
+            '125A_Dark_Button_83x32_Gedrueckt_1x.png',
+            '125A_Dark_Button_83x32_Gedrueckt_4x.png',
+            '125A_Dark_Button_83x32_Deaktiviert_1x.png',
+            '125A_Dark_Button_83x32_Deaktiviert_4x.png',
+            'DRUMATOR_Logo_Modern_Transparent.png',
+            '125A Systems Metall-Logo Badge.png'
+          )
+          foreach ($name in $required) {
+            $src = Join-Path 'drumator-src/resource' $name
+            if (-not (Test-Path -LiteralPath $src -PathType Leaf)) {
+              throw "P14 missing required product GUI resource: $name"
+            }
+            Copy-Item -LiteralPath $src -Destination (Join-Path $resourceDir $name)
+          }
+          Copy-Item -LiteralPath 'build/p14-a-rest-a.bin' -Destination (Join-Path $out 'A-REST-A.bin')
+          foreach ($name in @('Run-Interactive-OLE.ps1','Run-OLE-Test.cmd',
+                               'README-INTERACTIVE-OLE.txt')) {
+            Copy-Item -LiteralPath "tools/$name" -Destination (Join-Path $out $name)
+          }
+          $sha = (git -C drumator-src rev-parse HEAD).Trim()
+          if ($sha.Length -ne 40 -or $sha -cnotmatch '^[a-f0-9]+$') {
+            throw "P14 invalid exact product revision: $sha"
+          }
+          "Tested Drumator commit: $sha" |
+            Set-Content (Join-Path $out 'TESTED-PRODUCT-REVISION.txt')
+          $tokens = $null
+          $errors = $null
+          $parsed = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'tools/Run-Interactive-OLE.ps1').Path,
+            [ref]$tokens,[ref]$errors)
+          if ($errors.Count -ne 0 -or $null -eq $parsed) {
+            throw "P14 native PowerShell launch script has syntax errors: $($errors | Out-String)"
+          }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$out/Run-Interactive-OLE.ps1" 2>&1 |
+            Tee-Object -FilePath 'build/p14-headless-preflight.log'
+          if ($LASTEXITCODE -ne 3) {
+            throw "P14 CI must report INCONCLUSIVE, got exit code $LASTEXITCODE"
+          }
+          $proof = @(Get-ChildItem (Join-Path $out 'results') -Recurse -File -Filter 'RESULT.txt')
+          if ($proof.Count -ne 1) { throw 'P14 preflight status evidence missing' }
+          if (-not (Get-Content $proof[0].FullName -Raw).Contains('Status: INCONCLUSIVE')) {
+            throw 'P14 falsely reports PASS in a non-interactive CI service'
+          }
+          Remove-Item -LiteralPath (Join-Path $out 'results') -Recurse -Force
+          $hashLines = @()
+          $absoluteOut = (Resolve-Path $out).Path
+          foreach ($file in @(Get-ChildItem -LiteralPath $out -Recurse -File | Sort-Object FullName)) {
+            $rel = $file.FullName.Substring($absoluteOut.Length + 1)
+            $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash
+            $hashLines += "$digest  $rel"
+          }
+          $hashLines | Set-Content (Join-Path $out 'SHA256SUMS.txt')
+          Compress-Archive -Path "$out/*" -DestinationPath 'artifact/125A-Test-Lab-P14-Interactive-OLE.zip' -Force
+          $size = (Get-Item 'artifact/125A-Test-Lab-P14-Interactive-OLE.zip').Length
+          if ($size -lt 100000) { throw "P14 ZIP unexpectedly small: $size" }
+          Write-Host "[PASS] P14 complete interactive Windows kit built: $size bytes; CI self-check INCONCLUSIVE"
+          exit 0
+
+      - name: Publish downloadable P14 interactive Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: 125A-Test-Lab-P14-Interactive-Windows-OLE
+          path: artifact/125A-Test-Lab-P14-Interactive-OLE.zip
+          if-no-files-found: error
+          retention-days: 30
