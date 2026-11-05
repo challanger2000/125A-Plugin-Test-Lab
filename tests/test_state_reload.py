@@ -43,6 +43,32 @@ with tempfile.TemporaryDirectory() as td:
     assert result["musical_correctness"] == "NOT COVERED"
     assert len(calls) == 2 and all(c[1] == "--render-state-save" for c in calls)
 
+    # Exact externally supplied saved state fingerprint is checked on BOTH
+    # genuine host processes, not inferred from an API success code.
+    expected_state = hashlib.sha256(b"valid persisted state").hexdigest()
+    product["expected_saved_state_sha256"] = expected_state
+    result = recall.check(product, root / "integrity_positive", runner=fake_host)
+    assert result["status"] == "PASS"
+    assert result["saved_state_integrity"] == "PASS"
+    product["expected_saved_state_sha256"] = "e" * 64
+    result = recall.check(product, root / "integrity_wrong_reference", runner=fake_host)
+    assert result["status"] == "FAIL"
+    assert result["saved_state_integrity"] == "FAIL"
+    assert result["fresh_process_recall"] == "FAIL"
+    product["expected_saved_state_sha256"] = expected_state
+
+    # A host that falsely returns a successful load but re-serializes the
+    # wrong state must not be accepted by a known product-state oracle.
+    def state_corruption(cmd, **kwargs):
+        outcome = fake_host(cmd, **kwargs)
+        Path(cmd[5]).write_bytes(b"different saved state")
+        return outcome
+
+    result = recall.check(product, root / "integrity_corrupt_host", runner=state_corruption)
+    assert result["status"] == "FAIL"
+    assert result["saved_state_integrity"] == "FAIL"
+    del product["expected_saved_state_sha256"]
+
     product["expected_audio_sha256"] = "f" * 64
     result = recall.check(product, root / "wrong_reference", runner=fake_host)
     assert result["status"] == "FAIL" and result["musical_correctness"] == "FAIL"
