@@ -836,6 +836,8 @@ void runRealDrumatorGui(const std::string& path,
             throw;
         }
         view->release();
+        // VST3 requires processing stop and deactivation BEFORE terminate.
+        tempoClock.reset();
         controller.close();
         require(component->terminate() == kResultOk, "P09 component terminate failed");
         std::cout << "[PASS] P09 real Drumator GUI HWND opened, "
