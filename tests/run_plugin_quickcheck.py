@@ -98,7 +98,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run):
     proc = runner([sys.executable, str(Path(__file__).with_name("run_product_qa.py")),
                    "--p32", str(p32_path), "--p34", str(p34_path),
                    "--out", str(out / "native"), "--timeout", str(timeout)],
-                  capture_output=True, text=True, timeout=timeout * 70,
+                  capture_output=True, text=True, timeout=timeout * 2 + 30,
                   check=False, errors="replace")
     (out / "quickcheck.log").write_text(
         (proc.stdout or "") + "\n" + (proc.stderr or ""), encoding="utf-8")
