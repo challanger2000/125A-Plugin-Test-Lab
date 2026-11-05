@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -53,7 +54,8 @@ void updateMax(std::atomic<int64>& value,int64 candidate) {
     while(candidate>old && !value.compare_exchange_weak(old,candidate,std::memory_order_relaxed)){}
 }
 int stress(const std::string& pluginPath,const std::filesystem::path& report,
-           int sampleRate,int block,int iterations,const std::string& oracle,bool saveOnly) {
+           int sampleRate,int block,int iterations,const std::string& oracle,bool saveOnly,
+           const std::filesystem::path& fixtureA,const std::filesystem::path& fixtureB) {
     demand(sampleRate==44100||sampleRate==48000||sampleRate==96000,"unsupported test sample rate");
     demand(block==0||block==17||block==64||block==127||block==512||block==1024,
            "unsupported test block");
@@ -69,6 +71,22 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     bool pass=true;
     std::string reason;
     Metrics metrics;
+    std::vector<std::vector<uint8_t>> captured;
+    captured.reserve(500);
+    auto loadState = [](const std::filesystem::path& path)->std::vector<uint8_t> {
+        std::ifstream in(path,std::ios::binary|std::ios::ate);
+        demand(bool(in),"adapter state file missing");
+        const auto length=in.tellg();
+        demand(length>0 && length<=16*1024*1024,"adapter state size invalid");
+        std::vector<uint8_t> bytes(static_cast<size_t>(length));
+        in.seekg(0);
+        in.read(reinterpret_cast<char*>(bytes.data()),static_cast<std::streamsize>(bytes.size()));
+        demand(bool(in),"adapter state file truncated");
+        return bytes;
+    };
+    std::vector<uint8_t> stateA=fixtureA.empty()?std::vector<uint8_t>{}:loadState(fixtureA);
+    std::vector<uint8_t> stateB=fixtureB.empty()?std::vector<uint8_t>{}:loadState(fixtureB);
+    if(!stateA.empty()&&stateB.empty()) stateB=stateA;
     for(const auto& info:factory.classInfos()) {
         if(info.category()!=kVstAudioEffectClass) continue;
         ++audioClasses;
@@ -101,6 +119,17 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             active=true;
             demand(processor->setProcessing(true)==kResultOk,"setProcessing failed");
             processing=true;
+            if(oracle=="none" && stateA.empty() && !saveOnly) {
+                ResizableMemoryIBStream initial;
+                demand(component->getState(&initial)==kResultOk &&
+                       initial.getCursor()>0 && initial.getCursor()<=16*1024*1024,
+                       "generic state unavailable: adapter or NOT_COVERED required");
+                const auto* p=static_cast<const uint8_t*>(initial.getData());
+                demand(p!=nullptr,"generic state snapshot returned no bytes");
+                stateA.assign(p,p+initial.getCursor());
+                stateB=stateA;
+            }
+
             const int bufferSize=std::max(16,block);
             std::vector<Sample32> left(bufferSize),right(bufferSize);
             Sample32* channels[]{left.data(),right.data()};
@@ -155,8 +184,12 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                 ResizableMemoryIBStream saved;
                 if(component->getState(&saved)!=kResultOk || saved.getCursor()==0) {
                     metrics.saveFailures++;
+                } else if(saved.getCursor()>16*1024*1024 || !saved.getData()) {
+                    metrics.saveFailures++;
                 } else {
                     metrics.saveOK++;
+                    const auto* ptr=static_cast<const uint8_t*>(saved.getData());
+                    captured.emplace_back(ptr,ptr+saved.getCursor());
                     if(oracle=="paired" &&
                        (saved.getCursor()!=sizeof(Pair) ||
                         !pairValid(*static_cast<const Pair*>(saved.getData()))))
@@ -173,10 +206,15 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                 for(int i=0;i<iterations*2;++i) {
                     if(i%20==0) saveSnapshot();
                     const Pair p=makePair((i&1)!=0);
+                    const bool external=!stateA.empty();
+                    const auto& bytes=(i&1)?stateB:stateA;
+                    void* ptr=external?static_cast<void*>(const_cast<uint8_t*>(bytes.data())):
+                        static_cast<void*>(const_cast<Pair*>(&p));
+                    const int32 size=external?static_cast<int32>(bytes.size()):
+                        static_cast<int32>(sizeof(p));
                     ResizableMemoryIBStream stream;
                     int32 written=0;
-                    if(stream.write(const_cast<Pair*>(&p),sizeof(p),&written)!=kResultOk ||
-                       written!=sizeof(p)) {
+                    if(size<1||stream.write(ptr,size,&written)!=kResultOk||written!=size) {
                         metrics.setFailures++;
                     } else {
                         stream.rewind();
@@ -215,11 +253,22 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     }
     demand(audioClasses>0,"no VST3 audio classes");
     if(!report.parent_path().empty()) std::filesystem::create_directories(report.parent_path());
+    {
+        std::ofstream raw(report.string()+".snapshots",std::ios::binary|std::ios::trunc);
+        demand(bool(raw),"cannot write independent oracle snapshots");
+        for(const auto& snapshot:captured) {
+            const uint32_t n=static_cast<uint32_t>(snapshot.size());
+            raw.write(reinterpret_cast<const char*>(&n),sizeof(n));
+            raw.write(reinterpret_cast<const char*>(snapshot.data()),n);
+        }
+        demand(raw.good(),"snapshot export failed");
+    }
     std::ofstream out(report,std::ios::trunc);
     demand(bool(out),"cannot write test evidence");
     out<<"format\t125A-P25-v1\n";
     out<<"plugin\t"<<pluginPath<<"\n";
     out<<"sample_rate\t"<<sampleRate<<"\nblock_size\t"<<block<<"\niterations\t"<<iterations<<"\n";
+    out<<"snapshot_count\t"<<captured.size()<<"\n";
     out<<"oracle\t"<<oracle<<"\nscenario\t"<<(saveOnly?"playback-save-no-writes":"concurrent-writers")<<"\nclasses\t"<<audioClasses<<"\n";
     out<<"callbacks\t"<<metrics.callbacks.load()<<"\nprocess_failures\t"<<metrics.processFailures.load();
     out<<"\nset_failures\t"<<metrics.setFailures.load()<<"\nsave_failures\t"<<metrics.saveFailures.load();
@@ -239,14 +288,23 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
 }
 int main(int argc,char** argv) {
     try {
-        if((argc!=8&&argc!=9)||std::string(argv[1])!="--stress" ||
-           (argc==9&&std::string(argv[8])!="--save-only")) {
-            std::cerr<<"Usage: --stress <VST3> <report.tsv> <rate> <block> <iterations> <paired|ramp|none> [--save-only]\n";
+        if(argc<8||std::string(argv[1])!="--stress") {
+            std::cerr<<"Usage: --stress <VST3> <report.tsv> <rate> <block> <iterations> <paired|ramp|none> [--save-only] [--state-a file] [--state-b file]\n";
             return 2;
         }
-        return stress(argv[2],argv[3],std::stoi(argv[4]),std::stoi(argv[5]),std::stoi(argv[6]),argv[7],argc==9);
+        bool saveOnly=false;
+        std::filesystem::path a,b;
+        for(int i=8;i<argc;) {
+            const std::string flag=argv[i++];
+            if(flag=="--save-only") saveOnly=true;
+            else if(flag=="--state-a"&&i<argc) a=argv[i++];
+            else if(flag=="--state-b"&&i<argc) b=argv[i++];
+            else throw std::runtime_error("unrecognized or incomplete adapter flag");
+        }
+        if(!b.empty()&&a.empty()) throw std::runtime_error("state-b requires state-a");
+        return stress(argv[2],argv[3],std::stoi(argv[4]),std::stoi(argv[5]),std::stoi(argv[6]),argv[7],saveOnly,a,b);
     } catch(const std::exception& e) {
-        std::cerr<<"[FAIL] P25 host: "<<e.what()<<"\n";
+        std::cerr<<"[FAIL] P26 host: "<<e.what()<<"\n";
         return 3;
     }
 }
