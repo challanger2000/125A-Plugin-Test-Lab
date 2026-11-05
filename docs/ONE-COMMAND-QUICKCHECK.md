@@ -30,8 +30,7 @@ presets' audible behavior or full DAW session is correct. Because many
 plugins use randomized synthesis, this generic quickcheck does not
 require identical PCM across independent runs: repeatable PCM and
 musical correctness remain `NOT COVERED` without a trusted
-product-specific deterministic reference. Captured states shorter
-than 9 bytes or 16 MiB and larger cannot be tested by this current
+product-specific deterministic reference. Empty captured states or states 128 MiB and larger cannot be tested by this current
 host and are explicitly `NOT COVERED` rather than called PASS.
 
 `QUICKCHECK-RESULT.json` reports `TECHNICAL_PASS` only when both native
