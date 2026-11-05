@@ -197,6 +197,25 @@ jobs:
           Write-Host '[PASS] P28 real callback p95/p99/max and hard realtime deadline; broken VST3 blocked > deadline'
           exit 0
 
+      - name: P30 native VST3 controller disconnect and reconnect
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Controller_Recovery.exe')
+          if ($exe.Count -ne 1) { throw 'P30 controller host missing' }
+          New-Item -ItemType Directory -Force artifacts/P30 | Out-Null
+          foreach ($mode in @(0,1)) {
+            $plugin = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_Controller_$mode.vst3")
+            if ($plugin.Count -lt 1) { throw "P30 plugin mode $mode missing" }
+            $label = @('good','broken')[$mode]
+            $report = "artifacts/P30/$label.tsv"
+            & $exe[0].FullName --connection $plugin[0].FullName $report
+            if ($LASTEXITCODE -ne 0) { throw "P30 $label API lifecycle failed" }
+            python tests/verify_controller_recovery.py $report $label
+            if ($LASTEXITCODE -ne 0) { throw "P30 $label independent oracle failed" }
+          }
+          Write-Host '[PASS] P30 real controller recovery and stale state fault detection'
+
       - name: Publish proof even on failure
         if: always()
         uses: actions/upload-artifact@v4
