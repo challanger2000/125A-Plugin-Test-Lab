@@ -1057,13 +1057,108 @@ void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
                  "accepted by independent native Windows target\n";
 }
 
+
+// P13: deterministic *source-side* test for an ephemeral non-interactive
+// GitHub runner. Exercise real plugin GUI drag start / export / retained file,
+// but DO NOT claim target OLE/DAW delivery. True OLE testing remains available
+// separately in --drumator-ole-drag-drop on an interactive Windows desktop.
+void runActualGuiDragSource(HWND child, IComponent* component,
+                            ProductGuiClock& tempo, double logicalHeight,
+                            const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder);
+    const auto baseline = captureActualComponentState(component);
+    const std::array<const wchar_t*,4> names{
+        L"125A Drumator Pattern.mid", L"125A Drumator Pattern.wav",
+        L"125A Drumator Song.mid", L"125A Drumator Song.wav"
+    };
+    const std::array<const wchar_t*,4> out{
+        L"pattern-midi.mid", L"pattern-wav.wav",
+        L"song-midi.mid", L"song-wav.wav"
+    };
+    const auto root = std::filesystem::temp_directory_path();
+    auto find = [&](std::wstring name) {
+        std::vector<std::filesystem::path> paths;
+        for(const auto& dir: std::filesystem::directory_iterator(root)) {
+            if (!dir.is_directory()) continue;
+            const auto folderName = dir.path().filename().wstring();
+            if (folderName.find(L"125A-Drumator-Drag-") != 0) continue;
+            const auto candidate = dir.path()/name;
+            if (std::filesystem::is_regular_file(candidate))
+                paths.push_back(candidate);
+        }
+        return paths;
+    };
+    RECT rect{};
+    require(GetClientRect(child,&rect)!=0, "P13 source editor dimensions missing");
+    const double scale = rect.right / 1280.0;
+    for(size_t i=0;i<names.size();++i) {
+        const auto existing = find(names[i]);
+        tempo.publishTempo();
+        pump(240);
+        clickRealDrumatorGui(child,957.,logicalHeight-26.,
+                             "P13 OPEN export popup for drag source");
+        const int x = static_cast<int>(900.*scale);
+        const int y = static_cast<int>((logicalHeight-149.+26.*i)*scale);
+        const auto at = MAKELPARAM(x,y);
+        const auto to = MAKELPARAM(x+static_cast<int>(42.*scale),
+                                   y-static_cast<int>(14.*scale));
+        (void)SendMessageW(child, WM_MOUSEMOVE, 0, at);
+        injectButton(MOUSEEVENTF_LEFTDOWN);
+        (void)SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, at);
+        // The source VSTGUI state sees a real held logical left click.
+        // Release the PHYSICAL state before entering blocking OLE on this
+        // non-interactive service desktop. This leaves product onMouseMoved
+        // with MK_LBUTTON but causes native OLE to abort immediately.
+        injectButton(MOUSEEVENTF_LEFTUP);
+        std::atomic<bool> completed{false};
+        std::thread watchdog([&] {
+            for(unsigned t=0;t<45;++t) {
+                if(completed.load(std::memory_order_acquire)) return;
+                Sleep(100);
+            }
+            std::cerr << "[FAIL] P13 drag source OLE did not return "
+                         "after 4.5 seconds on headless Windows runner\n";
+            TerminateProcess(GetCurrentProcess(), 15);
+        });
+        (void)SendMessageW(child, WM_MOUSEMOVE, MK_LBUTTON, to);
+        completed.store(true,std::memory_order_release);
+        watchdog.join();
+        pump(180);
+        auto candidates = find(names[i]);
+        candidates.erase(
+            std::remove_if(candidates.begin(),candidates.end(),
+               [&](const auto& candidate) {
+                   return std::find(existing.begin(),existing.end(),candidate)!=
+                          existing.end();
+               }),candidates.end());
+        require(candidates.size()==1,
+                "P13 GUI drag start did not produce exactly one new genuine export file");
+        const auto target = folder/out[i];
+        require(!std::filesystem::exists(target),
+                "P13 test output collision before drag source copy");
+        require(std::filesystem::file_size(candidates[0])>128,
+                "P13 ephemeral drag source file was empty/truncated");
+        std::filesystem::copy_file(candidates[0],target);
+        require(std::filesystem::is_regular_file(candidates[0]),
+                "P13 product deleted ephemeral drag source prematurely");
+        require(captureActualComponentState(component)==baseline,
+                "P13 GUI drag source unexpectedly changed project state");
+        std::cout << "[PASS] P13 actual GUI drag source "<<i
+                  << " exported "<<std::filesystem::file_size(target)
+                  << " bytes, transient source retained\n";
+    }
+    std::cout << "[PASS] P13 source-side GUI drag exports 4 files;"
+                 " external OLE DragEnter/Drop: INCONCLUSIVE on CI\n";
+}
+
 void runRealDrumatorGui(const std::string& path,
                         const std::filesystem::path& originalState,
                         const std::filesystem::path& canceledState,
                         const std::filesystem::path& appliedState,
                         bool exportDialogCancel = false,
                         const std::filesystem::path& exportSaveState = {},
-                        bool checkOleDrag = false) {
+                        bool checkOleDrag = false,
+                        bool checkDragSourceOnly = false) {
     std::cout << "[INFO] P09 load source-built packaged VST3 from " << path << "\n";
     std::string error;
     auto module = Module::create(path, error);
@@ -1146,7 +1241,11 @@ void runRealDrumatorGui(const std::string& path,
                       << " logical, native " << client.right << "x"
                       << client.bottom << " pixels\n";
 
-            if (checkOleDrag) {
+            if (checkDragSourceOnly) {
+                require(tempoClock != nullptr, "P13 source host tempo missing");
+                runActualGuiDragSource(child, component.get(), *tempoClock,
+                                       logicalHeight, originalState.parent_path());
+            } else if (checkOleDrag) {
                 require(tempoClock != nullptr, "P13 host tempo was not initialized");
                 runActualOleDragDrop(child, window.get(), component.get(),
                                      *tempoClock, logicalHeight,
@@ -1231,6 +1330,13 @@ int main(int argc, char** argv) {
     std::cerr << std::unitbuf;
     try {
         ComApartment guiCom;
+        if (argc == 5 && std::string(argv[1]) == "--drumator-drag-source") {
+            const std::filesystem::path folder = argv[4];
+            runRealDrumatorGui(argv[2], folder/"before.bin",
+                              folder/"cancel.bin", folder/"after.bin",
+                              false, argv[3], false, true);
+            return 0;
+        }
         if (argc == 5 && std::string(argv[1]) == "--drumator-ole-drag-drop") {
             const std::filesystem::path folder = argv[4];
             runRealDrumatorGui(argv[2], folder/"before.bin",
@@ -1264,7 +1370,8 @@ int main(int argc, char** argv) {
                   << "       125A_Test_Lab_GUI --drumator-beat-creator <plugin.vst3> <before.bin> <cancel.bin> <after.bin>\n"
                   << "       125A_Test_Lab_GUI --drumator-export-dialog-cancel <plugin.vst3> <evidence-folder>\n"
                   << "       125A_Test_Lab_GUI --drumator-export-dialog-save <plugin.vst3> <state.bin> <output-folder>\n"
-                  << "       125A_Test_Lab_GUI --drumator-ole-drag-drop <plugin.vst3> <state.bin> <output-folder>\n";
+                  << "       125A_Test_Lab_GUI --drumator-ole-drag-drop <plugin.vst3> <state.bin> <output-folder>\n"
+                  << "       125A_Test_Lab_GUI --drumator-drag-source <plugin.vst3> <state.bin> <output-folder>\n";
         return 2;
     } catch (const std::exception& ex) {
         const std::string message = ex.what();
