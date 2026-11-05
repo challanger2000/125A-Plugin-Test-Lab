@@ -2,23 +2,31 @@
 
 ## Established and verified
 
-P01–P09 test infrastructure exists on Windows x64 and all listed test
-gates passed in [Actions run 41938707186](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41938707186),
-with standalone P02 and P04 regression checks also successful.
-The **real-product GUI integration P09** proved Limiter and Beat Creator
-state changes, including GENERATE / CANCEL / APPLY / CONFIRM.
+P01–P11 test gates passed in [Windows Actions 41944080762](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41944080762).
+P09 proved real editor/Beat Creator interaction, P10 proved native Windows
+Save-dialog cancellation, and P11 proved **all four GUI MIDI/WAV Save As
+exports** create correct independent music files. P02/P04 host self-tests
+also passed.
 
-Pinned tested product source: `challanger2000/125A-Drumator-Final`,
+The verified benchmark source was `challanger2000/125A-Drumator-Final`
 SHA `6184718dda4a725fe4892a9e76533ec24dfa2f17`.
-This is not a floating/latest-commit test. Tests of a newer product commit
-must explicitly update the pinned SHA and rerun the acceptance suite.
+**Newer code can be selected manually via GitHub Actions**. PR benchmarks
+continue to pin the above SHA; the manual run logs the SHA it actually
+checked. Never assume a benchmark PASS proves an untested newer build.
 
 ## Run workflows
 
-From the repository's **Actions** tab, use **Run workflow** for
-`P03 Real Drumator Swing Host Test`. The workflow checks out the pinned
-product source and creates all test binaries, synthetic drum kits and test
-vectors without requiring the user's computer or installed DAW.
+Go to **Actions → P03 Real Drumator Swing Host Test → Run workflow**.
+In the `drumator_ref` field, enter a product branch, tag or complete
+40-character commit SHA. Default: `develop/beat-creator-10-styles-20261102`.
+Choose the Test Lab `main` branch and start the workflow. This builds the
+**selected product revision**, generates synthetic kits and vectors, and
+reports the exact resolved SHA in `TESTED-PRODUCT-REVISION.txt`.
+No local Windows installation, user sample library or DAW is required.
+
+For pull requests that change the Test Lab itself, the workflow uses the
+original pinned product commit instead, to make infrastructure regressions
+reproducible.
 
 The report names the exact commit and gives PASS/FAIL evidence for:
 - host VST3 component lifecycle and genuine DSP processing
@@ -27,6 +35,8 @@ The report names the exact commit and gives PASS/FAIL evidence for:
 - MIDI/WAV export core and independent file/timing checks
 - Beat Creator A/B/C algorithm stress and five-point Complexity helper
 - real Win32 editor, Limiter, Beat Creator GENERATE/CANCEL/APPLY/CONFIRM
+- four true Win32 Save As dialogs and non-destructive CANCEL
+- four actual GUI Pattern/Song MIDI/WAV exports and independent musical checks
 - negative audio/MIDI/WAV/GUI fixtures and explicit INCONCLUSIVE cases
 
 The P04 and P02 workflows separately check the GUI-host and audio-host
@@ -70,9 +80,10 @@ for instance, the plugin does not expose an editor.
 
 **NOT COVERED** — no verified test exists for that behavior.
 
-A green CI run does not imply complete GUI menu, drag-and-drop, file chooser
-or proprietary DAW workflow coverage. Export core validation P06/P08 is
-**not** proof that a user can trigger those exports from the editor.
+A green CI run does not imply comprehensive GUI menu/preset behavior,
+OLE drag-and-drop acceptance into an external DAW, or proprietary DAW
+workflow coverage. **GUI Save As MIDI/WAV has passed P11**, but a drop into
+a real DAW track remains **NOT COVERED**.
 
 ## Security and policy
 
