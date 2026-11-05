@@ -165,7 +165,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                 } else {
                     metrics.saveOK++;
                     if(oracle=="paired") {
-                        if(saved.getCursor()!=sizeof(Pair) || !pairValid(*static_cast<Pair*>(saved.getData())))
+                        if(saved.getCursor()!=sizeof(Pair) || !pairValid(*static_cast<const Pair*>(saved.getData())))
                             metrics.torn++;
                     }
                 }
