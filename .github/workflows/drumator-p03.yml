@@ -320,6 +320,27 @@ jobs:
           Write-Host "[PASS] P09: actual Drumator GUI mouse input => A/B/C changed and CANCEL preserved state"
           exit 0
 
+      - name: P17 real Drumator GUI lifecycle stress (16 detach/reattach cycles)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $bundle = Join-Path $PWD 'build/p09-bundle/125A Drumator.vst3/Contents/x86_64-win/125A Drumator.vst3'
+          if ($exe.Count -ne 1 -or -not (Test-Path -LiteralPath $bundle)) {
+            throw 'P17 genuine VST3 editor bundle or GUI host missing'
+          }
+          New-Item -ItemType Directory -Force build/p17-gui-stress | Out-Null
+          & $exe[0].FullName --drumator-gui-lifecycle $bundle build/p17-gui-stress 2>&1 |
+            Tee-Object -FilePath build/p17-gui-stress.log
+          if ($LASTEXITCODE -ne 0) {
+            throw 'P17 real editor detach/reattach or project-state integrity failed'
+          }
+          $log = Get-Content 'build/p17-gui-stress.log' -Raw
+          if (-not $log.Contains('[PASS] P17 all 16 editor lifecycle cycles stable')) {
+            throw 'P17 test host exited 0 without completing all 16 lifecycle assertions'
+          }
+          Write-Host '[PASS] P17 16 real production GUI close/reopen cycles without state corruption'
+
       - name: P10 actual Win32 Save dialog opens and CANCEL is non-destructive
         shell: pwsh
         run: |
@@ -417,6 +438,7 @@ jobs:
                              "build/p08-wav-exports/song-bpm120-swing50.wav",
                              "build/p09-real-native-gui.log",
                              "build/p09-independent-gui-oracle.log",
+                             "build/p17-gui-stress.log",
                              "build/p09-gui/before.bin",
                              "build/p09-gui/cancel.bin",
                              "build/p09-gui/after.bin",
@@ -451,6 +473,7 @@ jobs:
             "P07 checks product Beat Creator core and 5-point UI complexity function (not live clicks).",
             "P08 checks real WAV export core and independent MIDI/WAV correspondence.",
             "P09 exercises actual product GUI Beat Creator GENERATE/CANCEL/APPLY by native HWND events.",
+            "P17 verifies 16 real production editor detach/reattach cycles with byte-identical processor state.",
             "P10 checks actual Windows Shell Save-dialog launch/cancel for all four export menu options.",
             "P11 verifies four GUI Save As MIDI/WAV exports using independent file and musical-timing oracles.",
             "P13 checks native GUI drag source file creation, retention and independent MIDI/WAV quality.",
