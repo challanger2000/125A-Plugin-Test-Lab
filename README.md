@@ -27,10 +27,12 @@ the resolved tested commit in its artifact.
 | P09 | **Actual Drumator editor** attached to a Win32 HWND, real mouse clicks toggle and restore Limiter, GENERATE→CANCEL preserves component state, GENERATE→APPLY→CONFIRM changes three distinct A/B/C patterns, D–H and hidden rows remain unchanged |
 | P10 | All four actual GUI export options open a real Windows Shell Save dialog; CANCEL writes no file and keeps the processor's project state identical |
 | P11 | All four GUI Save As options genuinely write pattern/song MIDI/WAV files; independent parsers verify note timing, A/REST/A song, stereo PCM24 audio format, sample-exact attack positions, and immutable project state |
-| P13 — source | Four **actual GUI drag gestures** generated and retained Pattern/Song MIDI/WAV temp files. Independent SMF/PCM24 oracle validated all four real files on Windows Actions. The receiving native COM/OLE target is **INCONCLUSIVE**, not PASS, on the headless runner |
+| P13 — source | Four actual GUI drag gestures generated and independently verified Pattern/Song MIDI/WAV transient files on the regular Windows CI host |
+| P15 — receiver contract | Four native `CF_HDROP` receiver callback/file-copy checks using a synthetic COM data object, run unattended on Windows |
+| P16 — real OLE integration | **PASS:** ephemeral Windows VM creates its own active RDP desktop, physically drags all four exports from the real Drumator editor and the separate Windows `IDropTarget` records four real `DragEnter`/`Drop` callbacks; received files pass independent validation |
 
 **Latest P01–P11 and P13 drag-source PASS:** [Windows Actions 41952977868](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41952977868).
-**Separate Windows COM/OLE target acceptance remains INCONCLUSIVE.**
+**True interapplication COM/OLE reception PASS:** [P16 interactive Windows run 41964558955](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41964558955).
 
 P09 required the second APPLY click because the factory Pattern A is already
 occupied. Tests must honor this confirmation rather than bypassing it.
@@ -40,11 +42,8 @@ occupied. Tests must honor this confirmation rather than bypassing it.
 **The test environment is not a complete automated release certification.**
 The following remain separate acceptance requirements:
 
-- **OLE drag-and-drop acceptance into an external DAW** remains unverified;
-  genuine GUI drag-start exports are covered, with four files independently validated.
-  Hosted Windows runners did not deliver native `DragEnter`; a modal
-  `DoDragDrop` session could block. The target-acceptance test remains
-  available for an interactive Windows desktop but is not a CI PASS.
+- P16 proves real cross-window OLE delivery to the independent native Windows
+  receiver, but does not exercise any proprietary DAW's drop target.
 - Full coverage of all plugin popup menus, sample editors, mouse gestures,
   preset browser navigation, zoom variants and plugin window stress.
 - End-to-end compatibility with Fender Studio Pro, including project save,
@@ -52,30 +51,28 @@ The following remain separate acceptance requirements:
 - Every conceivable kit, host tempo, sample rate, export combination and
   randomized stress/failure case.
 
-A green P13 drag-source result must **not** be presented as blanket Drumator release approval.
-For tests not executed in a real interactive desktop or DAW, report
-**INCONCLUSIVE / NOT COVERED**, never PASS.
+A green result proves the named behaviors at the recorded product revision;
+it is not blanket certification of all GUI, host or DAW workflows.
 
-## P14 interactive Windows acceptance package
+## P14 / P16 actual interactive Windows OLE acceptance
 
-The remaining **native OLE receiving** condition cannot be confirmed by an
-unattended GitHub Windows runner. P14 now builds a **self-contained, one-click
-Windows desktop test kit** containing a source-built complete VST3, synthetic
-drum project, native GUI/OLE host and independent PowerShell file integrity
-checks.
+P14 produces the portable acceptance kit. **P16 now automates the native
+end-to-end drag-and-drop on GitHub Actions itself**: within the disposable
+Windows 2022 VM, it starts a temporary local RDP desktop user, launches
+the genuine source-built Drumator editor and separate native COM receiver,
+then performs physical mouse drags of Pattern MIDI/WAV and Song MIDI/WAV.
+A PASS requires four actual `CF_HDROP` target callbacks, retained source
+files and independently verified received files. The test destroys its
+temporary Windows user and RDP setup after execution.
 
-The package has been successfully built and published as a GitHub Actions
-artifact: [P14 Windows test package](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41956851846/artifacts/13383507636).
+**Verified P16 PASS:** [Windows Actions 41964558955](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41964558955).
+Evidence artifact: `125A-Test-Lab-P16-Real-OLE-Evidence`, including
+`P16-RESULT.txt`, native OLE output and received-file validation.
 
-Extract the ZIP from that artifact and double-click `Run-OLE-Test.cmd`
-on an unlocked interactive Windows desktop. A local `PASS` requires all
-four actual COM `CF_HDROP` drop callbacks and the independently verified
-physical MIDI/WAV files. A service or unattended CI session returns
-`INCONCLUSIVE`. The package build passed its negative preflight precisely
-because CI did **not** claim to receive any OLE drops.
+The optional P14 portable ZIP remains available for other desktops.
+The automated P16 test does **not** require the developer's PC.
 
-An actual drop into Fender Studio Pro remains a separate proprietary-DAW
-integration check; do not claim that P14 proves it.
+P16 is not a test of any particular commercial DAW's proprietary drop target.
 
 ## Reproduce
 
@@ -84,6 +81,7 @@ Use the [GitHub Actions workflows](https://github.com/challanger2000/125A-Plugin
   on `windows-2022`. For a manual run, enter a **Drumator branch, tag or full
   commit SHA** in `drumator_ref`; the report identifies the resolved SHA.
   PR checks retain the reproducible pinned baseline.
+- `P14 Interactive Windows OLE Acceptance Package`: builds the P14 kit and runs P16 true physical OLE desktop acceptance inside an ephemeral local RDP session on `windows-2022`.
 - `P04 Native VST3 GUI Input Test`: validate independent GUI-host fixtures.
 - `125A Test Lab - Windows P02`: build the console test host and render
   deterministic VST3 audio fixtures.
