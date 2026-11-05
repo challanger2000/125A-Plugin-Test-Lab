@@ -200,7 +200,6 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
         demand(component->terminate()==kResultOk,"component termination failed");
     }
     demand(audioClasses>0,"no VST3 audio classes");
-    report.parent_path().empty()?void():void();
     if(!report.parent_path().empty()) std::filesystem::create_directories(report.parent_path());
     std::ofstream out(report,std::ios::trunc);
     demand(bool(out),"cannot write test evidence");
