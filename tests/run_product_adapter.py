@@ -79,9 +79,10 @@ def evidence(path):
     data = {}
     for row in path.read_text(encoding="utf-8").splitlines():
         key, tab, val = row.partition("\t")
-        assert tab and key in FIELDS and key not in data, "missing/duplicate/unknown evidence field"
+        assert tab and ID.fullmatch(key) and key not in data, "missing/duplicate/invalid evidence field"
         data[key] = val
     assert data.get("format") == "125A-P25-v1", "wrong host evidence format"
+    assert all(k in data for k in ("result", "save_success", "save_failures", "process_failures", "domain_correctness")), "missing mandatory host evidence"
     return data
 
 
