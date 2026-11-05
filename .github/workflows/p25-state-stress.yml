@@ -196,7 +196,8 @@ jobs:
             throw 'P28 real VST3 stress host or blocking negative fixture missing'
           }
           New-Item -ItemType Directory -Force artifacts/P28 | Out-Null
-          & $exe[0].FullName --stress $good[0].FullName artifacts/P28/good.tsv 44100 1024 2500 paired --save-only --rt-deadline 2>&1 |
+          & $exe[0].FullName --stress $good[0].FullName artifacts/P28/
+          artifacts/P34/good.tsv 44100 1024 2500 paired --save-only --rt-deadline 2>&1 |
             Tee-Object -FilePath artifacts/P28/good.log
           if ($LASTEXITCODE -ne 0) { throw 'P28 valid VST3 exceeded realtime callback deadline' }
           python tests/verify_state_stress.py artifacts/P28/good.tsv good-realtime
@@ -313,6 +314,7 @@ jobs:
           python tests/run_p34_capture.py --manifest artifacts/P34/wrong-hash.json --out artifacts/P34/negative
           if ($LASTEXITCODE -ne 1) { throw 'P34 wrong native VST3 SHA was accepted' }
           Write-Host '[PASS] P34 native captured PCM/state with binary SHA and negative controls'
+          exit 0
 
       - name: Publish proof even on failure
         if: always()
