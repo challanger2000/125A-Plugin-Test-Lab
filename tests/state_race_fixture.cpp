@@ -60,8 +60,13 @@ public:
     tresult PLUGIN_API setState(IBStream* stream) override {
         if (!stream) return kInvalidArgument;
         State s{}; int32 n=0;
-        if (stream->read(&s,sizeof(s),&n)!=kResultOk||n!=sizeof(s)||!valid(s))
+        if (stream->read(&s,sizeof(s),&n)!=kResultOk||n!=sizeof(s)||!valid(s)) {
+#if QA_STATE_MODE==5
+            // Defect: report rejection but change the previously valid state.
+            pair_.store((uint64(uint32(kC))<<32)|uint32(kD),std::memory_order_release);
+#endif
             return kResultFalse;
+        }
 #if QA_STATE_MODE==1
         bank_.store(s.bank,std::memory_order_relaxed);
         badFixtureWindow();
@@ -96,6 +101,7 @@ public:
             d.numOutputs!=1||!d.outputs||d.outputs[0].numChannels!=2||
             !d.outputs[0].channelBuffers32) return kResultFalse;
         // Deliberate concurrent WRITE from the audio callback, not just READ.
+#if QA_STATE_MODE!=4 && QA_STATE_MODE!=5
         if ((++blocks_ & 3)==0) {
             const bool alternate=(blocks_ & 4)!=0;
             const int32 bank=alternate?kC:kA, program=alternate?kD:kB;
@@ -107,6 +113,7 @@ public:
             pair_.store((uint64(uint32(bank))<<32)|uint32(program),std::memory_order_release);
 #endif
         }
+#endif
         auto* left=d.outputs[0].channelBuffers32[0];
         auto* right=d.outputs[0].channelBuffers32[1];
         if (!left||!right) return kResultFalse;
@@ -117,7 +124,16 @@ public:
             rate_;
 #endif
         for(int i=0;i<d.numSamples;++i) {
+#if QA_STATE_MODE==4 || QA_STATE_MODE==5
+            const auto pair=pair_.load(std::memory_order_acquire);
+            const auto bank=int32(pair>>32);
+            const auto program=int32(uint32(pair));
+            const Sample32 v=bank==kA && program==kB ? 0.25f :
+                             bank==kC && program==kD ? 0.125f : 0.f;
+            ++samples_;
+#else
             const auto v=Sample32(0.25*std::min(1.,double(samples_++)/denominator));
+#endif
             left[i]=v;right[i]=v;
         }
         d.outputs[0].silenceFlags=0;
@@ -138,8 +154,12 @@ constexpr const char* name="125A QA Concurrency Good";
 constexpr const char* name="125A QA Concurrency Torn State";
 #elif QA_STATE_MODE==2
 constexpr const char* name="125A QA Concurrency Save Refusal";
-#else
+#elif QA_STATE_MODE==3
 constexpr const char* name="125A QA Concurrency Wrong Rate";
+#elif QA_STATE_MODE==4
+constexpr const char* name="125A QA Recovery Good";
+#elif QA_STATE_MODE==5
+constexpr const char* name="125A QA Recovery Broken Rollback";
 #endif
 }
 BEGIN_FACTORY_DEF("125A Universal QA","https://github.com/challanger2000","qa@125a.invalid")
