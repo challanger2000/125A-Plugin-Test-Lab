@@ -1280,7 +1280,8 @@ void runRealDrumatorGui(const std::string& path,
                         bool exportDialogCancel = false,
                         const std::filesystem::path& exportSaveState = {},
                         bool checkOleDrag = false,
-                        bool checkDragSourceOnly = false) {
+                        bool checkDragSourceOnly = false,
+                        bool checkGuiLifecycle = false) {
     std::cout << "[INFO] P09 load source-built packaged VST3 from " << path << "\n";
     std::string error;
     auto module = Module::create(path, error);
@@ -1363,7 +1364,32 @@ void runRealDrumatorGui(const std::string& path,
                       << " logical, native " << client.right << "x"
                       << client.bottom << " pixels\n";
 
-            if (checkDragSourceOnly) {
+            if (checkGuiLifecycle) {
+                // P17: stress the actual production editor's VST3 lifecycle
+                // without altering any musical settings. State is captured
+                // from the processor, not inferred from editor appearance.
+                const auto expected = captureActualComponentState(component.get());
+                constexpr int kCycles = 16;
+                for (int cycle = 1; cycle <= kCycles; ++cycle) {
+                    require(view->removed() == kResultTrue,
+                            "P17 view removal failed during repeated lifecycle");
+                    attached = false;
+                    require(view->attached(window.get(), kPlatformTypeHWND) == kResultTrue,
+                            "P17 view re-attach failed during repeated lifecycle");
+                    attached = true;
+                    pump(35);
+                    const HWND refreshed = getRealVstGuiWindow(window.get());
+                    RECT current{};
+                    require(GetClientRect(refreshed, &current) != 0 &&
+                            current.right >= 700 && current.bottom >= 250,
+                            "P17 reattached editor lost its native window");
+                    require(captureActualComponentState(component.get()) == expected,
+                            "P17 opening/closing GUI unexpectedly modified processor state");
+                    std::cout << "[PASS] P17 genuine editor detach/reattach cycle "
+                              << cycle << "/" << kCycles << " state unchanged\n";
+                }
+                std::cout << "[PASS] P17 all 16 editor lifecycle cycles stable\n";
+            } else if (checkDragSourceOnly) {
                 require(tempoClock != nullptr, "P13 source host tempo missing");
                 runActualGuiDragSource(child, component.get(), *tempoClock,
                                        logicalHeight, originalState.parent_path());
@@ -1456,6 +1482,13 @@ int main(int argc, char** argv) {
             runOleReceiverContract(argv[2]);
             return 0;
         }
+        if (argc == 4 && std::string(argv[1]) == "--drumator-gui-lifecycle") {
+            const std::filesystem::path folder = argv[3];
+            runRealDrumatorGui(argv[2], folder/"before.bin",
+                              folder/"cancel.bin", folder/"after.bin",
+                              false, {}, false, false, true);
+            return 0;
+        }
         if (argc == 5 && std::string(argv[1]) == "--drumator-drag-source") {
             const std::filesystem::path folder = argv[4];
             runRealDrumatorGui(argv[2], folder/"before.bin",
@@ -1497,7 +1530,8 @@ int main(int argc, char** argv) {
                   << "       125A_Test_Lab_GUI --drumator-export-dialog-cancel <plugin.vst3> <evidence-folder>\n"
                   << "       125A_Test_Lab_GUI --drumator-export-dialog-save <plugin.vst3> <state.bin> <output-folder>\n"
                   << "       125A_Test_Lab_GUI --drumator-ole-drag-drop <plugin.vst3> <state.bin> <output-folder>\n"
-                  << "       125A_Test_Lab_GUI --drumator-drag-source <plugin.vst3> <state.bin> <output-folder>\n";
+                  << "       125A_Test_Lab_GUI --drumator-drag-source <plugin.vst3> <state.bin> <output-folder>\n"
+                  << "       125A_Test_Lab_GUI --drumator-gui-lifecycle <plugin.vst3> <output-folder>\n";
         return 2;
     } catch (const std::exception& ex) {
         const std::string message = ex.what();
