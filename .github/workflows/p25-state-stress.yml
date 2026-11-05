@@ -44,7 +44,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabStateStress TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 --parallel 4
+          cmake --build build --config Release --target TestLabStateStress TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -170,6 +170,30 @@ jobs:
           Write-Host '[PASS] P27 9 positive true VST3 PCM matrix cases plus both negative DSP defects'
           exit 0
 
+      - name: P28 strict realtime callback deadline with blocking VST3 negative control
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_0.vst3')
+          $broken = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_7.vst3')
+          if ($exe.Count -ne 1 -or $good.Count -lt 1 -or $broken.Count -lt 1) {
+            throw 'P28 real VST3 stress host or blocking negative fixture missing'
+          }
+          New-Item -ItemType Directory -Force artifacts/P28 | Out-Null
+          & $exe[0].FullName --stress $good[0].FullName artifacts/P28/good.tsv 44100 1024 2500 paired --save-only --rt-deadline 2>&1 |
+            Tee-Object -FilePath artifacts/P28/good.log
+          if ($LASTEXITCODE -ne 0) { throw 'P28 valid VST3 exceeded realtime callback deadline' }
+          python tests/verify_state_stress.py artifacts/P28/good.tsv good-realtime
+          if ($LASTEXITCODE -ne 0) { throw 'P28 independent good realtime statistics missing or invalid' }
+          & $exe[0].FullName --stress $broken[0].FullName artifacts/P28/broken.tsv 44100 1024 2500 paired --save-only --rt-deadline 2>&1 |
+            Tee-Object -FilePath artifacts/P28/broken.log
+          if ($LASTEXITCODE -ne 1) { throw 'P28 blocking plugin did not trigger strict deadline FAIL' }
+          python tests/verify_state_stress.py artifacts/P28/broken.tsv bad-realtime
+          if ($LASTEXITCODE -ne 0) { throw 'P28 independent oracle did not confirm deliberate callback deadline overruns' }
+          Write-Host '[PASS] P28 real callback p95/p99/max and hard realtime deadline; broken VST3 blocked > deadline'
+          exit 0
+
       - name: Publish proof even on failure
         if: always()
         uses: actions/upload-artifact@v4
@@ -179,5 +203,6 @@ jobs:
             artifacts/P25/
             artifacts/P26/
             artifacts/P27/
+            artifacts/P28/
           if-no-files-found: warn
           retention-days: 14

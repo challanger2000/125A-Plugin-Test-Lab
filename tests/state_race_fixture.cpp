@@ -100,6 +100,13 @@ public:
         if (d.symbolicSampleSize!=kSample32||d.numSamples<0||d.numSamples>2048||
             d.numOutputs!=1||!d.outputs||d.outputs[0].numChannels!=2||
             !d.outputs[0].channelBuffers32) return kResultFalse;
+#if QA_STATE_MODE==7
+        // Deliberately invalid realtime behavior: sleeps inside process().
+        // Periodic delay stays over a 512-frame 44.1-kHz deadline while
+        // keeping this negative CI case bounded in total runtime.
+        if(d.numSamples>0 && (++slowBlocks_ % 128)==0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+#endif
         // Deliberate concurrent WRITE from the audio callback, not just READ.
 #if QA_STATE_MODE!=4 && QA_STATE_MODE!=5
         if ((++blocks_ & 3)==0) {
@@ -153,6 +160,7 @@ private:
     double rate_=44100.;
     int64 samples_=0;
     uint64 blocks_=0;
+    uint64 slowBlocks_=0;
 };
 #if QA_STATE_MODE==0
 constexpr const char* name="125A QA Concurrency Good";
@@ -168,6 +176,8 @@ constexpr const char* name="125A QA Recovery Good";
 constexpr const char* name="125A QA Recovery Broken Rollback";
 #elif QA_STATE_MODE==6
 constexpr const char* name="125A QA Wrong Host Block Partition";
+#elif QA_STATE_MODE==7
+constexpr const char* name="125A QA Blocking Audio Callback";
 #endif
 }
 BEGIN_FACTORY_DEF("125A Universal QA","https://github.com/challanger2000","qa@125a.invalid")

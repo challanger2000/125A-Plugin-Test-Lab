@@ -18,12 +18,16 @@ def parse(path):
     assert rows.get("format")=="125A-P25-v1"
     for k in ("iterations","sample_rate","block_size","callbacks","process_failures",
               "set_failures","save_failures","save_success","torn_snapshots",
-              "callback_max_ns","callback_overruns"):
+              "callback_max_ns","callback_overruns","callback_p95_ns",
+              "callback_p99_ns","callback_deadline_ns","strict_realtime"):
         rows[k]=int(rows[k])
     rows["rate_sample"]=float(rows["rate_sample"])
     assert rows["callbacks"]==rows["iterations"], "not all callbacks executed"
     assert rows["save_success"]+rows["save_failures"]==500, "incomplete 500-save suite"
     assert rows["callback_max_ns"]>0, "invalid maximum callback runtime"
+    assert 0 < rows["callback_p95_ns"] <= rows["callback_p99_ns"] <= rows["callback_max_ns"]
+    assert rows["callback_deadline_ns"]>0
+    assert rows["strict_realtime"] in (0,1)
     assert rows["sample_rate"] in (44100,48000,96000)
     assert rows["oracle"] in ("paired","ramp","none")
     assert rows["domain_correctness"] in ("PASS","FAIL","NOT_COVERED")
@@ -46,6 +50,17 @@ def verify(path, mode):
     elif mode=="bad-rate":
         assert r["sample_rate"]==96000 and r["oracle"]=="ramp"
         assert r["result"]=="FAIL" and abs(r["rate_sample"]-0.125)>=0.002
+    elif mode=="good-realtime":
+        assert r["strict_realtime"]==1 and r["block_size"]==1024
+        assert r["result"]=="PASS" and r["callback_overruns"]==0
+        assert r["callback_max_ns"]<r["callback_deadline_ns"]
+        assert all(r[x]==0 for x in ("save_failures","set_failures","process_failures","torn_snapshots"))
+    elif mode=="bad-realtime":
+        assert r["strict_realtime"]==1 and r["block_size"]==1024
+        assert r["result"]=="FAIL" and r["callback_overruns"]>0
+        assert r["callback_max_ns"]>r["callback_deadline_ns"]
+        assert all(r[x]==0 for x in ("save_failures","set_failures","process_failures","torn_snapshots"))
+        assert r["reason"]=="realtime callback deadline violated"
     else:
         raise ValueError(mode)
     print(f"[PASS] {mode}: {path} (500 saves, {r['callbacks']} process calls; "
@@ -55,7 +70,7 @@ def verify(path, mode):
 if __name__=="__main__":
     parser=argparse.ArgumentParser()
     parser.add_argument("report",type=Path)
-    parser.add_argument("expect",choices=["good-paired","good-ramp","bad-torn","bad-save","bad-rate"])
+    parser.add_argument("expect",choices=["good-paired","good-ramp","bad-torn","bad-save","bad-rate","good-realtime","bad-realtime"])
     args=parser.parse_args()
     try:
         verify(args.report,args.expect)

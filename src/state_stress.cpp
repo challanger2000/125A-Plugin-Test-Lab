@@ -53,7 +53,7 @@ void updateMax(std::atomic<int64>& value,int64 candidate) {
     while(candidate>old && !value.compare_exchange_weak(old,candidate,std::memory_order_relaxed)){}
 }
 int stress(const std::string& pluginPath,const std::filesystem::path& report,
-           int sampleRate,int block,int iterations,const std::string& oracle,bool saveOnly) {
+           int sampleRate,int block,int iterations,const std::string& oracle,bool saveOnly,bool strictRealtime) {
     demand(sampleRate==44100||sampleRate==48000||sampleRate==96000,"unsupported test sample rate");
     demand(block==0||block==17||block==64||block==127||block==512||block==1024,
            "unsupported test block");
@@ -69,6 +69,8 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     bool pass=true;
     std::string reason;
     Metrics metrics;
+    int64 rtP95=0,rtP99=0;
+    int64 callbackBudget=0;
     for(const auto& info:factory.classInfos()) {
         if(info.category()!=kVstAudioEffectClass) continue;
         ++audioClasses;
@@ -105,9 +107,13 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             std::vector<Sample32> left(bufferSize),right(bufferSize);
             Sample32* channels[]{left.data(),right.data()};
             AudioBusBuffers output{};output.numChannels=2;output.channelBuffers32=channels;
+            // Allocation is performed before the audio thread begins.
+            // Only preallocated slots are written during the callbacks.
+            std::vector<int64> callbackNs(size_t(iterations),0);
             std::atomic<bool> launch{false};
             const int targetFrame=sampleRate/20; // 50 ms of elapsed audio time
             const int64 deadlineNs=std::max<int64>(1000,1000000000LL*std::max(1,block)/sampleRate);
+            callbackBudget=deadlineNs;
             std::thread audio([&] {
                 int64 frameIndex=0;
                 ProcessContext context{};
@@ -130,6 +136,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                         metrics.processFailures.fetch_add(1,std::memory_order_relaxed);
                     const auto ns=std::chrono::duration_cast<std::chrono::nanoseconds>(
                         Clock::now()-begin).count();
+                    callbackNs[size_t(i)]=ns;
                     updateMax(metrics.maximumNanoseconds,ns);
                     if(count>0 && ns>deadlineNs)
                         metrics.late.fetch_add(1,std::memory_order_relaxed);
@@ -187,6 +194,15 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                 }
             }
             audio.join();
+            // Statistics are computed after join; no allocation/locking in
+            // the real VST3 audio callback instrumentation.
+            std::vector<int64> nonZero;
+            nonZero.reserve(size_t(iterations));
+            for(int i=0;i<iterations;++i) if(i%19!=0) nonZero.push_back(callbackNs[size_t(i)]);
+            std::sort(nonZero.begin(),nonZero.end());
+            demand(!nonZero.empty(),"P28 no nonzero callbacks recorded");
+            rtP95=nonZero[size_t(std::ceil(0.95*nonZero.size()))-1];
+            rtP99=nonZero[size_t(std::ceil(0.99*nonZero.size()))-1];
             demand(processor->setProcessing(false)==kResultOk,"stop processing failed");
             processing=false;
             demand(component->setActive(false)==kResultOk,"deactivate failed");
@@ -203,6 +219,10 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             // Deadline overruns are independently reported and can block
             // a realtime certification; timing is noisy on shared CI runners.
             if(metrics.late.load()>0 && reason.empty()) reason="callback deadline overruns observed";
+            if(strictRealtime && metrics.late.load()>0) {
+                pass=false;
+                reason="realtime callback deadline violated";
+            }
         } catch (...) {
             if(processing) (void)processor->setProcessing(false);
             if(active) (void)component->setActive(false);
@@ -226,6 +246,10 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     out<<"\nsave_success\t"<<metrics.saveOK.load()<<"\ntorn_snapshots\t"<<metrics.torn.load();
     out<<"\ncallback_max_ns\t"<<metrics.maximumNanoseconds.load();
     out<<"\ncallback_overruns\t"<<metrics.late.load();
+    out<<"\ncallback_p95_ns\t"<<rtP95;
+    out<<"\ncallback_p99_ns\t"<<rtP99;
+    out<<"\ncallback_deadline_ns\t"<<callbackBudget;
+    out<<"\nstrict_realtime\t"<<(strictRealtime?1:0);
     out<<"\nrate_sample\t"<<metrics.rampSample.load();
     out<<"\nresult\t"<<(pass?"PASS":"FAIL")<<"\n";
     out<<"domain_correctness\t"<<(oracle=="none"?"NOT_COVERED":pass?"PASS":"FAIL")<<"\n";
@@ -239,12 +263,18 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
 }
 int main(int argc,char** argv) {
     try {
-        if((argc!=8&&argc!=9)||std::string(argv[1])!="--stress" ||
-           (argc==9&&std::string(argv[8])!="--save-only")) {
-            std::cerr<<"Usage: --stress <VST3> <report.tsv> <rate> <block> <iterations> <paired|ramp|none> [--save-only]\n";
+        if(argc<8||argc>10||std::string(argv[1])!="--stress") {
+            std::cerr<<"Usage: --stress <VST3> <report.tsv> <rate> <block> <iterations> <paired|ramp|none> [--save-only] [--rt-deadline]\n";
             return 2;
         }
-        return stress(argv[2],argv[3],std::stoi(argv[4]),std::stoi(argv[5]),std::stoi(argv[6]),argv[7],argc==9);
+        bool saveOnly=false,strictRt=false;
+        for(int i=8;i<argc;++i) {
+            const std::string flag=argv[i];
+            if(flag=="--save-only" && !saveOnly) saveOnly=true;
+            else if(flag=="--rt-deadline" && !strictRt) strictRt=true;
+            else {std::cerr<<"Unknown or duplicate stress flag: "<<flag<<"\n";return 2;}
+        }
+        return stress(argv[2],argv[3],std::stoi(argv[4]),std::stoi(argv[5]),std::stoi(argv[6]),argv[7],saveOnly,strictRt);
     } catch(const std::exception& e) {
         std::cerr<<"[FAIL] P25 host: "<<e.what()<<"\n";
         return 3;
