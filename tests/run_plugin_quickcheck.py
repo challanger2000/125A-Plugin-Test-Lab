@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Single-command Windows real VST3 technical check, without release claims.
+
+Builds the P32/P34 manifests from the *actual module bytes*, runs the two
+existing native hosts and emits fail-closed coverage evidence. Never guesses
+product-specific state, musical behavior, or DAW GUI expectations.
+"""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+
+def digest(path):
+    h = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1048576), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run):
+    bundle = bundle.resolve(strict=True)
+    host = host.resolve(strict=True)
+    stress_host = stress_host.resolve(strict=True)
+    if not bundle.is_dir() or bundle.suffix.lower() != ".vst3":
+        raise ValueError("plugin must be a native .vst3 bundle directory")
+    if not host.is_file() or not stress_host.is_file():
+        raise ValueError("one or both native Windows test hosts missing")
+    if not 5 <= timeout <= 300:
+        raise ValueError("invalid timeout")
+    binaries = [p for p in bundle.rglob("*.vst3") if p.is_file()]
+    if len(binaries) != 1:
+        raise ValueError("exactly one VST3 processor module expected in bundle")
+    binary = binaries[0].resolve()
+    sha = digest(binary)
+    out.mkdir(parents=True, exist_ok=True)
+    p32 = {
+        "schema": "125a-p32-adapter-v1",
+        "product": {
+            "name": bundle.stem,
+            "version": "UNVERIFIED",
+            "commit_sha": "0" * 40,
+            "binary": str(binary),
+            "sha256": sha
+        },
+        "host": str(stress_host),
+        "cases": [{
+            "id": "playback_save",
+            "rate": 44100,
+            "block": 64,
+            "iterations": 2500,
+            "mode": "save-only",
+            "assertions": {
+                "result": {"eq": "PASS"},
+                "process_failures": {"eq": 0},
+                "save_failures": {"eq": 0},
+                "save_success": {"eq": 500},
+                "callbacks": {"eq": 2500},
+                "domain_correctness": {"eq": "NOT_COVERED"}
+            }
+        }]
+    }
+    p34 = {
+        "schema": "125a-p34-capture-v1",
+        "product": {"binary": str(binary), "sha256": sha},
+        "host": str(host)
+    }
+    manifests = out / "manifests"
+    manifests.mkdir(exist_ok=True)
+    p32_path = manifests / "p32.json"
+    p34_path = manifests / "p34.json"
+    p32_path.write_text(json.dumps(p32, indent=2) + "\n", encoding="utf-8")
+    p34_path.write_text(json.dumps(p34, indent=2) + "\n", encoding="utf-8")
+
+    summary = {
+        "schema": "125a-quickcheck-result-v1",
+        "status": "FAIL",
+        "release_approved": False,
+        "verified_module_sha256": sha,
+        "source_commit": "NOT VERIFIED",
+        "product_version": "NOT VERIFIED",
+        "product": bundle.stem,
+        "coverage": {
+            "api_playback_save": "NOT EXECUTED",
+            "native_audio_state_capture": "NOT EXECUTED",
+            "independent_musical_audio": "NOT COVERED",
+            "product_gui_controls": "NOT COVERED",
+            "midi_wav_export": "NOT COVERED",
+            "preset_semantics": "NOT COVERED",
+            "commercial_daw_integration": "NOT COVERED"
+        }
+    }
+    report_path = out / "QUICKCHECK-RESULT.json"
+    report_path.unlink(missing_ok=True)
+    native_path = out / "native" / "PRODUCT-QA-RESULT.json"
+    native_path.unlink(missing_ok=True)  # never reuse a previous fake PASS
+    proc = runner([sys.executable, str(Path(__file__).with_name("run_product_qa.py")),
+                   "--p32", str(p32_path), "--p34", str(p34_path),
+                   "--out", str(out / "native"), "--timeout", str(timeout)],
+                  capture_output=True, text=True, timeout=timeout * 2 + 30,
+                  check=False, errors="replace")
+    (out / "quickcheck.log").write_text(
+        (proc.stdout or "") + "\n" + (proc.stderr or ""), encoding="utf-8")
+    if not native_path.is_file():
+        summary["reason"] = "missing native independent test report"
+    else:
+        native = json.loads(native_path.read_text(encoding="utf-8"))
+        if proc.returncode != 0 or native.get("status") != "TECHNICAL_PASS":
+            summary["reason"] = "native real-VST3 technical QA did not pass"
+        elif native.get("verified_vst3_sha256") != sha:
+            summary["reason"] = "native evidence did not match exact module SHA-256"
+        elif native.get("release_approved") is not False:
+            summary["reason"] = "native host improperly approved release"
+        else:
+            summary["status"] = "TECHNICAL_PASS"
+            summary["coverage"]["api_playback_save"] = "PASS"
+            summary["coverage"]["native_audio_state_capture"] = "PASS"
+    report_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    return summary
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--plugin", type=Path, required=True)
+    p.add_argument("--host", type=Path, required=True)
+    p.add_argument("--stress-host", type=Path, required=True)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--timeout", type=int, default=120)
+    a = p.parse_args()
+    try:
+        result = run(a.plugin, a.host, a.stress_host, a.out, a.timeout)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired,
+            json.JSONDecodeError) as error:
+        a.out.mkdir(parents=True, exist_ok=True)
+        result = {"schema": "125a-quickcheck-result-v1",
+                  "status": "FAIL", "release_approved": False, "error": str(error)}
+        (a.out / "QUICKCHECK-RESULT.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print("[%s] real VST3 one-command technical quickcheck; release approved: NO" % result["status"])
+    return 0 if result["status"] == "TECHNICAL_PASS" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
