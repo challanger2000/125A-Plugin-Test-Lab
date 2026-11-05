@@ -75,7 +75,7 @@ jobs:
           New-Item -ItemType Directory -Force $out | Out-Null
           $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
           $plugin = @(Get-ChildItem build-drumator -Recurse -File -Filter 'Drumator.vst3' |
-            Where-Object { $_.FullName -match '[\/]VST3[\/]' })
+            Where-Object { $_.FullName -match '[\\/]VST3[\\/]' })
           if ($gui.Count -ne 1 -or $plugin.Count -ne 1) {
             throw 'P14 GUI host or source-built VST3 missing or ambiguous'
           }
