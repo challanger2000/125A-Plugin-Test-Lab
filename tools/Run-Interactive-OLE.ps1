@@ -21,7 +21,7 @@ New-Item -ItemType Directory -Path $files -Force | Out-Null
 
 function Save-Result([string]$status, [string]$reason) {
   @(
-    "125A Plugin Test Lab — P14 native Windows OLE receiver",
+    "125A Plugin Test Lab - P14 native Windows OLE receiver",
     "Status: $status",
     "Reason: $reason",
     "Tested product SHA: $(if (Test-Path (Join-Path $base 'TESTED-PRODUCT-REVISION.txt')) { (Get-Content (Join-Path $base 'TESTED-PRODUCT-REVISION.txt') -Raw).Trim() } else { 'not recorded' })",
@@ -29,7 +29,7 @@ function Save-Result([string]$status, [string]$reason) {
     "Native runner: $gui",
     "Output directory: $result"
   ) | Set-Content -LiteralPath $resultFile -Encoding UTF8
-  Write-Host "P14 $status — $reason"
+  Write-Host "P14 $status - $reason"
   Write-Host "Proof: $resultFile"
 }
 
