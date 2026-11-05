@@ -3,6 +3,7 @@
 // independently published related fields or arbitrarily refuses playback saves.
 #include "public.sdk/source/main/pluginfactory.h"
 #include "public.sdk/source/vst/vstaudioeffect.h"
+#include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/vst/vstspeaker.h"
 #include "pluginterfaces/base/ibstream.h"
 #include <atomic>
