@@ -18,6 +18,22 @@ native VST3 processing. P32 performs 2500 audio callbacks with 500
 project-state saves. P34 captures real 24-bit stereo PCM at 44.1 kHz
 and real processor-state bytes.
 
+When the captured state has a supported size, the same invocation now
+automatically loads it into **two fresh native VST3 host processes**, renders
+new WAV evidence from each process, and saves state again. Both fresh
+`setState` / `getState` runs must succeed; otherwise the overall
+quickcheck is FAIL. This test helps detect broken project restoration
+without requiring you to open a DAW manually.
+
+This is an API-level fresh-process recall test, not yet proof that a
+presets' audible behavior or full DAW session is correct. Because many
+plugins use randomized synthesis, this generic quickcheck does not
+require identical PCM across independent runs: repeatable PCM and
+musical correctness remain `NOT COVERED` without a trusted
+product-specific deterministic reference. Captured states shorter
+than 9 bytes or 16 MiB and larger cannot be tested by this current
+host and are explicitly `NOT COVERED` rather than called PASS.
+
 `QUICKCHECK-RESULT.json` reports `TECHNICAL_PASS` only when both native
 stages pass and their reports identify that exact module. Missing,
 out-of-date, wrong-product and ambiguous multi-module evidence is rejected.
