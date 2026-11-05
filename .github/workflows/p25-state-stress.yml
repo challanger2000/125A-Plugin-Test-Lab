@@ -12,6 +12,9 @@ on:
       - 'tests/verify_recovery_adapter.py'
       - 'src/rate_block.cpp'
       - 'tests/verify_rate_block.py'
+      - 'src/controller_recovery.cpp'
+      - 'tests/controller_recovery_fixture.cpp'
+      - 'tests/verify_controller_recovery.py'
       - '.github/workflows/p25-state-stress.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -44,7 +47,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabStateStress TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 --parallel 4
+          cmake --build build --config Release --target TestLabStateStress TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -194,6 +197,25 @@ jobs:
           Write-Host '[PASS] P28 real callback p95/p99/max and hard realtime deadline; broken VST3 blocked > deadline'
           exit 0
 
+      - name: P30 native VST3 controller disconnect and reconnect
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Controller_Recovery.exe')
+          if ($exe.Count -ne 1) { throw 'P30 controller host missing' }
+          New-Item -ItemType Directory -Force artifacts/P30 | Out-Null
+          foreach ($mode in @(0,1)) {
+            $plugin = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_Controller_$mode.vst3")
+            if ($plugin.Count -lt 1) { throw "P30 plugin mode $mode missing" }
+            $label = @('good','broken')[$mode]
+            $report = "artifacts/P30/$label.tsv"
+            & $exe[0].FullName --connection $plugin[0].FullName $report
+            if ($LASTEXITCODE -ne 0) { throw "P30 $label API lifecycle failed" }
+            python tests/verify_controller_recovery.py $report $label
+            if ($LASTEXITCODE -ne 0) { throw "P30 $label independent oracle failed" }
+          }
+          Write-Host '[PASS] P30 real controller recovery and stale state fault detection'
+
       - name: Publish proof even on failure
         if: always()
         uses: actions/upload-artifact@v4
@@ -203,6 +225,7 @@ jobs:
             artifacts/P25/
             artifacts/P26/
             artifacts/P27/
+            artifacts/P30/
             artifacts/P28/
           if-no-files-found: warn
           retention-days: 14
