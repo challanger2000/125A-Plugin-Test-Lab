@@ -147,36 +147,37 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                 }
                 metrics.running.store(false,std::memory_order_release);
             });
-            std::thread writer([&] {
-                while(!launch.load(std::memory_order_acquire)) std::this_thread::yield();
-                for(int i=0;i<iterations*2;++i) {
-                    const Pair p=makePair((i&1)!=0);
-                    ResizableMemoryIBStream stream;
-                    int32 written=0;
-                    if(stream.write(const_cast<Pair*>(&p),sizeof(p),&written)!=kResultOk||
-                        written!=sizeof(p)) {metrics.setFailures++;continue;}
-                    stream.rewind();
-                    if(component->setState(&stream)!=kResultOk) metrics.setFailures++;
-                    hostPaceMicroseconds(5);
-                }
-            });
             launch.store(true,std::memory_order_release);
-            // Saves occur while callback and writer threads are active.
-            // Never count a success without validating a complete snapshot.
-            for(int i=0;i<500;++i) {
+            // Steinberg VST3: setState/getState are serialized on one
+            // control/UI thread; process() runs concurrently on audio thread.
+            // Alternate save-before-write and save-after-write ordering.
+            auto saveSnapshot = [&] {
                 ResizableMemoryIBStream saved;
                 if(component->getState(&saved)!=kResultOk || saved.getCursor()==0) {
                     metrics.saveFailures++;
                 } else {
                     metrics.saveOK++;
-                    if(oracle=="paired") {
-                        if(saved.getCursor()!=sizeof(Pair) || !pairValid(*static_cast<const Pair*>(saved.getData())))
-                            metrics.torn++;
-                    }
+                    if(oracle=="paired" &&
+                       (saved.getCursor()!=sizeof(Pair) ||
+                        !pairValid(*static_cast<const Pair*>(saved.getData()))))
+                        metrics.torn++;
                 }
-                hostPaceMicroseconds(75);
+            };
+            for(int i=0;i<iterations*2;++i) {
+                if(i%20==0) saveSnapshot();
+                const Pair p=makePair((i&1)!=0);
+                ResizableMemoryIBStream stream;
+                int32 written=0;
+                if(stream.write(const_cast<Pair*>(&p),sizeof(p),&written)!=kResultOk ||
+                   written!=sizeof(p)) {
+                    metrics.setFailures++;
+                } else {
+                    stream.rewind();
+                    if(component->setState(&stream)!=kResultOk) metrics.setFailures++;
+                }
+                if(i%20==10) saveSnapshot();
+                hostPaceMicroseconds(5);
             }
-            writer.join();
             audio.join();
             demand(processor->setProcessing(false)==kResultOk,"stop processing failed");
             processing=false;
