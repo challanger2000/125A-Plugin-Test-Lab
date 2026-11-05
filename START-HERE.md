@@ -42,6 +42,7 @@ The report names the exact commit and gives PASS/FAIL evidence for:
 - P13 genuine GUI drag-source gesture: four independently validated retained files
 - P15 synthetic receiver contract for four COM CF_HDROP callbacks
 - P16 actual physical drag-and-drop into separate native COM receiver, four files PASS
+- P17 16 real Drumator editor detach/reattach cycles, each with valid HWND and unchanged processor state
 - negative audio/MIDI/WAV/GUI fixtures and explicit INCONCLUSIVE cases
 
 The P04 and P02 workflows separately check the GUI-host and audio-host
