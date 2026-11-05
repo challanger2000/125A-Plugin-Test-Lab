@@ -19,6 +19,11 @@
 #include <vector>
 
 #include <algorithm>
+#include <array>
+#include <cwchar>
+#include <atomic>
+#include <thread>
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -350,10 +355,114 @@ void clickRealDrumatorGui(HWND surface, double x, double y,
               << " at " << px << "," << py << '\n';
 }
 
+
+// P10: Find the *actual OS-owned Shell save dialog*, never infer its existence
+// from a GUI click. Cancel it from a second thread because IFileDialog::Show
+// runs a synchronous modal COM event loop on the UI thread.
+struct SaveDialogSearch {
+    DWORD processId{};
+    std::wstring caption;
+    HWND window{};
+};
+BOOL CALLBACK findExportDialog(HWND window, LPARAM payload) {
+    auto* q = reinterpret_cast<SaveDialogSearch*>(payload);
+    if (!IsWindowVisible(window)) return TRUE;
+    DWORD process{};
+    (void)GetWindowThreadProcessId(window, &process);
+    if (process != q->processId) return TRUE;
+    wchar_t kind[64]{};
+    if (!GetClassNameW(window, kind, 64) || wcscmp(kind, L"#32770"))
+        return TRUE;
+    wchar_t title[512]{};
+    (void)GetWindowTextW(window, title, 512);
+    if (std::wstring(title).find(q->caption) == std::wstring::npos)
+        return TRUE;
+    q->window = window;
+    return FALSE;
+}
+bool cancelNativeSaveDialog(const std::wstring& title) {
+    const ULONGLONG deadline = GetTickCount64() + 9000;
+    while (GetTickCount64() < deadline) {
+        SaveDialogSearch query{GetCurrentProcessId(), title, nullptr};
+        EnumWindows(findExportDialog, reinterpret_cast<LPARAM>(&query));
+        if (query.window) {
+            std::wcout << L"[INFO] P10 verified native Windows Shell Save dialog: "
+                       << title << L"\n";
+            if (!PostMessageW(query.window, WM_CLOSE, 0, 0))
+                return false;
+            for (unsigned i = 0; i < 30; ++i) {
+                if (!IsWindow(query.window)) return true;
+                Sleep(80);
+            }
+            return false;
+        }
+        Sleep(35);
+    }
+    return false;
+}
+void runNativeExportDialogCancel(
+    HWND child, IComponent* component, double logicalHeight,
+    const std::filesystem::path& evidenceFolder) {
+    std::filesystem::create_directories(evidenceFolder);
+    const auto baseline = captureActualComponentState(component);
+    const std::array<const wchar_t*, 4> dialogTitles{
+        L"125A Drumator - Export PATTERN",
+        L"125A Drumator - Export PATTERN",
+        L"125A Drumator - Export SONG",
+        L"125A Drumator - Export SONG"
+    };
+    const std::array<const char*, 4> actionNames{
+        "PATTERN MIDI", "PATTERN WAV", "SONG MIDI", "SONG WAV"
+    };
+    for (int option = 0; option < 4; ++option) {
+        // Popup bound by product's fixed 1280px layout: footer EXPORT is
+        // x910..1005, y=height-48+10..35. Four 26px menu rows sit above.
+        clickRealDrumatorGui(child, 957.0, logicalHeight - 26.,
+                             "OPEN native EXPORT popup");
+        std::atomic<bool> cancelObserved{false};
+        std::thread closer([&]() {
+            cancelObserved.store(cancelNativeSaveDialog(dialogTitles[option]),
+                                 std::memory_order_release);
+        });
+        try {
+            clickRealDrumatorGui(child, 900., logicalHeight - 149. + 26. * option,
+                                 actionNames[option]);
+        } catch (...) {
+            closer.join();
+            throw;
+        }
+        closer.join();
+        require(cancelObserved.load(std::memory_order_acquire),
+                "P10 selected export did not open/close expected native Windows Save dialog");
+        pump(80);
+        const auto after = captureActualComponentState(component);
+        require(after == baseline,
+                "P10 CANCEL corrupted actual processor state");
+        const auto stem = std::string("cancel-") + std::to_string(option);
+        std::ofstream proof(evidenceFolder / (stem + ".ok"),
+                            std::ios::binary | std::ios::trunc);
+        require(proof.good(), "P10 cannot create scenario evidence");
+        proof << actionNames[option] << ": OS modal opened and canceled; "
+              << "component state byte-identical\n";
+        require(proof.good(), "P10 scenario evidence write failed");
+        std::cout << "[PASS] P10 actual native Save dialog "
+                  << actionNames[option]
+                  << ": opened, canceled, state unchanged\n";
+    }
+    for (const auto& entry : std::filesystem::directory_iterator(evidenceFolder)) {
+        const auto ext = entry.path().extension().string();
+        require(ext != ".mid" && ext != ".wav",
+                "P10 CANCEL unexpectedly produced MIDI/WAV file");
+    }
+    std::cout << "[PASS] P10: all four actual Drumator GUI export choices "
+                 "opened native Win32 Save dialog; CANCEL non-destructive\n";
+}
+
 void runRealDrumatorGui(const std::string& path,
                         const std::filesystem::path& originalState,
                         const std::filesystem::path& canceledState,
-                        const std::filesystem::path& appliedState) {
+                        const std::filesystem::path& appliedState,
+                        bool exportDialogCancel = false) {
     std::cout << "[INFO] P09 load source-built packaged VST3 from " << path << "\n";
     std::string error;
     auto module = Module::create(path, error);
@@ -431,6 +540,10 @@ void runRealDrumatorGui(const std::string& path,
                       << " logical, native " << client.right << "x"
                       << client.bottom << " pixels\n";
 
+            if (exportDialogCancel) {
+                runNativeExportDialogCancel(child, component.get(), logicalHeight,
+                                            originalState.parent_path());
+            } else {
             saveActualComponentState(component.get(), originalState);
             // A visible, stateful control independently proves that the
             // native pointer reaches the live controller AND the processor.
@@ -469,6 +582,7 @@ void runRealDrumatorGui(const std::string& path,
                                  "CONFIRM: overwrite occupied A/B/C");
             pump(250);
             saveActualComponentState(component.get(), appliedState);
+            }
             require(view->removed() == kResultTrue,
                     "P09 product IPlugView::removed failed");
             attached = false;
@@ -501,6 +615,12 @@ int main(int argc, char** argv) {
     std::cerr << std::unitbuf;
     try {
         ComApartment guiCom;
+        if (argc == 4 && std::string(argv[1]) == "--drumator-export-dialog-cancel") {
+            const std::filesystem::path folder = argv[3];
+            runRealDrumatorGui(argv[2], folder / "before.bin",
+                              folder / "cancel.bin", folder / "after.bin", true);
+            return 0;
+        }
         if (argc == 6 && std::string(argv[1]) == "--drumator-beat-creator") {
             runRealDrumatorGui(argv[2], argv[3], argv[4], argv[5]);
             return 0;
@@ -511,7 +631,8 @@ int main(int argc, char** argv) {
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
         std::cerr << "Usage: 125A_Test_Lab_GUI --probe <plugin.vst3>\n"
                   << "       125A_Test_Lab_GUI --prove-click <plugin.vst3> <param-id>\n"
-                  << "       125A_Test_Lab_GUI --drumator-beat-creator <plugin.vst3> <before.bin> <cancel.bin> <after.bin>\n";
+                  << "       125A_Test_Lab_GUI --drumator-beat-creator <plugin.vst3> <before.bin> <cancel.bin> <after.bin>\n"
+                  << "       125A_Test_Lab_GUI --drumator-export-dialog-cancel <plugin.vst3> <evidence-folder>\n";
         return 2;
     } catch (const std::exception& ex) {
         const std::string message = ex.what();

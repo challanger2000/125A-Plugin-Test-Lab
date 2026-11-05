@@ -19,6 +19,7 @@ on:
       - 'tests/verify_wav_export.py'
       - 'src/gui_host.cpp'
       - 'tests/verify_drumator_gui.py'
+      - 'tests/verify_export_dialogs.py'
       - '.github/workflows/drumator-p03.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -291,6 +292,29 @@ jobs:
           Write-Host "[PASS] P09: actual Drumator GUI mouse input => A/B/C changed and CANCEL preserved state"
           exit 0
 
+      - name: P10 actual Win32 Save dialog opens and CANCEL is non-destructive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $bundle = Join-Path $PWD 'build/p09-bundle/125A Drumator.vst3/Contents/x86_64-win/125A Drumator.vst3'
+          if ($exe.Count -ne 1 -or -not (Test-Path -LiteralPath $bundle)) {
+            throw 'P10 actual editor host or fully packaged Drumator bundle missing'
+          }
+          New-Item -ItemType Directory -Force build/p10-export-dialogs | Out-Null
+          & $exe[0].FullName --drumator-export-dialog-cancel $bundle build/p10-export-dialogs 2>&1 |
+            Tee-Object -FilePath build/p10-native-save-dialogs.log
+          if ($LASTEXITCODE -ne 0) {
+            throw 'P10 actual Windows Shell Save dialogs not reliably opened/canceled'
+          }
+          python tests/verify_export_dialogs.py build/p10-export-dialogs 2>&1 |
+            Tee-Object -FilePath build/p10-independent-dialog-oracle.log
+          if ($LASTEXITCODE -ne 0) {
+            throw 'P10 independent four-option dialog completeness oracle failed'
+          }
+          Write-Host '[PASS] P10: real native Save dialog opened & canceled for four export options'
+          exit 0
+
       - name: Collect P03 diagnostic evidence
         if: always()
         shell: pwsh
@@ -320,6 +344,12 @@ jobs:
                              "build/p09-gui/before.bin",
                              "build/p09-gui/cancel.bin",
                              "build/p09-gui/after.bin",
+                             "build/p10-native-save-dialogs.log",
+                             "build/p10-independent-dialog-oracle.log",
+                             "build/p10-export-dialogs/cancel-0.ok",
+                             "build/p10-export-dialogs/cancel-1.ok",
+                             "build/p10-export-dialogs/cancel-2.ok",
+                             "build/p10-export-dialogs/cancel-3.ok",
                              "build/p05-renders/bpm120-swing50-block127.wav")) {
             if (Test-Path $file) { Copy-Item $file artifact/P03/ }
           }
@@ -332,7 +362,8 @@ jobs:
             "P07 checks product Beat Creator core and 5-point UI complexity function (not live clicks).",
             "P08 checks real WAV export core and independent MIDI/WAV correspondence.",
             "P09 exercises actual product GUI Beat Creator GENERATE/CANCEL/APPLY by native HWND events.",
-            "The GUI MIDI/WAV export file chooser and drag-and-drop remain untested."
+            "P10 checks actual Windows Shell Save-dialog launch/cancel for all four export menu options.",
+            "P10 does NOT prove successful Save As/export file creation; OLE drag-and-drop remains untested."
           ) | Set-Content artifact/P03/REPORT-NOTES.txt
 
       - name: Upload P03 results (even if tests failed)
