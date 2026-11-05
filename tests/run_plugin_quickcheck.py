@@ -95,6 +95,8 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run):
     }
     report_path = out / "QUICKCHECK-RESULT.json"
     report_path.unlink(missing_ok=True)
+    native_path = out / "native" / "PRODUCT-QA-RESULT.json"
+    native_path.unlink(missing_ok=True)  # never reuse a previous fake PASS
     proc = runner([sys.executable, str(Path(__file__).with_name("run_product_qa.py")),
                    "--p32", str(p32_path), "--p34", str(p34_path),
                    "--out", str(out / "native"), "--timeout", str(timeout)],
@@ -102,7 +104,6 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run):
                   check=False, errors="replace")
     (out / "quickcheck.log").write_text(
         (proc.stdout or "") + "\n" + (proc.stderr or ""), encoding="utf-8")
-    native_path = out / "native" / "PRODUCT-QA-RESULT.json"
     if not native_path.is_file():
         summary["reason"] = "missing native independent test report"
     else:
