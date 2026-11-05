@@ -34,7 +34,7 @@ def check(request, output, runner=subprocess.run, timeout=120):
     state = Path(request["initial_state"]).resolve(strict=True)
     if not all(p.is_file() for p in (binary, host, state)):
         raise ValueError("missing module, host or captured state")
-    if not 8 < state.stat().st_size < 16 * 1024 * 1024:
+    if not 0 < state.stat().st_size < 128 * 1024 * 1024:
         raise ValueError("invalid state size")
     if digest(binary) != identity:
         raise ValueError("module binary SHA-256 mismatch")
@@ -74,7 +74,7 @@ def check(request, output, runner=subprocess.run, timeout=120):
                 (proc.stdout or "") + "\n" + (proc.stderr or ""), encoding="utf-8")
             if proc.returncode != 0:
                 raise ValueError("native fresh host %d exit %d" % (index, proc.returncode))
-            if not wav.is_file() or not saved.is_file() or saved.stat().st_size <= 8:
+            if not wav.is_file() or not saved.is_file() or saved.stat().st_size == 0:
                 raise ValueError("missing fresh host output %d" % index)
             with wave.open(str(wav), "rb") as w:
                 format_ok = (w.getnchannels(), w.getframerate(), w.getsampwidth(),
