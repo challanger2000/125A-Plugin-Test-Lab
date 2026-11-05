@@ -15,7 +15,7 @@ contains both native x64 audio/state hosts, all supporting Python scripts
 and SHA-256 checksums. Python 3 on Windows is required.
 
 ```powershell
-python run_plugin_quickcheck.py --plugin "C:\\VST3\\Plugin.vst3" --host ".\\125A_Test_Lab_Host.exe" --stress-host ".\\125A_Test_Lab_State_Stress.exe" --out ".\\QA-Results"
+python run_plugin_quickcheck.py --plugin "C:\VST3\Plugin.vst3" --host ".\125A_Test_Lab_Host.exe" --stress-host ".\125A_Test_Lab_State_Stress.exe" --out ".\QA-Results"
 ```
 
 **Native GUI tests:** the separate [P04 Windows GUI artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42092611162)
