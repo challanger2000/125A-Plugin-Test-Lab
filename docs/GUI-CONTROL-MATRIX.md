@@ -43,3 +43,23 @@ or dialog behavior. The report always marks `all_product_controls` as
 `NOT COVERED`, even if every *declared* control passes. This must not be
 used as a product release certificate. More gesture types and independent
 processor/GUI oracles are necessary to cover actual user workflows.
+
+## Correlated native controller and painted visual state
+
+Optionally add an independently expected post-click pixel to an individual
+control:
+
+```json
+"expected_pixel": {"x": 10, "y": 10, "rgb": [12, 142, 85]}
+```
+
+The matrix then runs `--prove-click-and-snapshot`, clicks the real HWND,
+checks the VST3 controller parameter in two editor lifecycles, and captures
+the actual painted editor BMP after the first click. The existing P33 bitmap
+reader verifies that the stated RGB is present at the required physical pixel.
+A successful controller value with a stale painted color is **FAIL**, not PASS.
+
+Windows P04 regression includes a deliberately broken VST3 whose controller
+parameter changes normally while its painted status remains stale. Only the
+external painted-pixel expectation detects it. As before, this is a declared
+pixel/control test, not automatic discovery of every product control.
