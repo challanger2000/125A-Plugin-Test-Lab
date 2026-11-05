@@ -22,6 +22,8 @@ on:
       - 'tests/verify_export_dialogs.py'
       - 'tests/make_gui_export_state.py'
       - 'tests/verify_gui_save_as.py'
+      - 'tests/make_invalid_state_matrix.py'
+      - 'tests/build_release_report.py'
       - '.github/workflows/drumator-p03.yml'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -501,6 +503,17 @@ jobs:
           Write-Host '[PASS] P13 four GUI-generated drag-source files validated; external OLE receiver INCONCLUSIVE'
           exit 0
 
+      - name: P21 fail-closed combined release evidence (exact product revision)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = (git -C drumator-src rev-parse HEAD).Trim()
+          python tests/build_release_report.py $sha artifact/P03/RELEASE-EVIDENCE.json
+          if ($LASTEXITCODE -ne 0) {
+            throw 'P21 required gate evidence is incomplete, contradictory or FAILED'
+          }
+          Write-Host '[PASS] P21 machine-readable release evidence and exact tested product SHA'
+
       - name: Collect P03 diagnostic evidence
         if: always()
         shell: pwsh
@@ -570,6 +583,7 @@ jobs:
             "P17 verifies 16 real production editor detach/reattach cycles with byte-identical processor state.",
             "P19 stress-tests 96 real stateful GUI clicks and 48 reversible limiter state roundtrips.",
             "P20 rejects 16 independently corrupted project states without any rendered audio.",
+            "P21 emits fail-closed RELEASE-EVIDENCE.json for the exact product SHA, not a blanket DAW certification.",
             "P10 checks actual Windows Shell Save-dialog launch/cancel for all four export menu options.",
             "P11 verifies four GUI Save As MIDI/WAV exports using independent file and musical-timing oracles.",
             "P13 checks native GUI drag source file creation, retention and independent MIDI/WAV quality.",
