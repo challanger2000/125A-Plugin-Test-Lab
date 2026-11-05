@@ -139,3 +139,19 @@ smtg_add_vst3plugin(QAStateMode7
     SOURCES_LIST tests/state_race_fixture.cpp)
 target_link_libraries(QAStateMode7 PRIVATE sdk)
 target_compile_definitions(QAStateMode7 PRIVATE NOMINMAX QA_STATE_MODE=7)
+
+# P29 universal MIDI instrument playback/save/recall test, three VST3 fixtures.
+add_executable(TestLabVoiceStress src/voice_stress.cpp)
+set_target_properties(TestLabVoiceStress PROPERTIES OUTPUT_NAME "125A_Test_Lab_Voice_Stress")
+target_link_libraries(TestLabVoiceStress PRIVATE Vst3WinModule sdk_hosting sdk_common base pluginterfaces)
+target_compile_definitions(TestLabVoiceStress PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+if(MSVC)
+  target_compile_options(TestLabVoiceStress PRIVATE /W4 /permissive- /utf-8)
+endif()
+foreach(mode RANGE 0 2)
+  smtg_add_vst3plugin(QAVoiceMode${mode}
+      PACKAGE_NAME "125A_QA_Voice_${mode}"
+      SOURCES_LIST tests/voice_fixture.cpp)
+  target_link_libraries(QAVoiceMode${mode} PRIVATE sdk)
+  target_compile_definitions(QAVoiceMode${mode} PRIVATE NOMINMAX QA_VOICE_MODE=${mode})
+endforeach()
