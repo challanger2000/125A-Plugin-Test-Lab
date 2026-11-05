@@ -65,6 +65,21 @@ The new test is not specific to Drumator or AWE. **For a production
 instrument, a separate adapter must declare its supported voice limits and
 expected audio**; the synthetic 32-voice limit is not universal.
 
+## Universal VST3 controller reconnect regression (P30)
+
+P30 tests **actual VST3** processor-controller `IConnectionPoint`
+connections and disconnections, invalid component state rejection,
+reconnection, controller `setComponentState`, independent normalized
+parameter values, and processed PCM. A deliberately stale controller
+is required to fail the independent semantic oracle even when its
+VST3 API calls return success.
+
+[Verified P30 Windows CI](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42057621836).
+The same commit passed the existing P02, P03, P04, P25–P28 and P29
+regressions. This verifies the **connection/control-state contract**,
+not arbitrary GUI pixels or product-specific error semantics. Those
+remain NOT COVERED without their own independent adapter.
+
 ## What actually passed
 
 All gates below have verified Windows GitHub Actions evidence, not just
