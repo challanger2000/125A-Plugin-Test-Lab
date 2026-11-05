@@ -5,10 +5,10 @@ bundle, this command executes the existing P32 playback-save and P34 native
 audio/state capture with no handwritten manifest:
 
 ```powershell
-python tests/run_plugin_quickcheck.py --plugin "C:\VST3\Plugin.vst3" --host ".\125A_Test_Lab_Host.exe" --stress-host ".\125A_Test_Lab_State_Stress.exe" --out ".\Plugin-QA"
+python run_plugin_quickcheck.py --plugin "C:\VST3\Plugin.vst3" --host ".\125A_Test_Lab_Host.exe" --stress-host ".\125A_Test_Lab_State_Stress.exe" --out ".\Plugin-QA"
 ```
 
-It discovers exactly one .vst3 binary inside the bundle, calculates the
+If running directly from a source checkout rather than the portable package, use `python tests/run_plugin_quickcheck.py` instead.\n\nIt discovers exactly one .vst3 binary inside the bundle, calculates the
 real file SHA-256, generates pinned intermediate manifests, and launches
 native VST3 processing. P32 performs 2500 audio callbacks with 500
 project-state saves. P34 captures real 24-bit stereo PCM at 44.1 kHz
