@@ -132,7 +132,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
     # Never equate successful IComponent::setState calls with musical correctness.
     if summary["status"] == "TECHNICAL_PASS":
         saved = out / "native" / "P34" / "captured-state.bin"
-        if saved.is_file() and 8 < saved.stat().st_size < 16 * 1024 * 1024:
+        if saved.is_file() and 0 < saved.stat().st_size < 128 * 1024 * 1024:
             recall_request = {
                 "schema": "125a-state-reload-v1",
                 "product": {"binary": str(binary), "sha256": sha},
@@ -171,7 +171,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         else:
             summary["coverage"]["fresh_process_project_recall"] = "NOT COVERED"
             summary["recall_note"] = (
-                "Captured state absent or outside current host 9-byte to 16-MB size range")
+                "Captured state absent or outside current host 1-byte to 128-MB size range")
     if summary["status"] == "TECHNICAL_PASS" and gui_host is not None:
         gui_log = out / "gui-lifecycle.log"
         gui_log.unlink(missing_ok=True)
