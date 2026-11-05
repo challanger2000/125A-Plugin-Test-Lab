@@ -10,7 +10,7 @@
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstmessage.h"
-#include "pluginterfaces/vst/ivstplugview.h"
+#include "pluginterfaces/gui/iplugview.h"
 #include "pluginterfaces/vst/vsttypes.h"
 #include <array>
 #include <cmath>
