@@ -37,7 +37,7 @@ jobs:
       - name: Compile GUI host and two real GUI VST3s
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabGUI QAGuiClick QAGuiInert QASignalGood --parallel 4
+          cmake --build build --config Release --target TestLabGUI QAGuiClick QAGuiInert QAGuiStalePaint QASignalGood --parallel 4
           if ($LASTEXITCODE -ne 0) { throw "P04 build failed" }
 
       - name: Native Win32 click-to-VST3 parameter proof and negative control
@@ -136,6 +136,56 @@ jobs:
           python tests/test_native_gui_snapshot.py artifact/gui-snapshot/editor.bmp
           if ($LASTEXITCODE -ne 0) { throw 'Independent painted pixel or corruption negative control failed' }
           Write-Host '[PASS] VST3 painted HWND pixels captured and external oracle rejects altered image'
+          exit 0
+
+      - name: Real click plus painted GUI state, stale visual negative control
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Click.vst3')
+          $stale = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_StalePaint.vst3')
+          if ($exe.Count -ne 1 -or $good.Count -ne 1 -or $stale.Count -ne 1) {
+            throw 'Real visual fixture missing'
+          }
+          New-Item -ItemType Directory -Force artifact/visual-actions | Out-Null
+          function Write-VisualManifest($bundle, $output) {
+            $modules = @(Get-ChildItem -LiteralPath $bundle -Recurse -File -Filter '*.vst3')
+            if ($modules.Count -ne 1) { throw 'Visual fixture binary ambiguous' }
+            @{
+              schema = '125a-gui-controls-v1'
+              product = @{ binary = $modules[0].FullName; sha256 = (Get-FileHash $modules[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+              gui_host = $exe[0].FullName
+              controls = @(@{
+                id = 'clicked_painted_switch'
+                param_id = 9001
+                x = 160
+                y = 90
+                expected_normalized = 1.0
+                expected_pixel = @{ x = 10; y = 10; rgb = @(12,142,85) }
+              })
+            } | ConvertTo-Json -Depth 9 | Set-Content -LiteralPath $output
+          }
+          Write-VisualManifest $good[0].FullName artifact/visual-actions/good.json
+          Write-VisualManifest $stale[0].FullName artifact/visual-actions/stale.json
+          python tests/run_gui_control_matrix.py --manifest artifact/visual-actions/good.json --out artifact/visual-actions/good
+          if ($LASTEXITCODE -ne 0) { throw 'Real VST3 control and matching painted indicator failed' }
+          $goodReport = Get-Content artifact/visual-actions/good/GUI-CONTROL-RESULT.json -Raw | ConvertFrom-Json
+          if ($goodReport.status -ne 'TECHNICAL_PASS' -or $goodReport.painted_pixel_oracles -ne 1) {
+            throw 'Independent visual evidence missing'
+          }
+          python tests/run_gui_control_matrix.py --manifest artifact/visual-actions/stale.json --out artifact/visual-actions/stale
+          if ($LASTEXITCODE -ne 1) { throw 'Stale but clickable VST3 GUI was not rejected' }
+          $badReport = Get-Content artifact/visual-actions/stale/GUI-CONTROL-RESULT.json -Raw | ConvertFrom-Json
+          if ($badReport.status -ne 'FAIL' -or
+              -not (($badReport.cases[0].faults -join ' ').Contains('painted GUI RGB mismatch'))) {
+            throw 'Stale visual fixture failed for an unrelated reason'
+          }
+          $log = Get-Content artifact/visual-actions/stale/clicked_painted_switch.log -Raw
+          if (-not $log.Contains('two actual editor attach/message/input/detach cycles')) {
+            throw 'Negative fixture did not successfully change its controller parameter'
+          }
+          Write-Host '[PASS] Native controller action and real painted GUI oracle detect deliberately stale visuals'
           exit 0
 
       - name: Collect logs and proven GUI executable
