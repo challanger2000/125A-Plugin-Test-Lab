@@ -15,3 +15,9 @@ The report `RECALL-RESULT.json` separately identifies fresh-host state reload, a
 The native host's existing `--render-state-save` command processes the supplied state without automatically injecting MIDI notes. It is therefore suitable for processors, internally sequenced instruments and state-validation smoke tests, but cannot certify an arbitrary MIDI-driven instrument's audible presets. Real DAW session recall, GUI state and MIDI export remain separate user-facing coverage requirements.
 
 Windows CI validates an actual state VST3 via two fresh host processes and deliberately bad binary references, missing output, stale output and wrong independent PCM digest. No production-plugin repository is changed.
+
+
+Native project-state payloads must be nonempty and smaller than 128 MiB.
+This cap supports larger instrument/bank states while preventing unbounded
+state-file reads. The native host and fresh-process wrapper enforce the
+same limit; unsupported larger payloads must not be certified as PASS.
