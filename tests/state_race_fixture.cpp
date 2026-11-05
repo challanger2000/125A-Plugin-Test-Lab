@@ -22,6 +22,14 @@ const FUID uid(0x125A3525,0x20261105,0x00002500 + QA_STATE_MODE,0xA5000000 + QA_
 constexpr int32 kA=11, kB=22, kC=33, kD=44;
 struct State {uint32 magic; int32 bank; int32 program; uint32 check;};
 constexpr uint32 magic=0x125A2526;
+void badFixtureWindow() {
+    // Deliberately incorrect realtime writer publishes two fields apart.
+    // High-resolution delay avoids the 1-16 ms Windows Sleep quantum.
+    const auto until=std::chrono::steady_clock::now()+std::chrono::microseconds(20);
+    while(std::chrono::steady_clock::now()<until)
+        std::atomic_signal_fence(std::memory_order_seq_cst);
+}
+
 State pack(int32 bank,int32 program) {
     return {magic,bank,program,magic ^ uint32(bank) ^ (uint32(program)<<8)};
 }
@@ -55,7 +63,7 @@ public:
             return kResultFalse;
 #if QA_STATE_MODE==1
         bank_.store(s.bank,std::memory_order_relaxed);
-        std::this_thread::sleep_for(std::chrono::microseconds(20));
+        badFixtureWindow();
         program_.store(s.program,std::memory_order_relaxed);
 #else
         pair_.store((uint64(uint32(s.bank))<<32)|uint32(s.program),std::memory_order_release);
