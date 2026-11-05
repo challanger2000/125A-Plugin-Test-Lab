@@ -4,7 +4,7 @@
 
 P01–P11 plus the P13 **GUI drag-source** test passed in
 [Windows Actions 41952977868](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41952977868).
-External OLE receiver acceptance is **INCONCLUSIVE**, not PASS.
+**P16 real interapplication OLE acceptance passed** in [Windows Actions 41964558955](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41964558955): four native `CF_HDROP` receiver callbacks and independently validated Pattern/Song MIDI/WAV files in a genuine temporary RDP desktop.
 P09 proved real editor/Beat Creator interaction, P10 proved native Windows
 Save-dialog cancellation, and P11 proved **all four GUI MIDI/WAV Save As
 exports** create correct independent music files. P02/P04 host self-tests
@@ -39,8 +39,9 @@ The report names the exact commit and gives PASS/FAIL evidence for:
 - real Win32 editor, Limiter, Beat Creator GENERATE/CANCEL/APPLY/CONFIRM
 - four true Win32 Save As dialogs and non-destructive CANCEL
 - four actual GUI Pattern/Song MIDI/WAV Save As exports and independent musical checks
-- P13 genuine GUI drag-source gesture: four retained MIDI/WAV temp files
-  independently validated; OLE receiving target **INCONCLUSIVE** in CI
+- P13 genuine GUI drag-source gesture: four independently validated retained files
+- P15 synthetic receiver contract for four COM CF_HDROP callbacks
+- P16 actual physical drag-and-drop into separate native COM receiver, four files PASS
 - negative audio/MIDI/WAV/GUI fixtures and explicit INCONCLUSIVE cases
 
 The P04 and P02 workflows separately check the GUI-host and audio-host
@@ -72,30 +73,24 @@ workflow because it requires a complete VST3 bundle with the actual
 controller and processor, and a state oracle. Do not point the GUI host
 at an unbundled DLL and expect a complete editor.
 
-## P14 interactive native OLE acceptance
+## P14 / P16 native interactive OLE acceptance
 
-GitHub Actions **cannot** confirm interapplication OLE acceptance on its
-non-interactive Windows desktop: P13 explicitly marks that result
-**INCONCLUSIVE**. For this single outstanding acceptance criterion, the
-separate **P14 Interactive Windows OLE Acceptance Package** workflow produces
-an extraction-ready ZIP in its GitHub Actions artifacts, including the
-actual pinned source-built Drumator VST3, resources, a synthetic
-A/REST/A test kit, the Win32 OLE receiver, and one-click launcher.
+The P14 workflow builds the full source-built Drumator VST3 and synthetic
+A/REST/A test kit. **P16 additionally performs true desktop-native
+Drag-and-Drop inside GitHub Actions**. It provisions a temporary local
+RDP user on the disposable Windows 2022 runner, keeps an interactive
+desktop connected, launches the actual editor and an independent Win32
+COM `IDropTarget`, and uses physical mouse input to deliver all four
+Pattern/Song MIDI/WAV exports via `CF_HDROP`.
 
-On a normal unlocked Windows 10/11 x64 desktop, extract the complete
-package and double-click `Run-OLE-Test.cmd`. The local runner checks
-**four actual CF_HDROP Drop callbacks** from the plugin into its separate
-native receiver (not just drag-source file creation), verifies received
-MIDI/WAV formats and durations, and records `results/<timestamp>/RESULT.txt`.
+Verified: [P16 Windows Actions 41964558955](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/41964558955),
+including the `125A-Test-Lab-P16-Real-OLE-Evidence` artifact. Recorded
+`P16-RESULT.txt` reports PASS for four received callbacks and four
+independently checked files. No developer Windows installation is needed.
 
-`PASS` requires four received files and callbacks; an uninteractive service
-session returns `INCONCLUSIVE` (code 3). A missing callback returns
-`FAIL`. The GitHub Windows workflow itself must validate that it receives
-`INCONCLUSIVE`, **not** manufacture a PASS.
-
-This verifies compatibility with the included independent Win32 receiver,
-not an actual track drop inside Fender Studio Pro or another proprietary DAW.
-DAW-specific drag acceptance remains NOT COVERED until separately measured.
+The optional P14 portable ZIP and `Run-OLE-Test.cmd` remain available for
+manual reproduction. The native receiver acceptance does not assert
+compatibility with a specific commercial DAW's internal drop target.
 
 ## Outcome semantics
 
@@ -109,12 +104,10 @@ for instance, the plugin does not expose an editor.
 
 **NOT COVERED** — no verified test exists for that behavior.
 
-A green CI run does not imply comprehensive GUI menu/preset behavior,
-OLE drag-and-drop acceptance into an external DAW, or proprietary DAW
-workflow coverage. **GUI Save As MIDI/WAV passed P11, and genuine GUI drag
-source generation passed P13**. The non-interactive GitHub Actions desktop
-cannot verify external COM/OLE delivery; a real DAW track drop remains
-**NOT COVERED**.
+A green CI run proves the explicitly tested behaviors and source
+revision. P11 Save As, P13 GUI source generation, P15 receiver contract,
+and P16 actual interapplication OLE reception are PASS. Proprietary DAW
+integration and untested GUI workflows are tracked separately.
 
 ## Security and policy
 
