@@ -950,20 +950,33 @@ void runActualOleDragDrop(HWND nativeChild, HWND hostWindow,
             esc[1].ki.dwFlags=KEYEVENTF_KEYUP;
             (void)SendInput(2,esc,sizeof(INPUT));
         });
+        std::atomic<bool> dragReturned{false};
+        // OLE drag sessions can hang on non-interactive CI desktops.
+        // Do not spend 45 minutes stuck inside a native COM modal loop.
+        std::thread watchdog([&] {
+            for (unsigned t=0;t<90;++t) {
+                if (dragReturned.load(std::memory_order_acquire)) return;
+                Sleep(100);
+            }
+            std::cerr << "[FAIL] P13 OLE modal drag failed to return "
+                         "within 9 seconds; Windows runner cannot complete drop\n";
+            TerminateProcess(GetCurrentProcess(), 14);
+        });
         try {
             require(SetCursorPos(screenMoved.x, screenMoved.y)!=0,
                     "P13 physical drag motion failed");
-            // The GUI is driven via native input with physical MK_LBUTTON
-            // held. The move needs to reach the child even if the remote
-            // desktop is not forwarding real mouse-motion messages.
+            std::cout << "[INFO] P13 requesting live VSTGUI/OLE drag start\n";
             (void)SendMessageW(nativeChild, WM_MOUSEMOVE, MK_LBUTTON, to);
-            // DoDragDrop may synchronously pump until the worker releases
-            // the button. If it returned without entering OLE, pump once.
+            std::cout << "[INFO] P13 live VSTGUI/OLE drag returned\n";
             pump(230);
         } catch (...) {
+            dragReturned.store(true, std::memory_order_release);
+            watchdog.join();
             mover.join();
             throw;
         }
+        dragReturned.store(true, std::memory_order_release);
+        watchdog.join();
         mover.join();
         pump(100);
         std::cout << "[INFO] P13 OLE receiver entered="
