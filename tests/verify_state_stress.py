@@ -51,12 +51,12 @@ def verify(path, mode):
         assert r["sample_rate"]==96000 and r["oracle"]=="ramp"
         assert r["result"]=="FAIL" and abs(r["rate_sample"]-0.125)>=0.002
     elif mode=="good-realtime":
-        assert r["strict_realtime"]==1 and r["block_size"]==512
+        assert r["strict_realtime"]==1 and r["block_size"]==1024
         assert r["result"]=="PASS" and r["callback_overruns"]==0
         assert r["callback_max_ns"]<r["callback_deadline_ns"]
         assert all(r[x]==0 for x in ("save_failures","set_failures","process_failures","torn_snapshots"))
     elif mode=="bad-realtime":
-        assert r["strict_realtime"]==1 and r["block_size"]==512
+        assert r["strict_realtime"]==1 and r["block_size"]==1024
         assert r["result"]=="FAIL" and r["callback_overruns"]>0
         assert r["callback_max_ns"]>r["callback_deadline_ns"]
         assert all(r[x]==0 for x in ("save_failures","set_failures","process_failures","torn_snapshots"))
