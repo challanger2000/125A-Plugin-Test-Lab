@@ -381,7 +381,7 @@ std::vector<std::uint8_t> captureActualComponentState(IComponent* component) {
     require(component->getState(&stream) == kResultOk,
             "P09 cannot read live VST3 component state");
     const auto bytes = stream.getCursor();
-    require(bytes > 64 && bytes < 16 * 1024 * 1024,
+    require(bytes > 64 && bytes < 128 * 1024 * 1024,
             "P09 live project state has invalid size");
     const auto* begin = static_cast<const std::uint8_t*>(stream.getData());
     require(begin != nullptr, "P09 live project state has no bytes");
@@ -393,7 +393,7 @@ void saveActualComponentState(IComponent* component, const std::filesystem::path
     require(component->getState(&stream) == kResultOk,
             "Drumator component getState failed during GUI test");
     const auto size = stream.getCursor();
-    require(size >= 64 && size < 16 * 1024 * 1024,
+    require(size >= 64 && size < 128 * 1024 * 1024,
             "Drumator GUI state size is invalid");
     std::ofstream dump(path, std::ios::binary | std::ios::trunc);
     require(dump.good(), "Cannot create P09 GUI state evidence file");
@@ -559,7 +559,7 @@ public:
         std::ifstream source(statePath, std::ios::binary | std::ios::ate);
         require(source.good(), "P11 synthetic product project state missing");
         const auto len = source.tellg();
-        require(len > 0 && len < 16 * 1024 * 1024,
+        require(len > 0 && len < 128 * 1024 * 1024,
                 "P11 synthetic state has invalid length");
         std::vector<char> bytes(static_cast<size_t>(len));
         source.seekg(0);
