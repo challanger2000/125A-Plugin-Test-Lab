@@ -20,6 +20,8 @@ on:
       - 'tests/verify_gui_recovery.py'
       - 'tests/run_product_adapter.py'
       - 'tests/test_p32_stale_evidence.py'
+      - 'tests/verify_p33_artifacts.py'
+      - 'tests/test_p33_artifacts.py'
       - 'tests/make_p32_fixtures.py'
       - '.github/workflows/p25-state-stress.yml'
       - 'CMakeLists.txt'
@@ -276,6 +278,12 @@ jobs:
           }
           Write-Host '[PASS] P32 real native playback saves; exact binary SHA and independent oracle fail closed'
           exit 0
+
+      - name: P33 independent state, WAV and painted RGB artifact negative controls
+        shell: pwsh
+        run: |
+          python tests/test_p33_artifacts.py
+          if ($LASTEXITCODE -ne 0) { throw 'P33 independent artifact oracle failed' }
 
       - name: Publish proof even on failure
         if: always()
