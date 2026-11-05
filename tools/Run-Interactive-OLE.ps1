@@ -65,10 +65,16 @@ try {
 
   # The native executable itself must receive four genuine CF_HDROP events.
   # It exits nonzero when no independent COM Drop callback accepted the file.
-  $nativeOutput = & $gui --drumator-ole-drag-drop $plugin $state $files 2>&1
-  $exitCode = $LASTEXITCODE
-  $nativeOutput | Out-File -LiteralPath $logFile -Encoding UTF8
-  $nativeOutput | Select-Object -Last 20 | ForEach-Object { Write-Host $_ }
+  $stderrFile = Join-Path $result "OLE-TEST-STDERR.txt"
+  $native = Start-Process -FilePath $gui -ArgumentList @(
+    "--drumator-ole-drag-drop",
+    ('"{0}"' -f $plugin),
+    ('"{0}"' -f $state),
+    ('"{0}"' -f $files)
+  ) -Wait -PassThru -RedirectStandardOutput $logFile -RedirectStandardError $stderrFile
+  $exitCode = $native.ExitCode
+  Get-Content -LiteralPath $logFile -Tail 45 | ForEach-Object { Write-Host $_ }
+  Get-Content -LiteralPath $stderrFile -Tail 45 | ForEach-Object { Write-Host $_ }
   if ($exitCode -ne 0) {
     Save-Result "FAIL" "Real OLE acceptance did not complete (native exit $exitCode). Inspect OLE-TEST-LOG.txt."
     exit 1
