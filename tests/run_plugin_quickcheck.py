@@ -93,6 +93,8 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         "coverage": {
             "api_playback_save": "NOT EXECUTED",
             "native_audio_state_capture": "NOT EXECUTED",
+            "fresh_process_project_recall": "NOT EXECUTED",
+            "recall_audio_determinism": "NOT COVERED",
             "independent_musical_audio": "NOT COVERED",
             "product_gui_controls": "NOT COVERED",
             "native_gui_lifecycle": "NOT COVERED",
@@ -126,6 +128,50 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             summary["status"] = "TECHNICAL_PASS"
             summary["coverage"]["api_playback_save"] = "PASS"
             summary["coverage"]["native_audio_state_capture"] = "PASS"
+    # Reopen a captured project state in TWO independent native host processes.
+    # Never equate successful IComponent::setState calls with musical correctness.
+    if summary["status"] == "TECHNICAL_PASS":
+        saved = out / "native" / "P34" / "captured-state.bin"
+        if saved.is_file() and 8 < saved.stat().st_size < 16 * 1024 * 1024:
+            recall_request = {
+                "schema": "125a-state-reload-v1",
+                "product": {"binary": str(binary), "sha256": sha},
+                "host": str(host),
+                "initial_state": str(saved.resolve()),
+                "deterministic_audio": False
+            }
+            recall_manifest = manifests / "recall.json"
+            recall_manifest.write_text(
+                json.dumps(recall_request, indent=2) + "\n", encoding="utf-8")
+            recall_folder = out / "fresh-recall"
+            recall_result = recall_folder / "RECALL-RESULT.json"
+            recall_result.unlink(missing_ok=True)
+            recall_proc = runner([
+                sys.executable, str(Path(__file__).with_name("run_state_reload.py")),
+                "--manifest", str(recall_manifest), "--out", str(recall_folder),
+                "--timeout", str(timeout)
+            ], capture_output=True, text=True, timeout=timeout * 2 + 30,
+                check=False, errors="replace")
+            (out / "fresh-recall.log").write_text(
+                (recall_proc.stdout or "") + "\n" + (recall_proc.stderr or ""),
+                encoding="utf-8")
+            if not recall_result.is_file():
+                summary["status"] = "FAIL"
+                summary["reason"] = "two-session project recall produced no fresh report"
+            else:
+                evidence = json.loads(recall_result.read_text(encoding="utf-8"))
+                if (recall_proc.returncode != 0 or evidence.get("status") != "PASS" or
+                        evidence.get("verified_vst3_sha256") != sha or
+                        evidence.get("new_process_instances") != 2 or
+                        evidence.get("fresh_process_recall") != "PASS"):
+                    summary["status"] = "FAIL"
+                    summary["reason"] = "native VST3 state reload in two fresh host processes failed"
+                else:
+                    summary["coverage"]["fresh_process_project_recall"] = "PASS"
+        else:
+            summary["coverage"]["fresh_process_project_recall"] = "NOT COVERED"
+            summary["recall_note"] = (
+                "Captured state absent or outside current host 9-byte to 16-MB size range")
     if summary["status"] == "TECHNICAL_PASS" and gui_host is not None:
         gui_log = out / "gui-lifecycle.log"
         gui_log.unlink(missing_ok=True)
