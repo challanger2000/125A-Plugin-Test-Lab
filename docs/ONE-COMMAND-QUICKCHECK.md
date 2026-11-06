@@ -116,3 +116,20 @@ Missing, stale, untestable or wrong results fail. Untested controls remain
 A commercial DAW's specific interactions, including its own drag/drop and
 session save/reload, still require an actual DAW-integration test rather
 than an inference from this native GUI host.
+
+## Real-time callback deadlines (measured, not guaranteed)
+
+For each of the six native save/playback conditions, the test host writes
+callback deadline overruns, p99 execution time, and nominal block deadline.
+The quickcheck includes `realtime_deadline_observation` in its coverage.
+Any measured violation is marked **FAIL** (including the overrun count in
+the German HTML report), even if the plug-in's `process()` returned success.
+Missing measurement fields are not allowed to produce timing PASS.
+
+**Interpretation:** these are measured timings on the current Windows runner,
+not a certification of deterministic hard realtime on all hardware. OS
+scheduling can cause overrun measurements even in a well-written plugin.
+The technical API tests may independently succeed while the timing domain
+is FAIL. Inspect the actual callback logs before treating measured overruns
+as a definitive plugin defect. The real-time section is never silently
+classified as PASS solely from a green technical API result.
