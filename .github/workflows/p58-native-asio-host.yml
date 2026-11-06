@@ -1,0 +1,73 @@
+name: P58 native physical ASIO callback host (compile and negative)
+
+on:
+  pull_request:
+    paths:
+      - 'src/physical_asio.cpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/p58-native-asio-host.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-native-build-no-hardware-claims:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get exact reference ASIO SDK for compilation only (GPLv3 reference)
+        shell: pwsh
+        run: |
+          git clone --no-checkout https://github.com/audiosdk/asio.git asio-sdk
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO SDK checkout unavailable' }
+          git -C asio-sdk checkout --detach 496a0765b8bb9c26f764f22f9a9712a937177db2
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO SDK commit mismatch' }
+          if ((git -C asio-sdk rev-parse HEAD).Trim() -cne '496a0765b8bb9c26f764f22f9a9712a937177db2') {
+            throw 'ASIO SDK not pinned'
+          }
+      - name: Compile native IASIO plus actual VST3 host on Windows x64
+        shell: pwsh
+        run: |
+          cmake -S . -B build-p58 -G "Visual Studio 17 2022" -A x64 "-DASIO_SDK_DIR=$env:GITHUB_WORKSPACE/asio-sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'P58 native CMake configure failed' }
+          cmake --build build-p58 --config Release --parallel 4 --target TestLabPhysicalASIO
+          if ($LASTEXITCODE -ne 0) { throw 'Native physical ASIO/VST3 host does not compile' }
+      - name: Prove missing or unapproved hardware cannot report success
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build-p58 -Recurse -File -Filter '125A_Test_Lab_Physical_ASIO.exe')
+          if ($hostExe.Count -ne 1) { throw 'P58 native executor not produced' }
+          New-Item -ItemType Directory -Force artifacts/P58 | Out-Null
+          $argv = @(
+            '--physical-asio-probe', '--plugin', 'C:/not-found/Plugin.vst3',
+            '--driver-clsid', '{00000000-0000-0000-0000-000000000000}',
+            '--driver-name', 'No physical ASIO hardware fixture',
+            '--rate', '44100', '--frames', '128', '--callbacks', '100',
+            '--nonce', '0123456789abcdef0123456789abcdef0123456789abcdef',
+            '--out', 'artifacts/P58/forbidden-pass.json'
+          )
+          & $hostExe[0].FullName @argv
+          if ($LASTEXITCODE -eq 0 -or (Test-Path artifacts/P58/forbidden-pass.json)) {
+            throw 'P58 fabricated successful ASIO evidence without a real driver'
+          }
+          $hash = (Get-FileHash $hostExe[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          @{
+            schema = '125a-physical-asio-build-proof-v1'
+            sdk_source_commit = '496a0765b8bb9c26f764f22f9a9712a937177db2'
+            physical_executor_sha256 = $hash
+            real_physical_asio_session = 'NOT RUN'
+            physical_asio_driver_callbacks = 'NOT RUN'
+            commercial_daw_session = 'NOT RUN'
+            release_approved = $false
+            native_build = 'PASS'
+            missing_hardware_negative = 'PASS'
+          } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 artifacts/P58/BUILD-ONLY.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P58-native-ASIO-build-only-NOT-HARDWARE-QUALIFIED
+          path: artifacts/P58/
+          if-no-files-found: warn
