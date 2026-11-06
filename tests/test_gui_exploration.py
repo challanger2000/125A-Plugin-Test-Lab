@@ -78,7 +78,9 @@ with tempfile.TemporaryDirectory() as td:
         if mode == "missing_end":
             report = report.replace("end\tCOMPLETE\n", "")
         Path(argv[5]).write_text(report, encoding="utf-8")
-        base = (40, 36, 48) if mode == "cross_baseline" and not actual_click else (30, 36, 48)
+        base = ((12, 142, 85) if mode == "hover_only" else
+                (40, 36, 48) if mode == "cross_baseline" and not actual_click else
+                (30, 36, 48))
         bmp(Path(argv[6]), base)
         bmp(Path(argv[7]), base if mode != "baseline_drift" else (42, 36, 48))
         post = ((12, 142, 85)
@@ -171,9 +173,10 @@ with tempfile.TemporaryDirectory() as td:
 
     hover = inspect("hover_only")
     assert hover["status"] == "OBSERVATIONS_COMPLETE"
-    assert hover["probes"][0]["sham_pixels_changed"] > 0
-    assert hover["probes"][0]["classification"] == "UNSTABLE_CONTROL"
-    assert hover["candidates"] == [], "hover painted without any actual click change"
+    assert hover["probes"][0]["sham_pixels_changed"] == 0
+    assert hover["probes"][0]["classification"] == "NO_OBSERVED_CHANGE"
+    assert hover["probes"][0]["sham_control_attribution"] == "SUPPORTED"
+    assert hover["candidates"] == [], "hover-only region falsely certified as clicked"
 
     sham_parameter = inspect("sham_parameter")
     assert sham_parameter["status"] == "OBSERVATIONS_COMPLETE"
