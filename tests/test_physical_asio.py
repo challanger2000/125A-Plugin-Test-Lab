@@ -110,6 +110,23 @@ class AsioTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 check_evidence({**obj, "claims_release_approved": True}, **opts)
 
+    def test_native_hardware_execution_failure_is_fail_not_not_run(self):
+        with tempfile.TemporaryDirectory() as f:
+            root = Path(f)
+            class DriverFailed:
+                returncode = 1
+                stdout = "Native ASIO callbacks not delivered"
+                stderr = "driver error"
+            def unavailable(*args, **kwargs):
+                return DriverFailed()
+            report = run(fixture(root), root / "failure", platform="win32",
+                         acknowledge=True,
+                         registry_reader=lambda name, clsid: True,
+                         runner=unavailable)
+            self.assertEqual(report["status"], "FAIL")
+            self.assertEqual(report["hardware_asio"], "FAIL")
+            self.assertFalse(report["release_approved"])
+
     def test_synthetic_executor_contract_accepted_but_no_daw_release(self):
         with tempfile.TemporaryDirectory() as f:
             root = Path(f)
