@@ -72,6 +72,7 @@ jobs:
             }
           }
           Write-Host '[PASS] P52 real analog intermediate values plus deliberately quantized negative fixture'
+          exit 0 # Clear expected last external Python exit 1 from the deliberate negative control
       - uses: actions/upload-artifact@v4
         if: always()
         with:
