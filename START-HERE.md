@@ -2,6 +2,35 @@
 
 ## Latest usable Windows test kit (6 November 2026)
 
+## Current checked portable package — real two-instance hosting
+
+**Windows source baseline:** pull requests
+[#51](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/51)
+and [#52](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/52),
+both merged after their applicable Windows validation.
+
+[Latest proven Windows P25 artifact and download](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42147013756)
+
+The `PORTABLE` package contains four native Windows x64 test hosts,
+including `125A_Test_Lab_Instance_Isolation.exe`. Drag an installed,
+trusted VST3 folder onto `Run-VST3-Test.cmd` for automatic playback,
+state-save/recall, native GUI discovery and **two simultaneously
+running plugin instances in the same host process**. The HTML result
+reports which checks passed and which remain uncovered.
+
+A separate real Windows test uses *different* saved states in two
+instances, independently verifies both output states and PCM, and
+successfully detects a deliberately faulty VST3 with a shared global bank.
+The ordinary drag-and-drop run uses the *same* state in both instances;
+therefore it does not establish independent preset/bank behavior.
+`distinct_instance_state_isolation` remains `NOT COVERED` until
+independent A/B product references are supplied.
+
+**Still no general product release approval**: commercial DAW workflows,
+every user-visible control, complete MIDI/WAV export and product-specific
+sound/preset semantics cannot be declared tested without their own
+real-device or DAW oracles.
+
 ## Verified P49: saves must actually overlap audio playback
 
 The native save/playback regression now proves that at least one
@@ -13,7 +42,7 @@ That false positive is now rejected by the C++ host, the independent
 TSV verifier, the real-plugin adapter, and deliberate 0/missing/impossible
 overlap test cases.
 
-[Windows P25 verified run and portable artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42139427027) ·
+[Windows P25 verified run and portable artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42147013756) ·
 [merged source changes](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/49).
 
 This is measured overlap with a **running** callback thread, not proof
@@ -23,7 +52,7 @@ state semantics and commercial DAW saves still require independent tests.
 ## Current test acceptance and latest proof
 
 **Latest verified Windows quickcheck:** pull requests #47 and #48,
-validated in [Windows P25 pipeline](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42139427027).
+validated in [Windows P25 pipeline](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42147013756).
 The real Drumator product regression remains independently verified in P03.
 The complete relevant Windows CI for the latest changes has passed,
 including the real production VST3 GUI/exports regression and all 13
@@ -82,13 +111,13 @@ An external per-product control map can additionally automate click/pixel
 checks (see `docs/ONE-COMMAND-QUICKCHECK.md`).
 
 **Use without compiling the test host yourself:** download the latest
-successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42139427027),
+successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42147013756),
 open its `PORTABLE` folder, and follow `README.md`. The artifact
-contains all three native x64 audio/state/GUI hosts, the drag-and-drop launcher, supporting Python scripts
+contains all four native x64 audio/state/GUI/dual-instance hosts, the drag-and-drop launcher, supporting Python scripts
 and SHA-256 checksums. Python 3 on Windows is required.
 
 ```powershell
-python run_plugin_quickcheck.py --plugin "C:\VST3\Plugin.vst3" --host ".\125A_Test_Lab_Host.exe" --stress-host ".\125A_Test_Lab_State_Stress.exe" --out ".\QA-Results"
+python run_plugin_quickcheck.py --plugin "C:\VST3\Plugin.vst3" --host ".\125A_Test_Lab_Host.exe" --stress-host ".\125A_Test_Lab_State_Stress.exe" --dual-host ".\125A_Test_Lab_Instance_Isolation.exe" --gui-host ".\125A_Test_Lab_GUI.exe" --out ".\QA-Results"
 ```
 
 **Native GUI tests:** the same portable artifact contains
