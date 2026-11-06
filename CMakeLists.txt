@@ -122,6 +122,16 @@ smtg_add_vst3plugin(QAGuiNested
 target_link_libraries(QAGuiNested PRIVATE sdk user32 gdi32)
 target_compile_definitions(QAGuiNested PRIVATE NOMINMAX QA_GUI_NESTED=1)
 
+# P44: Real same-HWND painted-only control; no VST3 parameter reflects
+# its state. Its exact local pixel change must be found by the shared
+# sham-controlled observation engine.
+smtg_add_vst3plugin(QAGuiPaintedOnly
+    PACKAGE_NAME "125A_QA_GUI_PaintedOnly"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiPaintedOnly PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiPaintedOnly PRIVATE NOMINMAX QA_GUI_PAINTED_ONLY=1)
+
+
 
 
 

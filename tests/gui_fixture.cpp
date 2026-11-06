@@ -39,10 +39,17 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_NESTED
 #define QA_GUI_NESTED 0
 #endif
+#ifndef QA_GUI_PAINTED_ONLY
+#define QA_GUI_PAINTED_ONLY 0
+#endif
 
 namespace {
 constexpr ParamID kClickParam = 9001;
-#if QA_GUI_NESTED
+#if QA_GUI_PAINTED_ONLY
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000091, 0xB0000091);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000092, 0xB0000092);
+constexpr const char* kName = "125A Custom Painted GUI Only Fixture";
+#elif QA_GUI_NESTED
 const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000081, 0xB0000081);
 const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000082, 0xB0000082);
 constexpr const char* kName = "125A Nested Child HWND Button Fixture";
@@ -121,6 +128,7 @@ private:
     HWND clickWindow_{};
     HWND nestedButton_{};
     bool hovered_{};
+    bool paintedActive_{};
 };
 
 class Controller final : public EditController {
@@ -230,7 +238,17 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
         return 0;
     }
     if (message == WM_LBUTTONUP && self && self->owner_) {
-#if !QA_GUI_NESTED
+#if QA_GUI_PAINTED_ONLY
+        // This genuinely custom-painted toggle exists *only* inside a
+        // single HWND. It changes NO VST3 parameter or audio state.
+        // P44 must detect its local pixels without inventing semantics.
+        const int x = static_cast<short>(LOWORD(l));
+        const int y = static_cast<short>(HIWORD(l));
+        if (x >= 120 && x < 200 && y >= 65 && y < 115) {
+            self->paintedActive_ = !self->paintedActive_;
+            InvalidateRect(hwnd, nullptr, TRUE);
+        }
+#elif !QA_GUI_NESTED
         self->owner_->clicked();
         InvalidateRect(hwnd, nullptr, TRUE);
 #endif
@@ -249,10 +267,18 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
                 ? RGB(12, 142, 85) : RGB(30, 36, 48));
         FillRect(dc, &rect, fill);
         DeleteObject(fill);
+#if QA_GUI_PAINTED_ONLY
+        RECT painted{120, 65, 200, 115};
+        const HBRUSH patch = CreateSolidBrush(
+            self && self->paintedActive_ ? RGB(12, 142, 85) : RGB(70, 80, 90));
+        FillRect(dc, &painted, patch);
+        DeleteObject(patch);
+#else
         SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, RGB(240, 192, 110));
         const wchar_t* label = L"P04 CLICK TEST";
         DrawTextW(dc, label, -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+#endif
         EndPaint(hwnd, &ps);
         return 0;
     }

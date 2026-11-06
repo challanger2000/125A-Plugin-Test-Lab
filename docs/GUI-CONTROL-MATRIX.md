@@ -218,6 +218,52 @@ interacting with a commercial DAW window and arbitrary keyboard shortcuts
 cannot be certified in every plugin without a product-specific observable
 oracle. The full set of undisclosed controls remains NOT COVERED.
 
+## P44 — Find custom-painted changes and prepare reviewable UI test candidates
+
+The shared Windows VST3 explorer now analyzes the **physical before-click
+and after-click pixels** after paired sham/no-click controls have established
+that the change is click-associated. Instead of merely reporting a total number
+of changed pixels, it groups adjacent changed 12×12 pixel tiles and reports
+each exact changed-pixel bounding rectangle, physical sample coordinates, and
+**RGB before/after values**. A localization report indicates when a broad
+repaint (over 25% of the editor) should not be interpreted as a local button.
+
+New per-scan artifacts:
+
+- \`GUI-EXPLORATION-RESULT.json\` contains \`pixel_localization\` for every
+  probe, including \`regions\`, \`bbox_xyxy\` (exclusive right/bottom),
+  \`changed_pixels\` and \`sample\` physical RGB pairs.
+- \`GUI-CONTROL-REVIEW-DRAFT.json\` is generated **only if every sham and click
+  probe completed and source-binary hashes remain valid**. It contains
+  proposed click actions with the observed VST3 parameter transition, or
+  observed before/after pixels for a parameterless, custom-painted control.
+
+These are **unapproved observations**, not independent semantic requirements.
+The draft always says \`REVIEW_REQUIRED\`,
+\`approved_for_execution: false\`,
+\`automatically_approved_oracles: 0\`,
+\`executable_workflow_manifest: NOT GENERATED\`,
+\`product_gui_controls: NOT COVERED\`, and
+\`release_approved: false\`. To convert a suggested interaction into a
+release test, an independent product specification or maintainer must confirm
+that the expected value/color change actually represents the intended
+function. The tester never silently turns its own observations into oracles.
+
+The Windows regression builds a *real native VST3 whose only clickable
+element is custom-painted inside one HWND*, with a precise 80×50 pixel
+rectangle and **no VST3 parameter change**. P44 verifies that the explorer
+locates exactly that rectangle, captures the RGB transition, and proposes
+only an unapproved visual oracle. An outside-background click must produce
+no candidate. Pure Python adversarial tests separately cover disjoint
+changes, incorrect screenshots, broad repainting, truncated region reports,
+bad source data and forged approvals.
+
+This is reusable for existing and future plugins using the same opt-in
+\`--gui-explore --acknowledge-gui-explore\` workflow; no Drumator/AWE-specific
+code or product builds are modified. A custom-drawn button that produces no
+detectable pixel/parameter change cannot be automatically judged. Native
+file dialogs and audio/MIDI/WAV semantics are not established by pixels.
+
 ## P43 — Deep native child-HWND mouse targeting
 
 The generic Windows VST3 test host now dispatches real mouse click/drag
