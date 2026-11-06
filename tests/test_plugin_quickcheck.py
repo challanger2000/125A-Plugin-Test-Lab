@@ -181,6 +181,52 @@ with tempfile.TemporaryDirectory() as td:
         return subprocess.CompletedProcess(cmd, 0, "fake other plugin", "")
 
     assert quick.run(bundle, host, stress, out, runner=mismatched)["status"] == "FAIL"
+    # Two simultaneous instances in the same native Windows host are a
+    # non-destructive default lifecycle check. No fabricated bank-isolation PASS.
+    dual = root / "dual-host.exe"
+    dual.write_bytes(b"native same-process runner")
+    def same_process(cmd, **kwargs):
+        if cmd[1] == "--dual-identical":
+            folder = Path(cmd[4])
+            folder.mkdir(parents=True, exist_ok=True)
+            content = Path(cmd[3]).read_bytes()
+            (folder / "A-after.bin").write_bytes(content)
+            (folder / "B-after.bin").write_bytes(content)
+            (folder / "MULTI-INSTANCE.tsv").write_text(
+                "format\t125A-DUAL-INSTANCE-v1\n"
+                "same_process_instances\t2\n"
+                "process_callbacks\t4\n"
+                "A_first_pcm\t0.25\n"
+                "B_first_pcm\t0.25\n"
+                "B_second_pcm\t0.25\n"
+                "A_second_pcm\t0.25\n", encoding="utf-8")
+            return subprocess.CompletedProcess(
+                cmd, 0, "[PASS] two real VST3 instances processed in same host process", "")
+        return synthetic_native(cmd, **kwargs)
+    report = quick.run(bundle, host, stress, out, runner=same_process, dual_host=dual)
+    assert report["status"] == "TECHNICAL_PASS"
+    assert report["coverage"]["same_process_dual_instance_lifecycle"] == "PASS"
+    assert report["coverage"]["distinct_instance_state_isolation"] == "NOT COVERED"
+
+    def fake_dual(cmd, **kwargs):
+        if cmd[1] == "--dual-identical":
+            return subprocess.CompletedProcess(
+                cmd, 0, "[PASS] two real VST3 instances processed in same host process", "")
+        return synthetic_native(cmd, **kwargs)
+    failed = quick.run(bundle, host, stress, out, runner=fake_dual, dual_host=dual)
+    assert failed["status"] == "FAIL", "stale successful same-process report accepted"
+    assert failed["release_approved"] is False
+
+    def unsupported_dual(cmd, **kwargs):
+        if cmd[1] == "--dual-identical":
+            return subprocess.CompletedProcess(
+                cmd, 10, "", "[INCONCLUSIVE] unsupported multi-bus topology")
+        return synthetic_native(cmd, **kwargs)
+    unsupported = quick.run(bundle, host, stress, out,
+                            runner=unsupported_dual, dual_host=dual)
+    assert unsupported["status"] == "TECHNICAL_PASS"
+    assert unsupported["coverage"]["same_process_dual_instance_lifecycle"] == "NOT COVERED"
+
     # The same invocation can prove a real editor's two lifecycle cycles.
     gui = root / "gui.exe"
     gui.write_bytes(b"dummy native gui host")
