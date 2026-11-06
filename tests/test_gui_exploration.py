@@ -2,6 +2,7 @@
 """Adversarial P41 GUI exploration tests. No product-specific click mapping."""
 import hashlib
 import importlib.util
+import json
 from pathlib import Path
 import struct
 import subprocess
@@ -13,8 +14,14 @@ e = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(e)
 
 
-def bmp(path, color, width=320, height=180):
-    pixels = bytes((color[2], color[1], color[0], 255)) * (width * height)
+def bmp(path, color, width=320, height=180, painted=None):
+    pixels = bytearray(bytes((color[2], color[1], color[0], 255)) * (width * height))
+    if painted is not None:
+        patch = bytes((painted[2], painted[1], painted[0], 255))
+        for y in range(65, 115):
+            for x in range(120, 200):
+                offset = (y * width + x) * 4
+                pixels[offset:offset + 4] = patch
     file_hdr = struct.pack("<HIHHI", 0x4D42, 54 + len(pixels), 0, 0, 54)
     dib = struct.pack("<IiiHHIIiiII", 40, width, -height, 1, 32,
                       0, len(pixels), 0, 0, 0, 0)
@@ -52,7 +59,7 @@ with tempfile.TemporaryDirectory() as td:
         if mode == "tamper_binary":
             binary.write_bytes(b"modified mid-test module")
         params = [(9001, 0.0, 1.0)] if (
-            actual_click and mode not in ("inert", "visual_only", "spontaneous", "hover_only")
+            actual_click and mode not in ("inert", "visual_only", "painted_only", "spontaneous", "hover_only")
             or mode == "sham_parameter") else [(9001, 0.0, 0.0)]
         text = ["format\t125A-GUI-EXPLORE-v3",
                 "mode\t" + ("click" if actual_click else "sham"),
@@ -81,13 +88,19 @@ with tempfile.TemporaryDirectory() as td:
         base = ((12, 142, 85) if mode == "hover_only" else
                 (40, 36, 48) if mode == "cross_baseline" and not actual_click else
                 (30, 36, 48))
-        bmp(Path(argv[6]), base)
-        bmp(Path(argv[7]), base if mode != "baseline_drift" else (42, 36, 48))
-        post = ((12, 142, 85)
-                if (mode in ("spontaneous", "baseline_drift", "hover_only")
-                    or (actual_click and mode not in ("stale_paint", "inert", "sham_parameter")))
-                else base)
-        bmp(Path(argv[8]), post)
+        if mode == "painted_only":
+            bmp(Path(argv[6]), base, painted=(70, 80, 90))
+            bmp(Path(argv[7]), base, painted=(70, 80, 90))
+            bmp(Path(argv[8]), base, painted=(
+                (12, 142, 85) if actual_click else (70, 80, 90)))
+        else:
+            bmp(Path(argv[6]), base)
+            bmp(Path(argv[7]), base if mode != "baseline_drift" else (42, 36, 48))
+            post = ((12, 142, 85)
+                    if (mode in ("spontaneous", "baseline_drift", "hover_only")
+                        or (actual_click and mode not in ("stale_paint", "inert", "sham_parameter")))
+                    else base)
+            bmp(Path(argv[8]), post)
         if mode == "bad_bmp":
             Path(argv[8]).write_bytes(b"bad bmp")
         return subprocess.CompletedProcess(argv, 0, "[OBSERVED] actual native click", "")
@@ -156,6 +169,21 @@ with tempfile.TemporaryDirectory() as td:
     assert visual["probes"][0]["classification"] == "VISUAL_CHANGE"
     assert visual["candidates"][0]["parameter_ids_changed"] == []
 
+    painted = inspect("painted_only")
+    assert painted["status"] == "OBSERVATIONS_COMPLETE", painted
+    assert painted["probes"][0]["classification"] == "VISUAL_CHANGE"
+    assert painted["probes"][0]["changed_parameters"] == []
+    assert painted["probes"][0]["pixel_localization"]["painted_pixels_changed"] == 4000
+    assert painted["probes"][0]["pixel_localization"]["regions"][0]["bbox_xyxy"] == [120, 65, 200, 115]
+    review = json.loads((root / "out" / "GUI-CONTROL-REVIEW-DRAFT.json").read_text())
+    assert review["status"] == "REVIEW_REQUIRED"
+    assert review["automatically_approved_oracles"] == 0
+    assert review["candidate_count"] == 1
+    assert review["candidates"][0]["approved_for_execution"] is False
+    visual_oracle = review["candidates"][0]["suggested_test_action"]["visual_oracle"]
+    assert visual_oracle["before_rgb"] == [70, 80, 90]
+    assert visual_oracle["after_rgb"] == [12, 142, 85]
+
     drifting = inspect("baseline_drift")
     assert drifting["status"] == "OBSERVATIONS_COMPLETE"
     assert drifting["probes"][0]["classification"] == "UNSTABLE_CONTROL"
@@ -198,6 +226,8 @@ with tempfile.TemporaryDirectory() as td:
         assert broken["gui_control_discovery"] == "NOT COVERED"
         assert broken["release_approved"] is False
         assert broken["faults"], mode
+        assert not (root / "out" / "GUI-CONTROL-REVIEW-DRAFT.json").exists(), (
+            "failed native GUI scan left a stale supposedly valid draft")
         binary.write_bytes(base_binary)
 
     # Default grid works without author-supplied coordinates. It still does
