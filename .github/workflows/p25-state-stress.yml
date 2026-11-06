@@ -558,6 +558,32 @@ jobs:
               $report.coverage.realtime_deadline_observation -notin @('PASS','FAIL')) {
             throw 'Quickcheck coverage or release classification incorrect'
           }
+          # Verify that both optional advanced paths are integrated into
+          # the same one-command wrapper with *actual* native VST3s.
+          python tests/run_plugin_quickcheck.py --plugin $good[0].FullName --host $audio[0].FullName --stress-host $stress[0].FullName --dual-host $dual[0].FullName --active-replay --out artifacts/QUICKCHECK-DEEP
+          if ($LASTEXITCODE -ne 0) { throw 'Real one-command genuine live state replay failed' }
+          $deep = Get-Content artifacts/QUICKCHECK-DEEP/QUICKCHECK-RESULT.json -Raw | ConvertFrom-Json
+          if ($deep.status -ne 'TECHNICAL_PASS' -or
+              $deep.coverage.active_playback_state_replay -ne 'PASS' -or
+              $deep.coverage.distinct_instance_state_isolation -ne 'NOT COVERED' -or
+              $deep.release_approved -ne $false) {
+            throw 'Live-playback replay was not actually verified by the complete quickcheck'
+          }
+          $approved = 'artifacts/INSTANCE/qa-good.json'
+          $banked = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_4.vst3')
+          if ($banked.Count -ne 1 -or -not (Test-Path $approved)) {
+            throw 'Missing real VST3 or previously approved independent A/B manifest'
+          }
+          python tests/run_plugin_quickcheck.py --plugin $banked[0].FullName --host $audio[0].FullName --stress-host $stress[0].FullName --dual-host $dual[0].FullName --dual-state-manifest $approved --out artifacts/QUICKCHECK-AB
+          if ($LASTEXITCODE -ne 0) { throw 'Real one-command independent two-bank oracle failed' }
+          $dualProduct = Get-Content artifacts/QUICKCHECK-AB/QUICKCHECK-RESULT.json -Raw | ConvertFrom-Json
+          if ($dualProduct.status -ne 'TECHNICAL_PASS' -or
+              $dualProduct.coverage.distinct_instance_state_isolation -ne 'PASS' -or
+              $dualProduct.coverage.reference_pcm_isolation -ne 'PASS' -or
+              $dualProduct.coverage.commercial_daw_integration -ne 'NOT COVERED' -or
+              $dualProduct.release_approved -ne $false) {
+            throw 'Independent A/B product oracles missing or false product release classification'
+          }
           $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
           $click = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Click.vst3')
           if ($gui.Count -ne 1 -or $click.Count -lt 1) { throw 'Portable GUI host or real GUI fixture missing' }
@@ -643,6 +669,8 @@ jobs:
             artifacts/P34/
             artifacts/PRODUCT-QA/
             artifacts/QUICKCHECK/
+            artifacts/QUICKCHECK-DEEP/
+            artifacts/QUICKCHECK-AB/
             artifacts/PORTABLE/
           if-no-files-found: warn
           retention-days: 14
