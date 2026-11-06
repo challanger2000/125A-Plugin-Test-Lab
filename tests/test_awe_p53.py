@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory() as td:
         "coverage": coverage
     }
     quick.write_text(json.dumps(report))
-    good = p53.audit(ctest, quick, module, p53.AWE_STABLE_SOURCE)
+    good = p53.audit(ctest, quick, module, p53.AWE_P137_FINAL_SOURCE)
     assert good["status"] == "TECHNICAL_PASS"
     assert good["release_approved"] is False
     assert good["commercial_release_status"] == "NO-GO"
@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory() as td:
                good["unverified_product_release_requirements"].values())
     assert good["target_asio_deadlines_approved"] is False
 
-    def reject(note, *, source=p53.AWE_STABLE_SOURCE):
+    def reject(note, *, source=p53.AWE_P137_FINAL_SOURCE):
         try:
             p53.audit(ctest, quick, module, source)
         except (ValueError, OSError):
