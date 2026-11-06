@@ -52,6 +52,9 @@ jobs:
             python tests/run_gui_owned_dialog.py --plugin $plugin[0].FullName --gui-host $exe[0].FullName --out "build/p60/$type" --x 160 --y 90 --acknowledge-ui-clicks
             $code = $LASTEXITCODE
             $r = Get-Content "build/p60/$type/OWNED-DIALOG-RESULT.json" -Raw | ConvertFrom-Json
+            if (Test-Path "build/p60/$type/native.log") {
+              Get-Content "build/p60/$type/native.log" | ForEach-Object { Write-Host "P60 NATIVE: $_" }
+            }
             if ($type -eq 'Good') {
               if ($code -ne 0 -or $r.status -ne 'CONTRACT_PASS' -or $r.observed_owned_dialogs -ne 1 -or $r.popup_cleanup -ne 'NATIVE_HOST_VERIFIED') {
                 throw 'P60 real dialog popup or native close failed'
