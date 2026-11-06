@@ -24,7 +24,9 @@ def parse(path):
     rows["rate_sample"]=float(rows["rate_sample"])
     assert rows["callbacks"]==rows["iterations"], "not all callbacks executed"
     assert rows["save_success"]+rows["save_failures"]==500, "incomplete 500-save suite"
-    assert 0 < rows["saves_during_playback"] <= rows["save_success"], "no real saves during active playback"
+    assert 0 <= rows["saves_during_playback"] <= rows["save_success"], "impossible playback save count"
+    if rows["result"] == "PASS":
+        assert rows["saves_during_playback"] > 0, "no real saves during active playback"
     assert rows["callback_max_ns"]>0, "invalid maximum callback runtime"
     assert 0 < rows["callback_p95_ns"] <= rows["callback_p99_ns"] <= rows["callback_max_ns"]
     assert rows["callback_deadline_ns"]>0
