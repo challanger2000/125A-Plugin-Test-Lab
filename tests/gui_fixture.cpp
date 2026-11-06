@@ -33,10 +33,17 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_BAD_TEXT
 #define QA_GUI_BAD_TEXT 0
 #endif
+#ifndef QA_GUI_HOVER
+#define QA_GUI_HOVER 0
+#endif
 
 namespace {
 constexpr ParamID kClickParam = 9001;
-#if QA_GUI_BAD_TEXT
+#if QA_GUI_HOVER
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000071, 0xB0000071);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000072, 0xB0000072);
+constexpr const char* kName = "125A GUI Hover Without Click Fixture";
+#elif QA_GUI_BAD_TEXT
 const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000061, 0xB0000061);
 const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000062, 0xB0000062);
 constexpr const char* kName = "125A Bad VST3 Parameter Text Fixture";
@@ -105,6 +112,7 @@ private:
     static LRESULT CALLBACK clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM l);
     Controller* owner_{};
     HWND clickWindow_{};
+    bool hovered_{};
 };
 
 class Controller final : public EditController {
@@ -166,7 +174,10 @@ public:
         return new ClickView(this);
     }
     void clicked() {
-#if QA_GUI_TOGGLE
+#if QA_GUI_HOVER
+        // A hover effect is not a button click: do not change any state.
+        (void)0;
+#elif QA_GUI_TOGGLE
         const auto current = getParamNormalized(kClickParam);
         (void)setParamNormalized(kClickParam, current >= 0.5 ? 0.0 : 1.0);
 #elif !QA_GUI_INERT
@@ -183,6 +194,13 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
                           reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
         return TRUE;
     }
+#if QA_GUI_HOVER
+    if (message == WM_MOUSEMOVE && self) {
+        self->hovered_ = true;
+        InvalidateRect(hwnd, nullptr, TRUE);
+        return 0;
+    }
+#endif
     if (message == WM_KEYDOWN && (w == VK_SPACE || w == VK_RETURN) &&
         self && self->owner_) {
         // True native HWND keyboard input exercises the same semantic toggle
@@ -205,7 +223,9 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
         const bool active = self && self->owner_ &&
             self->owner_->getParamNormalized(kClickParam) > 0.5;
         const HBRUSH fill = CreateSolidBrush(
-            active && !QA_GUI_STALE_PAINT ? RGB(12, 142, 85) : RGB(30, 36, 48));
+            (active && !QA_GUI_STALE_PAINT) ||
+            (QA_GUI_HOVER && self && self->hovered_)
+                ? RGB(12, 142, 85) : RGB(30, 36, 48));
         FillRect(dc, &rect, fill);
         DeleteObject(fill);
         SetBkMode(dc, TRANSPARENT);
