@@ -278,6 +278,78 @@ with tempfile.TemporaryDirectory() as td:
     assert report["coverage"]["declared_gui_controls"] == "PASS"
     assert report["coverage"]["product_gui_controls"] == "NOT COVERED"
 
+    # Product-independent click/drag sequences require a declared oracle;
+    # a successful native host alone must never imply every button was tested.
+    workflow_file = root / "approved-gui-workflow.json"
+    workflow_steps = [
+        {"id": "enable", "action": "click", "x": 100, "y": 90,
+         "param_id": 9001, "before_normalized": 0.0, "expected_normalized": 1.0},
+        {"id": "disable", "action": "click", "x": 100, "y": 90,
+         "param_id": 9001, "before_normalized": 1.0, "expected_normalized": 0.0}]
+    workflow_spec = {
+        "schema": "125a-gui-workflow-v1",
+        "product": {"binary": str(binary), "sha256": sha},
+        "gui_host": str(gui),
+        "initial": [{"param_id": 9001, "normalized": 0.0}],
+        "steps": workflow_steps}
+    workflow_file.write_text(json.dumps(workflow_spec), encoding="utf-8")
+    workflow_failure = {"mode": None}
+
+    def native_workflow(cmd, **kwargs):
+        if cmd[1].endswith("run_gui_workflow.py"):
+            target = Path(cmd[cmd.index("--out") + 1])
+            target.mkdir(parents=True, exist_ok=True)
+            mode = workflow_failure["mode"]
+            if mode == "missing":
+                return subprocess.CompletedProcess(cmd, 0, "fake native success", "")
+            payload = {
+                "status": "TECHNICAL_PASS",
+                "verified_module_sha256": sha if mode != "wrong_identity" else "f" * 64,
+                "gui_host_sha256": hashlib.sha256(gui.read_bytes()).hexdigest(),
+                "declared_actions": len(workflow_steps),
+                "verified_actions": len(workflow_steps) if mode != "missing_step" else 1,
+                "controller_action_chain": "PASS",
+                "product_gui_complete": "NOT COVERED"}
+            (target / "GUI-WORKFLOW-RESULT.json").write_text(
+                json.dumps(payload), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "native actions checked", "")
+        return all_native_gui(cmd, **kwargs)
+
+    tested = quick.run(bundle, host, stress, out, runner=native_workflow,
+                       gui_host=gui, gui_workflow=workflow_file)
+    assert tested["status"] == "TECHNICAL_PASS"
+    assert tested["coverage"]["native_gui_workflow"] == "PASS"
+    assert tested["native_gui_workflow_actions_verified"] == 2
+    assert tested["coverage"]["product_gui_controls"] == "NOT COVERED"
+    for bad_mode in ("missing", "wrong_identity", "missing_step"):
+        workflow_failure["mode"] = bad_mode
+        bad = quick.run(bundle, host, stress, out, runner=native_workflow,
+                        gui_host=gui, gui_workflow=workflow_file)
+        assert bad["status"] == "FAIL", bad_mode
+        assert bad["coverage"]["native_gui_workflow"] == "FAIL", bad_mode
+        assert bad["release_approved"] is False
+    workflow_failure["mode"] = None
+
+    try:
+        quick.run(bundle, host, stress, out, runner=native_workflow,
+                  gui_workflow=workflow_file)
+    except ValueError as error:
+        assert "native GUI host" in str(error)
+    else:
+        raise AssertionError("GUI journey silently omitted without native HWND host")
+    wrong_spec = dict(workflow_spec)
+    wrong_spec["product"] = dict(workflow_spec["product"])
+    wrong_spec["product"]["sha256"] = "b" * 64
+    workflow_file.write_text(json.dumps(wrong_spec), encoding="utf-8")
+    try:
+        quick.run(bundle, host, stress, out, runner=native_workflow,
+                  gui_host=gui, gui_workflow=workflow_file)
+    except ValueError as error:
+        assert "missing/incorrect" in str(error) or "another VST3" in str(error)
+    else:
+        raise AssertionError("incorrect GUI workflow source fingerprints accepted")
+    workflow_file.write_text(json.dumps(workflow_spec), encoding="utf-8")
+
     def gui_not_available(cmd, **kwargs):
         if cmd[1] == "--sweep-parameters":
             return subprocess.CompletedProcess(cmd, 10, "", "[INCONCLUSIVE] no controller")
