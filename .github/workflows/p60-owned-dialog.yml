@@ -1,0 +1,72 @@
+name: P60 real owned native VST3 dialog positive and missing-dialog negative
+
+on:
+  pull_request:
+    paths:
+      - 'src/gui_host.cpp'
+      - 'tests/gui_fixture.cpp'
+      - 'tests/run_gui_owned_dialog.py'
+      - 'tests/test_gui_owned_dialog.py'
+      - 'CMakeLists.txt'
+      - '.github/workflows/p60-owned-dialog.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify native owner and class evidence contract
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_gui_owned_dialog.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P60 independent oracle regression failed' }
+
+  actual-native-dialogs:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build genuine Windows GUI host and native dialog fixtures
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P60 configure failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiDialogGood QAGuiDialogBad
+          if ($LASTEXITCODE -ne 0) { throw 'P60 source-built native VST3 failed' }
+      - name: Assert actual owned Win32 dialog opens only on correct VST3 fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          if ($exe.Count -ne 1) { throw 'Actual GUI host missing' }
+          New-Item -ItemType Directory -Force build/p60 | Out-Null
+          foreach ($type in @('Good', 'Bad')) {
+            $plugin = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_GUI_Dialog$type.vst3")
+            if ($plugin.Count -ne 1) { throw "Actual $type VST3 missing" }
+            $PSNativeCommandUseErrorActionPreference = $false
+            python tests/run_gui_owned_dialog.py --plugin $plugin[0].FullName --gui-host $exe[0].FullName --out "build/p60/$type" --x 160 --y 90 --acknowledge-ui-clicks
+            $code = $LASTEXITCODE
+            $r = Get-Content "build/p60/$type/OWNED-DIALOG-RESULT.json" -Raw | ConvertFrom-Json
+            if ($type -eq 'Good') {
+              if ($code -ne 0 -or $r.status -ne 'CONTRACT_PASS' -or $r.observed_owned_dialogs -ne 1 -or $r.popup_cleanup -ne 'NATIVE_HOST_VERIFIED') {
+                throw 'P60 real dialog popup or native close failed'
+              }
+            } else {
+              if ($code -ne 1 -or $r.status -ne 'FAIL' -or $r.observed_owned_dialogs -ne 0 -or $r.popup_cleanup -ne 'NATIVE_HOST_VERIFIED') {
+                throw 'P60 missing-dialog negative fixture not detected'
+              }
+            }
+            if ($r.release_approved -ne $false) { throw 'P60 incorrectly approved release' }
+          }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P60-actual-native-owned-dialog-positive-negative
+          path: build/p60/
+          if-no-files-found: warn
