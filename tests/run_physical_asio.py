@@ -82,7 +82,7 @@ def present_driver(name, clsid, registry_reader=None):
     if registry_reader is not None:
         return registry_reader(name, clsid)
     import winreg
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\ASIO\\" + name) as key:
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\ASIO\\" + name) as key:
         found, kind = winreg.QueryValueEx(key, "CLSID")
     return (kind == winreg.REG_SZ and isinstance(found, str)
             and found.casefold() == clsid.casefold())
