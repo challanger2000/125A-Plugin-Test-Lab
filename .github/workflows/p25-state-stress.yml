@@ -20,6 +20,7 @@ on:
       - 'tests/verify_gui_recovery.py'
       - 'tests/run_product_adapter.py'
       - 'tests/test_p32_stale_evidence.py'
+      - 'tests/test_playback_save_overlap.py'
       - 'tests/verify_p33_artifacts.py'
       - 'tests/test_p33_artifacts.py'
       - 'tests/verify_product_acceptance.py'
@@ -274,6 +275,8 @@ jobs:
           if ($hostExe.Count -ne 1 -or $good.Count -lt 1 -or $bad.Count -lt 1) {
             throw 'P32 native host or real VST3 fixtures missing'
           }
+          python tests/test_playback_save_overlap.py
+          if ($LASTEXITCODE -ne 0) { throw 'P32 failed to detect project saves performed only after playback stopped' }
           python tests/test_p32_stale_evidence.py
           if ($LASTEXITCODE -ne 0) { throw 'P32 stale evidence negative control failed' }
           python tests/make_p32_fixtures.py --host $hostExe[0].FullName --good $good[0].FullName --bad $bad[0].FullName --out artifacts/P32/manifests
@@ -281,7 +284,8 @@ jobs:
           python tests/run_product_adapter.py --adapter artifacts/P32/manifests/good.json --out artifacts/P32/good
           if ($LASTEXITCODE -ne 0) { throw 'P32 correctly implemented VST3 did not pass real playback-save oracle' }
           $goodReport = Get-Content artifacts/P32/good/ADAPTER-RESULT.json -Raw | ConvertFrom-Json
-          if ($goodReport.status -ne 'PASS' -or $goodReport.coverage.bank_program_semantics -ne 'NOT COVERED') {
+          if ($goodReport.status -ne 'PASS' -or $goodReport.coverage.bank_program_semantics -ne 'NOT COVERED' -or
+              $goodReport.cases[0].measured_active_playback_saves -le 0) {
             throw 'P32 positive status or semantic coverage is incorrect'
           }
           python tests/run_product_adapter.py --adapter artifacts/P32/manifests/broken.json --out artifacts/P32/broken
