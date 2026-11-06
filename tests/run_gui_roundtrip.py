@@ -211,6 +211,8 @@ def run(bundle, gui_host, exploration, out, *, acknowledge=False,
                 if abs(val[1] - val[0]) > 1e-5]
             original_controller = [
                 p["param_id"] for p in observed["changed_parameters"]]
+            if any(pid not in original_controller for pid in first_controller):
+                raise ValueError("repeat GUI click changed an unobserved VST3 parameter")
             first_pixels = changed_pixels(b, first)
             original_visual = observed["classification"] in (
                 "VISUAL_CHANGE", "PARAMETER_AND_VISUAL_CHANGE")
