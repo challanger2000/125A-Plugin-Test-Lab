@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P37: Ordered native Win32 GUI clicks/drags in a single VST3 editor instance.
+"""P39: Ordered native Win32 GUI clicks, drags and keys in a single VST3 editor.
 
 Every action needs an independent parameter-before/after oracle. This is not
 blind GUI discovery and does not claim all product buttons are covered.
@@ -89,14 +89,14 @@ def validate(manifest):
             raise ValueError("missing independent VST3 controller oracle")
         if set(step) - {"id", "action", "x", "y", "end_x", "end_y", "param_id",
                         "before_normalized", "expected_normalized", "screenshot",
-                        "expected_pixel", "visual_oracle"}:
+                        "expected_pixel", "visual_oracle", "key_code", "modifiers"}:
             raise ValueError("unknown GUI workflow command")
         if not isinstance(step["id"], str) or not IDENTIFIER.fullmatch(step["id"]):
             raise ValueError("invalid GUI workflow action identifier")
         if step["id"] in ids:
             raise ValueError("repeated GUI workflow action identifier")
         ids.add(step["id"])
-        if step["action"] not in ("click", "drag"):
+        if step["action"] not in ("click", "drag", "key"):
             raise ValueError("unsupported native GUI workflow action")
         unsigned(step["x"], 8191)
         unsigned(step["y"], 8191)
@@ -106,7 +106,20 @@ def validate(manifest):
             unsigned(step["end_x"], 8191)
             unsigned(step["end_y"], 8191)
         elif "end_x" in step or "end_y" in step:
-            raise ValueError("click cannot silently specify drag coordinates")
+            raise ValueError("non-drag action cannot declare drag coordinates")
+        if step["action"] == "key":
+            if "key_code" not in step:
+                raise ValueError("native key action requires explicit Windows virtual-key code")
+            key_code = unsigned(step["key_code"], 255)
+            if key_code < 8 or key_code in (91, 92):
+                raise ValueError("invalid or system-level Windows virtual-key code")
+            modifiers = step.get("modifiers", [])
+            if (not isinstance(modifiers, list) or len(modifiers) > 3 or
+                    any(type(m) is not str or m not in ("ctrl", "shift", "alt")
+                        for m in modifiers) or len(modifiers) != len(set(modifiers))):
+                raise ValueError("invalid or duplicate approved keyboard modifiers")
+        elif "key_code" in step or "modifiers" in step:
+            raise ValueError("mouse gesture must not include keyboard payload")
         if not visual_only:
             unsigned(step["param_id"], 4294967295)
             before = normalized(step["before_normalized"])
@@ -159,8 +172,14 @@ def make_native_manifest(initial, steps):
         rows.append("init\t%d\t%.17g" % (item["param_id"], item["normalized"]))
     rows.append("step_count\t" + str(len(steps)))
     for index, item in enumerate(steps):
-        x2 = item.get("end_x", item["x"])
-        y2 = item.get("end_y", item["y"])
+        if item["action"] == "key":
+            x2 = item["key_code"]
+            mods = item.get("modifiers", [])
+            y2 = sum(1 << index for index, value in enumerate(("ctrl", "shift", "alt"))
+                     if value in mods)
+        else:
+            x2 = item.get("end_x", item["x"])
+            y2 = item.get("end_y", item["y"])
         if "visual_oracle" in item:
             rows.append("step\t%d\t%s\t%d\t%d\t%d\t%d\t-\t-\t-\t1" % (
                 index, item["action"], item["x"], item["y"], x2, y2))
