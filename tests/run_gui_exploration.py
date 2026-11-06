@@ -15,6 +15,8 @@ import struct
 import subprocess
 import sys
 
+from gui_change_regions import create_review_draft, locate_change_regions
+
 
 NATIVE = "125A-GUI-EXPLORE-v3"
 SCHEMA = "125a-gui-exploration-result-v1"
@@ -168,7 +170,9 @@ def run(bundle, gui_host, out, *, points=None, max_points=9,
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     report_file = out / "GUI-EXPLORATION-RESULT.json"
+    review_file = out / "GUI-CONTROL-REVIEW-DRAFT.json"
     report_file.unlink(missing_ok=True)
+    review_file.unlink(missing_ok=True)
     overview = out / "untouched-editor.bmp"
     overview.unlink(missing_ok=True)
     result = {
@@ -262,6 +266,14 @@ def run(bundle, gui_host, out, *, points=None, max_points=9,
             # in the sham, the click is NOT assigned an observed effect.
             visual = reliable_control and click_motion > 0 and differential > 0
             attributed_parameters = parameters if reliable_control else []
+            # P44: physical BGR pixel changes are localized in tile-connected
+            # regions ONLY after the paired sham proves attribution is stable.
+            # Observed RGB samples remain unapproved until an independent
+            # product specification confirms the expected control behavior.
+            regions = (locate_change_regions(click_b, click_after)
+                       if visual else None)
+            if regions is not None and regions["painted_pixels_changed"] != click_motion:
+                raise ValueError("P44 localized screenshot pixel count mismatches native comparison")
             if not reliable_control:
                 classification = "UNSTABLE_CONTROL"
             elif attributed_parameters and visual:
@@ -292,6 +304,15 @@ def run(bundle, gui_host, out, *, points=None, max_points=9,
                 "painted_visual_observation": (
                     "UNSTABLE" if not reliable_control else
                     "OBSERVED" if visual else "NO_OBSERVED_CHANGE"),
+                "pixel_localization": (
+                    regions if regions is not None else {
+                        "painted_pixels_changed": 0,
+                        "observed_region_count": 0, "reported_region_count": 0,
+                        "truncated": False, "regions": [],
+                        "localization": (
+                            "UNSTABLE_CONTROL" if not reliable_control else
+                            "NO_VISUAL_CHANGE"),
+                    }),
             }
             result["probes"].append(observed)
             if attributed_parameters or visual:
@@ -308,9 +329,15 @@ def run(bundle, gui_host, out, *, points=None, max_points=9,
         result["status"] = "OBSERVATIONS_COMPLETE"
         result["sham_control"] = "COMPLETE"
         result["gui_control_discovery"] = "OBSERVATIONS_ONLY"
+        draft = create_review_draft(result)
+        review_file.write_text(json.dumps(draft, indent=2) + "\n",
+                               encoding="utf-8")
     except (OSError, ValueError, UnicodeError, OverflowError,
             struct.error, subprocess.TimeoutExpired) as error:
         result["sham_control"] = "FAIL"
+        result["status"] = "FAIL"
+        result["gui_control_discovery"] = "NOT COVERED"
+        review_file.unlink(missing_ok=True)
         result["faults"].append(str(error))
     report_file.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
