@@ -137,9 +137,11 @@ float sample(Instance& instance,int step) {
     return 0.5f*(left[0]+right[0]);
 }
 int run(const std::string& pluginPath,const std::filesystem::path& a,
-        const std::filesystem::path& b,const std::filesystem::path& dest) {
+        const std::filesystem::path& b,const std::filesystem::path& dest,
+        bool requireDistinct) {
     auto stateA=readState(a),stateB=readState(b);
-    check(stateA!=stateB,"dual-instance test requires distinct user states");
+    if(requireDistinct)
+        check(stateA!=stateB,"dual-instance isolation case requires distinct states");
     std::string error;
     auto module=Module::create(pluginPath,error);
     check(bool(module),"could not load dual-instance VST3 module");
@@ -183,11 +185,13 @@ int run(const std::string& pluginPath,const std::filesystem::path& a,
 }
 int main(int argc,char** argv) {
     try {
-        if(argc!=6||std::string(argv[1])!="--dual-state") {
-            std::cerr<<"Usage: --dual-state <plugin.vst3> <A.bin> <B.bin> <out-dir>\n";
-            return 2;
-        }
-        return run(argv[2],argv[3],argv[4],argv[5]);
+        if(argc==5&&std::string(argv[1])=="--dual-identical")
+            return run(argv[2],argv[3],argv[3],argv[4],false);
+        if(argc==6&&std::string(argv[1])=="--dual-state")
+            return run(argv[2],argv[3],argv[4],argv[5],true);
+        std::cerr<<"Usage: --dual-identical <plugin.vst3> <captured-state.bin> <out-dir>\n"
+                 <<"       --dual-state <plugin.vst3> <A.bin> <B.bin> <out-dir>\n";
+        return 2;
     } catch(const std::exception& ex) {
         std::cerr<<"[FAIL] native dual-instance VST3 test: "<<ex.what()<<"\n";
         return 1;
