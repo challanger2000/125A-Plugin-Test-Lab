@@ -55,7 +55,8 @@ with tempfile.TemporaryDirectory() as root:
     assert passed["parameters_with_reversible_labels"] == 1
     assert passed["parameter_label_probes"] == 7
     assert passed["parameter_reverse_probes"] == 2
-    assert passed["reverse_text_api"] == "PASS"
+    assert passed["text_label_api"] == "PASS"
+    assert passed["reverse_text_api"] == "NOT COVERED", "partial parser coverage misclassified"
     assert passed["actual_editor_painted_values"] == "NOT COVERED"
     assert passed["release_approved"] is False
 
@@ -100,6 +101,23 @@ with tempfile.TemporaryDirectory() as root:
             pass
         else:
             raise AssertionError("forged green VST3 label evidence accepted: " + name)
+
+    # All reversible cases => global reverse PASS, unlike the mixed
+    # instrument whose continuous parameter has no reverse text parser.
+    only_reversible = "\n".join([
+        "format\t125A-GUI-TEXT-v1", "param_count\t1", "tested\t1",
+        "skipped\t0", "failed\t0", "observations\t2",
+        "readable\t2", "reversible\t2",
+        "param\t0\t9001\t1\t1\tPASS",
+        text_probe(0, 9001, 0, "OFF", 0, "OFF"),
+        text_probe(0, 9001, 1, "ON", 1, "ON"),
+        "",
+    ])
+    path.write_text(only_reversible, encoding="utf-8")
+    all_supported = verify.audit(path)
+    assert all_supported["status"] == "PASS"
+    assert all_supported["reverse_text_api"] == "PASS"
+    assert all_supported["text_label_api"] == "PASS"
 
     # A valid instrument may not implement textual reverse conversion.
     no_text = "\n".join([
