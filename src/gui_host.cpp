@@ -495,6 +495,68 @@ WorkflowInput parseWorkflow(const std::filesystem::path& path) {
 // disposable plugin instance.  The result is evidence for later control
 // mapping, never proof that a product's undocumented buttons work correctly.
 // One click per process ensures independent initial controller/UI state.
+// P43: Route native mouse input to the *deepest visible enabled HWND*
+// under a point in the plugin editor's client coordinates. Sending mouse
+// messages only to the editor root misses genuine Win32 child buttons,
+// sliders, combo boxes, or nested panels. Preserve the original root
+// coordinate for screenshots and report the actual dispatch depth.
+struct GuiHitTarget {
+    HWND window{};
+    POINT point{};
+    int depth{};
+};
+GuiHitTarget resolveGuiHitTarget(HWND editor, int x, int y) {
+    require(editor && IsWindow(editor), "P43 invalid editor HWND for hit-testing");
+    RECT root{};
+    require(GetClientRect(editor, &root) &&
+            x >= 0 && y >= 0 && x < root.right && y < root.bottom,
+            "P43 pointer coordinate outside actual editor");
+    POINT screen{x, y};
+    require(ClientToScreen(editor, &screen),
+            "P43 cannot transform client coordinate to desktop point");
+    HWND current = editor;
+    int depth = 0;
+    for (; depth < 16; ++depth) {
+        POINT local = screen;
+        require(ScreenToClient(current, &local),
+                "P43 cannot project point into native child");
+        HWND next = ChildWindowFromPointEx(current, local,
+            CWP_SKIPINVISIBLE | CWP_SKIPDISABLED | CWP_SKIPTRANSPARENT);
+        if (!next || next == current) break;
+        require(IsWindow(next) && IsChild(editor, next),
+                "P43 native GUI hit-test escaped the plugin editor");
+        current = next;
+    }
+    POINT local = screen;
+    require(ScreenToClient(current, &local),
+            "P43 cannot transform coordinates for deepest child HWND");
+    RECT bounds{};
+    require(GetClientRect(current, &bounds) && local.x >= 0 && local.y >= 0 &&
+            local.x < bounds.right && local.y < bounds.bottom,
+            "P43 deepest native editor target is outside client");
+    return {current, local, depth};
+}
+
+// For drag gestures the target is chosen at mouse-down and remains the
+// same for the held movement, including when the endpoint leaves its
+// bounds, simulating the Win32 capture behavior without choosing a new
+// receiver for each movement.
+POINT guiPointForTarget(HWND root, HWND target, int x, int y) {
+    POINT screen{x, y};
+    require(ClientToScreen(root, &screen) && ScreenToClient(target, &screen),
+            "P43 could not map mouse movement to retained child HWND");
+    return screen;
+}
+void sendNativeGuiClick(HWND root, int x, int y, bool click) {
+    const auto hit = resolveGuiHitTarget(root, x, y);
+    const LPARAM coordinate = MAKELPARAM(hit.point.x, hit.point.y);
+    SendMessageW(hit.window, WM_MOUSEMOVE, 0, coordinate);
+    if (click) {
+        SendMessageW(hit.window, WM_LBUTTONDOWN, MK_LBUTTON, coordinate);
+        SendMessageW(hit.window, WM_LBUTTONUP, 0, coordinate);
+    }
+}
+
 int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                        bool performClick, const std::filesystem::path& evidence,
                        const std::filesystem::path& baselineFirst,
@@ -585,11 +647,14 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                 // highlight must NOT be misattributed to a click. Only
                 // the real-click run receives button down/up. Both modes
                 // keep exactly the same dwell and repaint timing.
-                const LPARAM point = MAKELPARAM(clickX, clickY);
-                SendMessageW(child, WM_MOUSEMOVE, 0, point);
+                const auto hit = resolveGuiHitTarget(child, clickX, clickY);
+                const LPARAM point = MAKELPARAM(hit.point.x, hit.point.y);
+                // Both sham and click use the SAME deepest native HWND and
+                // the same mouse-move; only the actual click adds down/up.
+                SendMessageW(hit.window, WM_MOUSEMOVE, 0, point);
                 if (performClick) {
-                    SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, point);
-                    SendMessageW(child, WM_LBUTTONUP, 0, point);
+                    SendMessageW(hit.window, WM_LBUTTONDOWN, MK_LBUTTON, point);
+                    SendMessageW(hit.window, WM_LBUTTONUP, 0, point);
                 }
                 pump(100);
                 InvalidateRect(child, nullptr, TRUE);
@@ -607,10 +672,11 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                 std::ofstream out(evidence, std::ios::trunc);
                 require(bool(out), "P41 cannot create native UI exploration evidence");
                 out << std::setprecision(17);
-                out << "format\t125A-GUI-EXPLORE-v2\n"
+                out << "format\t125A-GUI-EXPLORE-v3\n"
                     << "mode\t" << (performClick ? "click" : "sham") << "\n"
                     << "coordinate\t" << clickX << "\t" << clickY << "\n"
                     << "canvas\t" << rect.right << "\t" << rect.bottom << "\n"
+                    << "target_depth\t" << hit.depth << "\n"
                     << "param_count\t" << rows.size() << "\n";
                 for (const auto& row : rows)
                     out << "param\t" << row.index << "\t" << row.id << "\t"
@@ -755,15 +821,18 @@ int runGuiWorkflow(const std::string& pluginPath,
                         if (step.modifiers & 1)
                             SendMessageW(child, WM_KEYUP, VK_CONTROL, 0);
                     } else {
-                        const LPARAM start = MAKELPARAM(step.x1, step.y1);
-                        const LPARAM end = MAKELPARAM(step.x2, step.y2);
-                        SendMessageW(child, WM_MOUSEMOVE, 0, start);
-                        SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, start);
+                        const auto hit = resolveGuiHitTarget(child, step.x1, step.y1);
+                        const LPARAM start = MAKELPARAM(hit.point.x, hit.point.y);
+                        const auto endPoint = guiPointForTarget(
+                            child, hit.window, step.x2, step.y2);
+                        const LPARAM end = MAKELPARAM(endPoint.x, endPoint.y);
+                        SendMessageW(hit.window, WM_MOUSEMOVE, 0, start);
+                        SendMessageW(hit.window, WM_LBUTTONDOWN, MK_LBUTTON, start);
                         if (step.drag) {
-                            SendMessageW(child, WM_MOUSEMOVE, MK_LBUTTON, end);
+                            SendMessageW(hit.window, WM_MOUSEMOVE, MK_LBUTTON, end);
                             pump(10);
                         }
-                        SendMessageW(child, WM_LBUTTONUP, 0, end);
+                        SendMessageW(hit.window, WM_LBUTTONUP, 0, end);
                     }
                     pump(50);
                     if (step.screenshot) {
