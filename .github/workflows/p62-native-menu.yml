@@ -1,0 +1,77 @@
+name: P62 native Win32 VST3 menu and command auditing
+
+on:
+  pull_request:
+    paths:
+      - 'src/gui_host.cpp'
+      - 'tests/gui_fixture.cpp'
+      - 'tests/run_gui_owned_dialog.py'
+      - 'tests/test_gui_native_menu.py'
+      - 'CMakeLists.txt'
+      - '.github/workflows/p62-native-menu.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  independent-oracle:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Adversarial missing and forged Win32 menu claims
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_gui_native_menu.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P62 menu independent oracle failed' }
+  real-vst3:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build real Windows host and actual VST3 menu positive and negative
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P62 configure failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiMenuGood QAGuiMenuBad
+          if ($LASTEXITCODE -ne 0) { throw 'P62 native VST3 compilation failed' }
+      - name: Verify real native menu item and command versus deliberate wrong-menu defect
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hosts = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          if ($hosts.Count -ne 1) { throw 'P62 native GUI host missing' }
+          foreach ($variant in @('Good','Bad')) {
+            $plugin = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_GUI_Menu$variant.vst3")
+            if ($plugin.Count -ne 1) { throw "P62 $variant fixture missing" }
+            $PSNativeCommandUseErrorActionPreference = $false
+            python tests/run_gui_owned_dialog.py --plugin $plugin[0].FullName --gui-host $hosts[0].FullName --out "build/p62-$variant" --x 160 --y 90 --acknowledge-ui-clicks --audit-native-menu
+            $code = $LASTEXITCODE
+            $report = Get-Content "build/p62-$variant/OWNED-DIALOG-RESULT.json" -Raw | ConvertFrom-Json
+            if (Test-Path "build/p62-$variant/native.log") {
+              Get-Content "build/p62-$variant/native.log" | ForEach-Object { Write-Host "P62 NATIVE: $_" }
+            }
+            if ($variant -eq 'Good') {
+              if ($code -ne 0 -or $report.status -ne 'CONTRACT_PASS' -or $report.native_win32_menu -ne 'ITEM_VERIFIED_AND_COMMAND_DISPATCHED' -or $report.observed_owned_dialogs -ne 1) {
+                throw 'P62 genuine Win32 HMENU did not pass native menu command audit'
+              }
+            } else {
+              if ($code -ne 1 -or $report.status -ne 'FAIL' -or $report.native_win32_menu -ne 'NOT TESTED') {
+                throw 'P62 deliberately wrong native menu item was not detected'
+              }
+            }
+            if ($report.release_approved -ne $false -or $report.physical_menu_selection -ne 'NOT COVERED') {
+              throw 'P62 falsely claimed actual OS mouse menu selection or release approval'
+            }
+          }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P62-actual-native-Win32-menu-contracts
+          path: |
+            build/p62-Good/
+            build/p62-Bad/
+          if-no-files-found: warn
