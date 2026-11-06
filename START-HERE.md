@@ -2,9 +2,36 @@
 
 ## Latest usable Windows test kit (6 November 2026)
 
+## Latest verified optional active-playback VST3 state-reload stress
+
+**Current portable artifact:** [Windows P25 build 42153520026](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42153520026).
+[Validated and merged PR #54](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/54).
+
+An independent plugin-development chat can use
+`PORTABLE/run_live_state_replay.py` for a **real Windows VST3 test of
+genuine saved-state reloads during playback**. It takes the plugin's own
+pre-playback `getState()` bytes (never a guessed proprietary state),
+then proves 500 successful `setState()` calls and 500 saves overlapping
+2,500 audio callbacks, repeated in six rate/buffer configurations.
+The total is 3,000 actual state reloads, 3,000 saves and 15,000 audio
+callbacks, with exact binary SHA-256 and per-case immutable fresh
+evidence. Real Windows CI passed all six valid cases and correctly
+detected an intentionally broken VST3 that refuses valid active-playback
+state reloads, as well as independently corrupted/missing evidence.
+The standalone runner is **opt-in**, not a mandatory green criterion for
+all VST3s, because plugin contracts may restrict `setState()` to
+inactive processing. Product-specific correct bank/PCM semantics and
+a commercial DAW session remain `NOT COVERED`.
+
+Run from the extracted `PORTABLE` folder:
+
+```powershell
+python run_live_state_replay.py --plugin "C:\VST3\Instrument.vst3" --host ".\125A_Test_Lab_State_Stress.exe" --out ".\REPLAY-ERGEBNISSE"
+```
+
 ## Latest verified A/B product-state oracle
 
-**Current Windows artifact:** [P25 Windows run 42150199721](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42150199721), containing the portable tester. The corresponding tested changes are merged in [PR #53](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/53).
+**Current Windows artifact:** [P25 Windows run 42153520026](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42153520026), containing the portable tester. The corresponding tested changes are merged in [PR #53](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/53).
 
 Other plugin-development chats can now use `run_product_dual_state.py` in the portable kit to test **two different plugin banks/presets in two simultaneously active VST3 instances**. Unlike the standard identical-state drag-and-drop test, this accepts a separately approved A/B manifest pinning the actual module SHA-256, two different saved-state files and approved post-reload state/PCM values. It fails when the observed bank/state or audio does not match the independent reference. A real source-built good plugin passed in Windows CI and a deliberately broken shared-global-state plugin failed the same external oracle, despite successful host API calls.
 
@@ -17,7 +44,7 @@ Other plugin-development chats can now use `run_product_dual_state.py` in the po
 and [#52](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/52),
 both merged after their applicable Windows validation.
 
-[Latest proven Windows P25 artifact and download](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42150199721)
+[Latest proven Windows P25 artifact and download](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42153520026)
 
 The `PORTABLE` package contains four native Windows x64 test hosts,
 including `125A_Test_Lab_Instance_Isolation.exe`. Drag an installed,
@@ -50,7 +77,7 @@ That false positive is now rejected by the C++ host, the independent
 TSV verifier, the real-plugin adapter, and deliberate 0/missing/impossible
 overlap test cases.
 
-[Windows P25 verified run and portable artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42150199721) ·
+[Windows P25 verified run and portable artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42153520026) ·
 [merged source changes](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/49).
 
 This is measured overlap with a **running** callback thread, not proof
@@ -60,7 +87,7 @@ state semantics and commercial DAW saves still require independent tests.
 ## Current test acceptance and latest proof
 
 **Latest verified Windows quickcheck:** pull requests #47 and #48,
-validated in [Windows P25 pipeline](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42150199721).
+validated in [Windows P25 pipeline](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42153520026).
 The real Drumator product regression remains independently verified in P03.
 The complete relevant Windows CI for the latest changes has passed,
 including the real production VST3 GUI/exports regression and all 13
@@ -119,7 +146,7 @@ An external per-product control map can additionally automate click/pixel
 checks (see `docs/ONE-COMMAND-QUICKCHECK.md`).
 
 **Use without compiling the test host yourself:** download the latest
-successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42150199721),
+successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42153520026),
 open its `PORTABLE` folder, and follow `README.md`. The artifact
 contains all four native x64 audio/state/GUI/dual-instance hosts, the drag-and-drop launcher, supporting Python scripts
 and SHA-256 checksums. Python 3 on Windows is required.
