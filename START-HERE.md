@@ -1,9 +1,17 @@
 # START HERE — 125A Plugin Test Lab
 
-## Completed portable Windows x64 infrastructure — 6 November 2026
+## Latest shared Windows x64 VST3 testing infrastructure — 6 November 2026
 
-**Current verified kit:** [P25 real VST3 Windows run #42159432741](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42159432741), artifact `125A-Universal-VST3-State-Stress-P25` → `PORTABLE`.
-[PR #59](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/59) is merged. The same exact PR commit passed P02 and P25 Windows CI, including the native integration of both advanced one-command modes and their deliberately failing references.
+**Current validated artifact:** [P25 Windows test run #42164304275](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42164304275), artifact `125A-Universal-VST3-State-Stress-P25` → `PORTABLE`.
+[PR #60](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/60) and [PR #61](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/61) are merged. The exact PR #61 test commit passed **P02, P03, P04, P25 and P29** Windows CI, including positive and intentionally defective real VST3 fixtures.
+
+**Universal controller automation (P35):** every writable VST3 parameter explicitly advertised as automatable is tested at normalized endpoints and quartiles (snapped to valid discrete steps), with independently checked observed values and restoration of its original state. Nonautomatable/read-only parameters are explicitly skipped. Missing, corrupted, or falsely green test evidence is rejected. This is controller API testing, *not* proof that all undisclosed buttons have been operated.
+
+**Real bidirectional GUI clicks (P36):** the reusable product-profile GUI driver clicks actual native Win32 editor coordinates and verifies both ON and OFF changes from declared initial normalized values; optionally it compares real painted pixels. A source-built inert VST3 negative control is rejected. An independent per-plugin control map is required for controls that cannot be discovered from the VST3 parameter API. See `docs/GUI-CONTROL-MATRIX.md`.
+
+**GitHub Actions:** these tests execute on Windows GitHub runners with Python supplied by the runner. The end user does not need to install Python to run tests there. The optional local drag-and-drop `PORTABLE` executable package still requires local Python 3.
+
+**Scope:** the reusable technical test suite is developed and verified. Blind discovery of every plugin-specific painted button, musical correctness, full dialog interactions and a commercial DAW session are **NOT COVERED** without independent product-specific test mappings and oracles. Never call a generic technical PASS a product release approval.
 
 **Ready to use (no compiling):** on Windows x64, extract the `PORTABLE` directory and drag a trusted installed `.vst3` folder onto `Run-VST3-Test.cmd` (Python 3 required). The resulting `RESULTS/<Plugin>/TESTERGEBNIS.html` gives German PASS / FAIL / NOT COVERED classifications and includes real native audio, state, GUI, controller inventory and two-instance tests where supported.
 
