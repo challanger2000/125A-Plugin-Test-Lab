@@ -1,5 +1,13 @@
 # START HERE — 125A Plugin Test Lab
 
+## Latest universal P39 keyboard user-journey testing — 6 November 2026
+
+**Verified source and Windows evidence:** [merged PR #64](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/64), [P25 Windows run 42171948171](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42171948171). The exact PR commit also passed P02, P03 (real Drumator V1.5 tests) and P04 Windows workflows. The tested commit was `a9445c2dcd50aaba33c4a87e6d10e402515a81a8`.
+
+**P39 available to all VST3 GUI test profiles:** A persistent, genuine native editor workflow now supports declared **keyboard shortcuts** in addition to ordered mouse clicks and drags. Specify `"action": "key"` and an approved `key_code` (Windows virtual-key value) with optional `modifiers` (Ctrl, Shift, Alt). The reusable host delivers Win32 keyboard messages to the actual VST3 HWND. It independently checks requested controller transitions or approved real painted-pixel oracles, and rejects missing actions, invalid shortcut profiles and an unrelated key that has no effect. The Windows positive and deliberately broken VST3 fixtures prove this is executable rather than a simulated success. See `docs/GUI-CONTROL-MATRIX.md`.
+
+**Universal not omniscient:** The tester does not infer all editor shortcuts, unlabeled controls or native dialog meanings. The product/test author must provide expected outcomes; undocumented controls are `NOT COVERED`. GitHub Actions runs these tests on Windows without requiring the user's PC to install Python.
+
 ## Latest universal P38 visible-only GUI controls — 6 November 2026
 
 **Latest Windows-verified reusable kit:** [P25 workflow #42169778586](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42169778586), artifact `125A-Universal-VST3-State-Stress-P25` (portable hosts and source runners). [PR #63](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/63) is merged after **P02/P03/P04/P25 Windows SUCCESS**.
