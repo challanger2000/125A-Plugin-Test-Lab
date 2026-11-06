@@ -38,8 +38,9 @@ with tempfile.TemporaryDirectory() as td:
         if argv[1] == "--snapshot-editor":
             bmp(Path(argv[3]), (30, 36, 48))
             return subprocess.CompletedProcess(argv, 0, "[PASS] snapshot", "")
-        assert argv[1] == "--explore-gui-click", argv
+        assert argv[1] in ("--explore-gui-click", "--explore-gui-sham"), argv
         assert len(argv) == 9, argv
+        actual_click = argv[1] == "--explore-gui-click"
         x, y = int(argv[3]), int(argv[4])
         mode = scenario["mode"]
         if mode == "timeout":
@@ -50,8 +51,12 @@ with tempfile.TemporaryDirectory() as td:
             return subprocess.CompletedProcess(argv, 0, "[PASS] forged", "")
         if mode == "tamper_binary":
             binary.write_bytes(b"modified mid-test module")
-        params = [(9001, 0.0, 1.0)] if mode not in ("inert", "visual_only") else [(9001, 0.0, 0.0)]
-        text = ["format\t125A-GUI-EXPLORE-v1", f"coordinate\t{x}\t{y}",
+        params = [(9001, 0.0, 1.0)] if (
+            actual_click and mode not in ("inert", "visual_only", "spontaneous")
+            or mode == "sham_parameter") else [(9001, 0.0, 0.0)]
+        text = ["format\t125A-GUI-EXPLORE-v2",
+                "mode\t" + ("click" if actual_click else "sham"),
+                f"coordinate\t{x}\t{y}",
                 "canvas\t320\t180", "param_count\t1"]
         text.extend(f"param\t{i}\t{pid}\t{a}\t{b}"
                     for i, (pid, a, b) in enumerate(params))
@@ -60,16 +65,22 @@ with tempfile.TemporaryDirectory() as td:
         if mode == "wrong_coordinate":
             report = report.replace(f"coordinate\t{x}\t{y}",
                                     f"coordinate\t{x+1}\t{y}")
+        if mode == "wrong_control_mode" and not actual_click:
+            report = report.replace("mode\tsham", "mode\tclick")
         if mode == "duplicate_param":
             report = report.replace("param_count\t1", "param_count\t2").replace(
                 "end\tCOMPLETE", "param\t1\t9001\t0\t1\nend\tCOMPLETE")
         if mode == "missing_end":
             report = report.replace("end\tCOMPLETE\n", "")
         Path(argv[5]).write_text(report, encoding="utf-8")
-        bmp(Path(argv[6]), (30, 36, 48))
-        bmp(Path(argv[7]), (30, 36, 48) if mode != "baseline_drift" else (40, 36, 48))
-        bmp(Path(argv[8]), (30, 36, 48)
-            if mode in ("stale_paint", "inert") else (12, 142, 85))
+        base = (40, 36, 48) if mode == "cross_baseline" and not actual_click else (30, 36, 48)
+        bmp(Path(argv[6]), base)
+        bmp(Path(argv[7]), base if mode != "baseline_drift" else (42, 36, 48))
+        post = ((12, 142, 85)
+                if (mode in ("spontaneous", "baseline_drift")
+                    or (actual_click and mode not in ("stale_paint", "inert", "sham_parameter")))
+                else base)
+        bmp(Path(argv[8]), post)
         if mode == "bad_bmp":
             Path(argv[8]).write_bytes(b"bad bmp")
         return subprocess.CompletedProcess(argv, 0, "[OBSERVED] actual native click", "")
@@ -100,6 +111,10 @@ with tempfile.TemporaryDirectory() as td:
     good = inspect("working")
     assert good["status"] == "OBSERVATIONS_COMPLETE", good
     assert good["completed_points"] == 1
+    assert good["sham_verified_points"] == 1
+    assert good["sham_control"] == "COMPLETE"
+    assert good["probes"][0]["sham_control_attribution"] == "SUPPORTED"
+    assert good["probes"][0]["sham_pixels_changed"] == 0
     assert good["candidates"][0]["parameter_ids_changed"] == [9001]
     assert good["probes"][0]["classification"] == "PARAMETER_AND_VISUAL_CHANGE"
     assert good["gui_control_discovery"] == "OBSERVATIONS_ONLY"
@@ -123,11 +138,34 @@ with tempfile.TemporaryDirectory() as td:
 
     drifting = inspect("baseline_drift")
     assert drifting["status"] == "OBSERVATIONS_COMPLETE"
-    assert drifting["probes"][0]["classification"] == "PARAMETER_CHANGE"
+    assert drifting["probes"][0]["classification"] == "UNSTABLE_CONTROL"
     assert drifting["probes"][0]["painted_visual_observation"] == "UNSTABLE"
+    assert drifting["candidates"] == [], "unstable baseline was misattributed to click"
+
+    # The vital negative: motion that occurs even without clicking must NOT
+    # become a discovered UI button. A click-only detector would report
+    # a completely fictional visual control here.
+    spontaneous = inspect("spontaneous")
+    assert spontaneous["status"] == "OBSERVATIONS_COMPLETE"
+    assert spontaneous["probes"][0]["sham_pixels_changed"] > 0
+    assert spontaneous["probes"][0]["classification"] == "UNSTABLE_CONTROL"
+    assert spontaneous["candidates"] == [], "spontaneous animation falsely discovered as button"
+
+    sham_parameter = inspect("sham_parameter")
+    assert sham_parameter["status"] == "OBSERVATIONS_COMPLETE"
+    assert sham_parameter["probes"][0]["sham_parameter_changes"]
+    assert sham_parameter["probes"][0]["classification"] == "UNSTABLE_CONTROL"
+    assert sham_parameter["candidates"] == [], "background parameter automation falsely attributed"
+
+    cross_baseline = inspect("cross_baseline")
+    assert cross_baseline["status"] == "OBSERVATIONS_COMPLETE"
+    assert cross_baseline["probes"][0]["cross_process_baseline_mismatch"] > 0
+    assert cross_baseline["probes"][0]["classification"] == "UNSTABLE_CONTROL"
+    assert cross_baseline["candidates"] == []
 
     for mode in ("crash", "timeout", "missing_evidence", "wrong_coordinate",
-                 "duplicate_param", "missing_end", "bad_bmp", "tamper_binary"):
+                 "duplicate_param", "missing_end", "bad_bmp", "tamper_binary",
+                 "wrong_control_mode"):
         broken = inspect(mode)
         assert broken["status"] == "FAIL", (mode, broken)
         assert broken["gui_control_discovery"] == "NOT COVERED"
@@ -143,8 +181,10 @@ with tempfile.TemporaryDirectory() as td:
     assert grid["status"] == "OBSERVATIONS_COMPLETE", grid
     assert grid["requested_points"] == 3
     assert grid["completed_points"] == 3
+    assert grid["sham_verified_points"] == 3
+    assert grid["sham_control"] == "COMPLETE"
     assert len(grid["candidates"]) == 3
     assert grid["product_gui_controls"] == "NOT COVERED"
     assert hashlib.sha256(binary.read_bytes()).hexdigest() == grid["verified_module_sha256"]
 
-print("[PASS] bounded GUI discovery rejects false observations, stale pixels and unsafe clicks")
+print("[PASS] sham-controlled GUI discovery rejects spontaneous animation and unrelated parameter changes")
