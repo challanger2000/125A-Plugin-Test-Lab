@@ -7,7 +7,7 @@ ASIO driver is actually installed, it:
 - independently checks driver registry name/CLSID and instantiates its
   actual `IASIO` COM object via `CoCreateInstance`
 - checks physical output channels, exact sample rate, buffer limits and
-  32-bit little-endian float/int output formats (unsupported devices fail)
+  32-bit floating, signed 16-/24-/32-bit little-endian and 24-in-32-bit output formats (unsupported devices fail)
 - creates the hardware driver's real double buffers and callbacks, loads
   the exact native Windows VST3 and runs `IAudioProcessor::process()`
   in the driver callback (32-bit float, stereo output)
@@ -35,7 +35,7 @@ cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DASIO_SDK_DIR=C:/SDK/ASI
 cmake --build build --config Release --target TestLabPhysicalASIO
 ```
 
-The P58 GitHub Windows build checks out the exact source reference
+The native CI also independently verifies PCM sample-format conversion and\nensures an actual source-built VST3 cannot produce ASIO evidence with an\nunregistered driver. Neither CI check substitutes for physical hardware.\n\nThe P58 GitHub Windows build checks out the exact source reference
 `audiosdk/asio@496a0765b8bb9c26f764f22f9a9712a937177db2` **for CI
 compilation only**; no SDK binary or headers are repackaged. Steinberg
 ASIO SDK carries a dual license (GPLv3 or proprietary agreement);
