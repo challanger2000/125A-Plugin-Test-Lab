@@ -777,6 +777,23 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                     if (roundtrip) out << "\t" << row.second;
                     out << "\n";
                 }
+                if (exerciseButton) {
+                    require(after.size() == 1, "P61 exactly one real dialog required");
+                    HWND popup = after.front();
+                    HWND button = GetDlgItem(popup, 43061);
+                    require(button && IsWindow(button),
+                            "P61 required native dialog child button missing");
+                    wchar_t kind[64]{};
+                    require(GetClassNameW(button, kind, 64) &&
+                            wcscmp(kind, L"Button") == 0 &&
+                            IsWindowVisible(button) && IsWindowEnabled(button),
+                            "P61 required native dialog button not actionable");
+                    (void)SendMessageW(button, BM_CLICK, 0, 0);
+                    pump(75);
+                    require(ownedDialogs(window.get(), editor).empty(),
+                            "P61 native dialog button did not dismiss owned popup");
+                    out << "button\t43061\tButton\tactioned\tdialog_closed\n";
+                }
                 out << "end\tCOMPLETE\n";
                 out.flush();
                 require(out.good(), "P41 incomplete real native exploration evidence");
@@ -1020,7 +1037,8 @@ std::vector<HWND> ownedDialogs(HWND host, HWND editor) {
     return inventory.windows;
 }
 int observeOwnedDialog(const std::string& pluginPath, int x, int y,
-                       const std::filesystem::path& reportPath) {
+                       const std::filesystem::path& reportPath,
+                       bool exerciseButton = false) {
     require(x >= 0 && x < 8192 && y >= 0 && y < 8192,
             "P60 click coordinates outside approved bound");
     std::string error;
@@ -2864,6 +2882,9 @@ int main(int argc, char** argv) {
             return sweepParameters(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "--verify-parameter-text")
             return verifyParameterText(argv[2], argv[3]);
+        if (argc == 6 && std::string(argv[1]) == "--exercise-owned-dialog-button")
+            return observeOwnedDialog(argv[2], std::stoi(argv[3]),
+                                      std::stoi(argv[4]), argv[5], true);
         if (argc == 6 && std::string(argv[1]) == "--observe-owned-dialog")
             return observeOwnedDialog(argv[2], std::stoi(argv[3]),
                                       std::stoi(argv[4]), argv[5]);
