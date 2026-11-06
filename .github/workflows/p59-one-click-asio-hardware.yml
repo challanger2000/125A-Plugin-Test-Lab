@@ -44,7 +44,7 @@ concurrency:
 
 jobs:
   physical-asio-one-click:
-    if: ${{ github.ref == 'refs/heads/main' && github.repository == 'challanger2000/125A-Plugin-Test-Lab' && inputs.acknowledge_hardware == true }}
+    if: ${{ github.ref == 'refs/heads/main' && github.repository == 'challanger2000/125A-Plugin-Test-Lab' && vars.ASIO_RUNNER_ENABLED == 'YES_PRIVATE_ISOLATED' && inputs.acknowledge_hardware == true }}
     runs-on: [self-hosted, Windows, X64, 125A-ASIO]
     environment: 125A-Physical-ASIO
     timeout-minutes: 45
