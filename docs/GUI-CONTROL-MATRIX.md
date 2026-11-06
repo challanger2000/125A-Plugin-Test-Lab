@@ -140,3 +140,40 @@ parameter still require a different independent oracle. Native file dialogs,
 keyboard shortcuts, the plugin's true MIDI/WAV outputs, and production DAW
 integration are not automatically certified by these click/drag workflows.
 No commercial product release is implied by `TECHNICAL_PASS`.
+
+
+## Visual-only GUI controls without VST3 ParamIDs (P38)
+
+A plugin can have a button, menu or LED that is **not advertised** through
+`IEditController`. A declared workflow can now validate that control **without
+inventing a parameter ID**, by demanding a real screen-pixel transition
+before and after a native click/drag in the same open editor.
+
+Use a `visual_oracle` instead of the three controller fields:
+
+```json
+{
+  "id": "menu_led_on", "action": "click", "x": 160, "y": 90,
+  "screenshot": true,
+  "visual_oracle": {
+    "x": 10, "y": 10,
+    "before_rgb": [30, 36, 48],
+    "after_rgb": [12, 142, 85]
+  }
+}
+```
+
+The native host saves **two real Win32 BMP snapshots** for this step:
+`<index>.before.bmp` and `<index>.bmp`. The independent Python oracle
+reads the exact painted pixels and requires both the approved initial
+color and changed final color. A stale display, missing snapshot or
+fabricated controller result is FAIL. At most 16 screenshot actions and
+64 total steps are permitted per bounded workflow. Real, source-built
+positive, inert and stale-paint VST3 fixtures run in Windows CI.
+
+**Important:** Visible feedback alone does not certify a control's hidden
+internal effect, audio output, file export, or DAW state. This option
+verifies **only independently specified and observed visual transitions**.
+The human-readable QA report distinguishes these from controller roundtrips
+and keeps overall `product_gui_controls` as NOT COVERED unless a separate
+product acceptance gate verifies every intended behavior.
