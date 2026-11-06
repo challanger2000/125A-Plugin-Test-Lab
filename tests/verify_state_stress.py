@@ -17,13 +17,14 @@ def parse(path):
         rows[k]=v
     assert rows.get("format")=="125A-P25-v1"
     for k in ("iterations","sample_rate","block_size","callbacks","process_failures",
-              "set_failures","save_failures","save_success","torn_snapshots",
+              "set_failures","save_failures","save_success","saves_during_playback","torn_snapshots",
               "callback_max_ns","callback_overruns","callback_p95_ns",
               "callback_p99_ns","callback_deadline_ns","strict_realtime"):
         rows[k]=int(rows[k])
     rows["rate_sample"]=float(rows["rate_sample"])
     assert rows["callbacks"]==rows["iterations"], "not all callbacks executed"
     assert rows["save_success"]+rows["save_failures"]==500, "incomplete 500-save suite"
+    assert 0 < rows["saves_during_playback"] <= rows["save_success"], "no real saves during active playback"
     assert rows["callback_max_ns"]>0, "invalid maximum callback runtime"
     assert 0 < rows["callback_p95_ns"] <= rows["callback_p99_ns"] <= rows["callback_max_ns"]
     assert rows["callback_deadline_ns"]>0
