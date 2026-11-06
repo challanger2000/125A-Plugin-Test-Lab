@@ -561,7 +561,11 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                        bool performClick, const std::filesystem::path& evidence,
                        const std::filesystem::path& baselineFirst,
                        const std::filesystem::path& baselineSecond,
-                       const std::filesystem::path& observed) {
+                       const std::filesystem::path& observed,
+                       const std::filesystem::path& afterSecond = {}) {
+    const bool roundtrip = !afterSecond.empty();
+    require(!roundtrip || performClick,
+            "P45 roundtrip cannot pretend a sham performs mouse clicks");
     require(clickX >= 0 && clickX <= 8191 && clickY >= 0 && clickY <= 8191,
             "P41 unsafe click coordinates");
     std::string error;
@@ -590,6 +594,7 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                 ParamID id;
                 double initial;
                 double observed;
+                double second;
             };
             std::vector<ValueRow> rows;
             rows.reserve(static_cast<std::size_t>(count));
@@ -605,7 +610,7 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                 const auto value = controller.ptr->getParamNormalized(info.id);
                 require(std::isfinite(value) && value >= 0.0 && value <= 1.0,
                         "P41 initial parameter value invalid");
-                rows.push_back({i, info.id, value, -1.0});
+                rows.push_back({i, info.id, value, -1.0, -1.0});
             }
             IPlugView* view = controller.ptr->createView(ViewType::kEditor);
             require(view != nullptr, "P41 VST3 supplies no GUI editor (INCONCLUSIVE)");
@@ -669,20 +674,53 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                             row.observed <= 1.0,
                             "P41 observed invalid VST3 parameter after GUI click");
                 }
+                if (roundtrip) {
+                    // P45: Independently observe the SECOND genuine click
+                    // in the SAME real editor instance, not after creating
+                    // a fresh processor with reset state.
+                    require(IsWindow(hit.window) && IsWindow(child),
+                            "P45 native GUI disappeared between clicks");
+                    const auto secondTarget = resolveGuiHitTarget(child, clickX, clickY);
+                    require(secondTarget.depth == hit.depth &&
+                            secondTarget.window == hit.window,
+                            "P45 second click routed to a different HWND");
+                    const LPARAM point2 = MAKELPARAM(secondTarget.point.x,
+                                                      secondTarget.point.y);
+                    SendMessageW(hit.window, WM_MOUSEMOVE, 0, point2);
+                    SendMessageW(hit.window, WM_LBUTTONDOWN, MK_LBUTTON, point2);
+                    SendMessageW(hit.window, WM_LBUTTONUP, 0, point2);
+                    pump(100);
+                    InvalidateRect(child, nullptr, TRUE);
+                    (void)UpdateWindow(child);
+                    pump(50);
+                    captureEditorBmp(child, afterSecond);
+                    for (auto& row : rows) {
+                        row.second = controller.ptr->getParamNormalized(row.id);
+                        require(std::isfinite(row.second) && row.second >= 0.0 &&
+                                row.second <= 1.0,
+                                "P45 second native GUI click returned invalid parameter");
+                    }
+                }
                 if (!evidence.parent_path().empty())
                     std::filesystem::create_directories(evidence.parent_path());
                 std::ofstream out(evidence, std::ios::trunc);
                 require(bool(out), "P41 cannot create native UI exploration evidence");
                 out << std::setprecision(17);
-                out << "format\t125A-GUI-EXPLORE-v3\n"
-                    << "mode\t" << (performClick ? "click" : "sham") << "\n"
+                out << "format\t"
+                    << (roundtrip ? "125A-GUI-ROUNDTRIP-v1" :
+                                    "125A-GUI-EXPLORE-v3") << "\n"
+                    << "mode\t" << (roundtrip ? "roundtrip" :
+                                   (performClick ? "click" : "sham")) << "\n"
                     << "coordinate\t" << clickX << "\t" << clickY << "\n"
                     << "canvas\t" << rect.right << "\t" << rect.bottom << "\n"
                     << "target_depth\t" << hit.depth << "\n"
                     << "param_count\t" << rows.size() << "\n";
-                for (const auto& row : rows)
+                for (const auto& row : rows) {
                     out << "param\t" << row.index << "\t" << row.id << "\t"
-                        << row.initial << "\t" << row.observed << "\n";
+                        << row.initial << "\t" << row.observed;
+                    if (roundtrip) out << "\t" << row.second;
+                    out << "\n";
+                }
                 out << "end\tCOMPLETE\n";
                 out.flush();
                 require(out.good(), "P41 incomplete real native exploration evidence");
@@ -2553,6 +2591,12 @@ int main(int argc, char** argv) {
             runRealDrumatorGui(argv[2], argv[3], argv[4], argv[5]);
             return 0;
         }
+        if (argc == 10 && std::string(argv[1]) == "--gui-observe-roundtrip") {
+            const int x = workflowInt(argv[3], 8191);
+            const int y = workflowInt(argv[4], 8191);
+            return exploreOneGuiClick(argv[2], x, y, true, argv[5], argv[6],
+                                      argv[7], argv[8], argv[9]);
+        }
         if (argc == 9 && (std::string(argv[1]) == "--explore-gui-click" ||
                           std::string(argv[1]) == "--explore-gui-sham")) {
             const int x = workflowInt(argv[3], 8191);
@@ -2625,6 +2669,7 @@ int main(int argc, char** argv) {
         std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"                  << "       125A_Test_Lab_GUI --gui-workflow <plugin.vst3> <approved-actions.tsv> <report.tsv> <screenshots-dir>\n"
                   << "       125A_Test_Lab_GUI --explore-gui-click <plugin.vst3> <x> <y> <native.tsv> <baseline-a.bmp> <baseline-b.bmp> <after.bmp>\n"
                   << "       125A_Test_Lab_GUI --explore-gui-sham <plugin.vst3> <x> <y> <native.tsv> <baseline-a.bmp> <baseline-b.bmp> <after.bmp>\n"
+                  << "       125A_Test_Lab_GUI --gui-observe-roundtrip <plugin.vst3> <x> <y> <native.tsv> <before-a.bmp> <before-b.bmp> <after-click1.bmp> <after-click2.bmp>\n"
                   << "       125A_Test_Lab_GUI --sweep-parameters <plugin.vst3> <sweep.tsv>\n"
                   << "       125A_Test_Lab_GUI --verify-parameter-text <plugin.vst3> <text.tsv>\n"
 
