@@ -212,3 +212,47 @@ auch in der PCM-Ausgabe.
 
 Der native Test ist kein Ersatz für eine echte Mehrspur-DAW-Sitzung,
 MIDI-Routing, Songmodus oder plugininterne Preset-Logik.
+
+
+## Eigene A/B-Bankzustände tatsächlich unabhängig prüfen
+
+Der optionale Runner `run_product_dual_state.py` ermöglicht einem
+produktverantwortlichen Chat einen echten **Zwei-Instanzen-Test mit
+verschiedenen Presets/Bänken**, ohne den Plugin-Quellcode zu verändern.
+Er wird mit dem portablen Paket ausgeliefert, gehört aber nicht zum
+automatischen Drag-and-drop-Kurztest, weil dafür zwei unabhängig
+freigegebene Ausgangszustände und die erwarteten Resultate nötig sind.
+
+Die JSON-Datei mit Schema `125a-product-dual-state-oracle-v1` verlangt:
+
+- `product.bundle` (VST3-Ordner), `product.binary` (Moduldatei)
+  und deren unabhängig festgelegten `sha256`;
+- `host` und zwei verschiedene, extern bereitgestellte
+  `initial_states.A/B` mit jeweils `path` und `sha256`;
+- `reference.expected_saved_sha256.A/B` (erwartete
+  Zustände **nach** den beiden Audioaufrufen);
+- `reference.expected_pcm` für `A_first_pcm`, `B_first_pcm`,
+  `B_second_pcm`, `A_second_pcm` sowie die absolute
+  `abs_tolerance` im Bereich 0 bis 0,01.
+
+Aufruf im Paketordner:
+```powershell
+python run_product_dual_state.py --manifest A-B-Referenzen.json --out A-B-Ergebnisse
+```
+
+Der Host öffnet A und B **gleichzeitig in einem Windows-Prozess**,
+verarbeitet A/B/B/A, speichert beide Instanzen und vergleicht
+ihre tatsächlichen Resultate gegen die separat vorgegebenen Werte.
+Ein falsch gespeicherter Zustand, falscher Klang, fehlende Datei,
+vertauschte Zustände, falscher Plugin-Binary-Hash oder ein nur
+scheinbar erfolgreicher Host-Aufruf ergeben **FAIL**. Die JSON-Ausgabe
+heißt `PRODUCT-DUAL-STATE-RESULT.json`.
+
+Die Windows-CI beweist das an einem echten korrekt isolierten VST3
+und einem absichtlich fehlerhaften VST3, dessen gemeinsame globale
+Bank den Zustand beider Instanzen vermischt. Die bekannten QA-Sollwerte
+werden **nicht** aus der gemessenen Audioausgabe gewonnen. Für andere
+Plugins müssen neue Referenzen ausdrücklich genehmigt werden.
+Bei fehlenden Referenzen bleibt Produkt-Bank-Isolation `NOT COVERED`
+und die Produktfreigabe `false`; vier einzelne PCM-Messpunkte
+können nicht die vollständige musikalische Korrektheit beweisen.
