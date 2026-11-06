@@ -2,10 +2,28 @@
 
 ## Latest usable Windows test kit (6 November 2026)
 
+## Verified P49: saves must actually overlap audio playback
+
+The native save/playback regression now proves that at least one
+successful VST3 `getState()` took place **after audio callbacks started
+and before playback stopped**. All 500 saves and 2,500 process callbacks
+must still complete in each of six configurations. Previously, a suite
+could count all saves after playback and nevertheless report success.
+That false positive is now rejected by the C++ host, the independent
+TSV verifier, the real-plugin adapter, and deliberate 0/missing/impossible
+overlap test cases.
+
+[Windows P25 verified run and portable artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42139427027) ·
+[merged source changes](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/49).
+
+This is measured overlap with a **running** callback thread, not proof
+that a save held a mutex within an individual DSP callback. Product-specific
+state semantics and commercial DAW saves still require independent tests.
+
 ## Current test acceptance and latest proof
 
 **Latest verified Windows quickcheck:** pull requests #47 and #48,
-validated in [Windows P25 pipeline](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42135595956).
+validated in [Windows P25 pipeline](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42139427027).
 The real Drumator product regression remains independently verified in P03.
 The complete relevant Windows CI for the latest changes has passed,
 including the real production VST3 GUI/exports regression and all 13
@@ -64,7 +82,7 @@ An external per-product control map can additionally automate click/pixel
 checks (see `docs/ONE-COMMAND-QUICKCHECK.md`).
 
 **Use without compiling the test host yourself:** download the latest
-successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42135595956),
+successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42139427027),
 open its `PORTABLE` folder, and follow `README.md`. The artifact
 contains all three native x64 audio/state/GUI hosts, the drag-and-drop launcher, supporting Python scripts
 and SHA-256 checksums. Python 3 on Windows is required.
