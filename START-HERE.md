@@ -1,5 +1,15 @@
 # START HERE — 125A Plugin Test Lab
 
+## Latest universal P37 GUI workflow test infrastructure — 6 November 2026
+
+**Latest independently Windows-verified portable kit:** [P25 run #42168448905](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42168448905) → artifact `125A-Universal-VST3-State-Stress-P25`, `PORTABLE` directory. [PR #62](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/62) merged to `main` after P02/P03/P04/P25 Windows SUCCESS.
+
+**New reusable P37 GUI workflow:** a native Windows VST3 editor can now execute **multiple real mouse clicks and drags in the same plugin window**, in a specified order. Independently supplied per-step controller before/after values are verified; selected steps save actual painted BMP snapshots with optionally approved expected RGB pixels. The test runner pins exact plugin and host binaries and rejects incomplete, stale, reordered or false-positive action evidence. CI exercises a real positive toggle VST3 and separately rejects inert and stale-paint fixtures. Unit tests cover corrupt profiles and spoofed results.
+
+**For existing and future plugins:** this is one shared test host, **not a Drumator/AWE-specific tester**. Supply a `125a-gui-workflow-v1` profile (see `docs/GUI-CONTROL-MATRIX.md`) with real coordinates, VST3 ParamIDs and independent expected values. Use `--gui-workflow` alongside `--gui-host` in `run_plugin_quickcheck.py`. The final German HTML report marks `native_gui_workflow` PASS/FAIL/NOT COVERED separately from overall product UI coverage. No product-specific source code was changed.
+
+**Practical boundary:** undocumentable or non-parameter GUI controls and the semantics of native dialogs/DAW actions still cannot be *blindly* verified. Product releases require independent oracles and DAW acceptance. The GitHub Windows Actions runner supplies Python; no local Python installation is required for CI usage. The optional portable local drag-and-drop package requires Python.
+
 ## Latest shared Windows x64 VST3 testing infrastructure — 6 November 2026
 
 **Current validated artifact:** [P25 Windows test run #42164304275](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42164304275), artifact `125A-Universal-VST3-State-Stress-P25` → `PORTABLE`.
