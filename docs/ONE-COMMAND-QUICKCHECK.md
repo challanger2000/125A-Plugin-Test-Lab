@@ -1,5 +1,32 @@
 # One-command real VST3 technical quickcheck
 
+## P40: Automatic display-text/value conversion for every VST3
+
+The regular one-command Windows quickcheck now exercises **every
+advertised automatable, writable VST3 parameter** through two controller
+interfaces that are distinct from normalized value get/set:
+
+- `IEditController::getParamStringByValue()` — value → user-facing label.
+- `IEditController::getParamValueByString()` — label → normalized value.
+
+The native test engine uses valid endpoints/quartiles (snapped to
+discrete steps), records exact UTF-16 labels as unambiguous hexadecimal
+text, tests optional reverse parsing, and independently reconstructs all
+cases from a fresh evidence file. A **discrete** parameter must convert
+back to its original normalized step; a continuous value may have
+intentionally rounded display text, so the parsed value must reformat
+to the **identical** label. A false-successful conversion is a FAIL.
+The test fixture includes a *real VST3 plugin deliberately returning
+incorrect reverse values*.
+
+Some VST3 plugins do not implement reverse text parsing. In that case
+`native_parameter_text_reverse` is explicitly `NOT COVERED`, not
+a failure or a fake PASS. No text API at all is likewise `NOT COVERED`.
+The German report separates label reading, reverse parsing, and actual
+GUI pixel checks. **This test does not visually read the plugin's
+custom-painted value labels**: those need an independently approved
+GUI screenshot profile. See `docs/GUI-CONTROL-MATRIX.md`.
+
 ## Automatic universal controller value sweeps
 
 The native GUI host now probes **every VST3 parameter marked automatable
