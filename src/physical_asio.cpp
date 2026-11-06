@@ -249,9 +249,11 @@ int formatSelfTest() {
         if (type == ASIOSTInt16LSB)
             ensure(bytes[2] == 255 && bytes[3] == 63,
                    "ASIO little-endian 16-bit midpoint conversion wrong");
-        if (type == ASIOSTFloat32LSB)
-            ensure(reinterpret_cast<const float*>(bytes.data())[1] == .5f,
-                   "ASIO float32 sample conversion wrong");
+        if (type == ASIOSTFloat32LSB) {
+            float middle{};
+            std::memcpy(&middle, bytes.data() + sizeof(float), sizeof(float));
+            ensure(middle == .5f, "ASIO float32 sample conversion wrong");
+        }
     }
     std::array<unsigned char, 32> buffer{};
     const std::array<float, 1> invalid{std::numeric_limits<float>::quiet_NaN()};
@@ -444,7 +446,7 @@ int run(const Arguments& a) {
         ensure(a.frames >= minimum && a.frames <= maximum &&
                (granularity == -1 ? ((a.frames & (a.frames - 1)) == 0) :
                 (granularity == 0 ? a.frames == preferred :
-                 ((a.frames - minimum) % granularity == 0))),
+                 (granularity > 0 && ((a.frames - minimum) % granularity == 0)))),
                "Requested ASIO buffer size not supported by physical driver");
         checkASIO(driver->canSampleRate(static_cast<double>(a.rate)),
                   "Physical ASIO hardware rejects requested sample rate");
