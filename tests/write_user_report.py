@@ -13,6 +13,7 @@ import sys
 
 LABELS = {
     "api_playback_save": "Audioverarbeitung und Speichern waehrend der Wiedergabe",
+    "realtime_deadline_observation": "Gemessene Audio-Callback-Deadlines",
     "sample_rate_buffer_matrix": "44,1 / 48 / 96 kHz mit 64 / 512 Samples",
     "native_audio_state_capture": "Native Audio- und Projektzustandsaufzeichnung",
     "fresh_process_project_recall": "Projektzustand in zwei neuen Hostprozessen laden",
@@ -65,6 +66,10 @@ def report_html(data):
         cls = "pass" if verdict == "PASS" else "fail" if verdict == "FAIL" else "unknown"
         rows.append("<tr><td>" + html.escape(label) + "</td><td class='" +
                     cls + "'>" + display + "</td></tr>")
+    if coverage.get("realtime_deadline_observation") == "FAIL":
+        missed = data.get("measured_callback_overruns", "unbekannt")
+        rows.append("<tr><td>Gemessene Audio-Deadline-Ueberschreitungen</td>"
+                    "<td class='fail'>" + html.escape(str(missed)) + "</td></tr>")
     if status == "FAIL" and data.get("error") is not None:
         reason = str(data.get("error"))
     elif status == "FAIL":
