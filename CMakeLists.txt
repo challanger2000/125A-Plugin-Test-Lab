@@ -328,6 +328,11 @@ foreach(kind IN ITEMS Good Bad)
 endforeach()
 target_compile_definitions(QAGuiDialogGood PRIVATE NOMINMAX QA_GUI_DIALOG_GOOD=1)
 target_compile_definitions(QAGuiDialogBad PRIVATE NOMINMAX QA_GUI_DIALOG_BAD=1)
+smtg_add_vst3plugin(QAGuiDialogNoButton
+    PACKAGE_NAME "125A_QA_GUI_DialogNoButton"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiDialogNoButton PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiDialogNoButton PRIVATE NOMINMAX QA_GUI_DIALOG_NO_BUTTON=1)
 
 # P58: optional actual Windows ASIO driver host. The ASIO SDK is NOT shipped
 # in the Test Lab; supply separately under its applicable license.
