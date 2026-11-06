@@ -911,6 +911,175 @@ int sweepParameters(const std::string& pluginPath,
     return 10;
 }
 
+// P40: Verify the VST3 controller's independent textual value mapping.
+// A normalized parameter value is not the same as a displayed label.  Not all
+// plugins implement reverse text parsing; absence is explicitly NOT COVERED.
+std::string parameterTextHex(const TChar* data) {
+    constexpr char hex[] = "0123456789abcdef";
+    std::string result;
+    for (int i = 0; i < 128; ++i) {
+        const auto value = static_cast<unsigned int>(data[i]);
+        if (!value) return result;
+        require(value <= 65535, "VST3 parameter text contains non-UTF16 code unit");
+        for (int shift : {12, 8, 4, 0})
+            result.push_back(hex[(value >> shift) & 15]);
+    }
+    throw std::runtime_error("VST3 parameter text lacks terminator");
+}
+
+int verifyParameterText(const std::string& pluginPath,
+                        const std::filesystem::path& reportPath) {
+    std::string error;
+    auto module = Module::create(pluginPath, error);
+    require(bool(module), "Parameter text probe could not load real VST3");
+    HostApplication app;
+    auto factory = module->getFactory();
+    factory.setHostContext(&app);
+    int audioClasses = 0;
+    for (const auto& cls : factory.classInfos()) {
+        if (cls.category() != kVstAudioEffectClass) continue;
+        ++audioClasses;
+        require(audioClasses == 1,
+                "Multiple audio classes need explicit selection (INCONCLUSIVE)");
+        auto component = factory.createInstance<IComponent>(cls.ID());
+        require(bool(component) && component->initialize(&app) == kResultOk,
+                "Parameter text probe cannot initialize processor");
+        int tested = 0, skipped = 0, failed = 0;
+        int observations = 0, readable = 0, reversible = 0;
+        std::ostringstream body;
+        body << std::setprecision(17);
+        {
+            Controller controller;
+            acquireController(component.get(), factory, &app, controller);
+            const int32 count = controller.ptr->getParameterCount();
+            require(count >= 0 && count <= 8192,
+                    "Parameter text probe invalid controller count");
+            std::vector<ParamID> identifiers;
+            identifiers.reserve(static_cast<std::size_t>(count));
+            for (int32 index = 0; index < count; ++index) {
+                ParameterInfo p{};
+                require(controller.ptr->getParameterInfo(index, p) == kResultTrue,
+                        "Parameter text probe missing controller metadata");
+                require(p.stepCount >= 0 &&
+                        std::isfinite(p.defaultNormalizedValue) &&
+                        p.defaultNormalizedValue >= 0.0 &&
+                        p.defaultNormalizedValue <= 1.0 &&
+                        std::find(identifiers.begin(), identifiers.end(), p.id)
+                            == identifiers.end(),
+                        "Parameter text probe invalid or duplicate metadata");
+                identifiers.push_back(p.id);
+                const bool eligible =
+                    (p.flags & ParameterInfo::kCanAutomate) != 0 &&
+                    (p.flags & ParameterInfo::kIsReadOnly) == 0;
+                bool bad = false, hasText = false;
+                std::ostringstream probes;
+                probes << std::setprecision(17);
+                if (eligible) {
+                    ++tested;
+                    double previous = -1.0;
+                    for (int point = 0; point < 5; ++point) {
+                        double target = static_cast<double>(point) / 4.0;
+                        if (p.stepCount > 0)
+                            target = std::round(target * p.stepCount) /
+                                     static_cast<double>(p.stepCount);
+                        if (std::abs(previous - target) < 1e-12) continue;
+                        previous = target;
+                        ++observations;
+                        String128 text{};
+                        const auto rc = controller.ptr->getParamStringByValue(
+                            p.id, target, text);
+                        const bool textSupported = rc == kResultTrue;
+                        std::string encoded = "-";
+                        std::string canonical = "-";
+                        std::string reverseState = "-";
+                        double parsed = -1.0;
+                        bool good = true;
+                        if (textSupported) {
+                            hasText = true;
+                            ++readable;
+                            encoded = parameterTextHex(text);
+                            good = !encoded.empty();
+                            reverseState = "N";
+                            ParamValue reverse = -1.0;
+                            const auto fromText = controller.ptr->getParamValueByString(
+                                p.id, text, reverse);
+                            if (fromText == kResultTrue) {
+                                reverseState = "R";
+                                ++reversible;
+                                parsed = reverse;
+                                const bool validReverse =
+                                    std::isfinite(parsed) && parsed >= 0.0 &&
+                                    parsed <= 1.0;
+                                good = good && validReverse;
+                                if (validReverse) {
+                                    // Text formatting can legitimately round
+                                    // continuous values; require semantic
+                                    // textual stability, not exact 0.25.
+                                    String128 roundtrip{};
+                                    const auto canonicalResult =
+                                        controller.ptr->getParamStringByValue(
+                                            p.id, parsed, roundtrip);
+                                    if (canonicalResult == kResultTrue)
+                                        canonical = parameterTextHex(roundtrip);
+                                    good = good && canonicalResult == kResultTrue &&
+                                           canonical == encoded;
+                                    if (p.stepCount > 0)
+                                        good = good &&
+                                               std::abs(parsed - target) <= 1e-5;
+                                }
+                            }
+                        }
+                        if (!good) bad = true;
+                        probes << "text\t" << index << "\t" << p.id << "\t"
+                               << target << "\t" << encoded << "\t"
+                               << reverseState << "\t";
+                        if (reverseState == "R") probes << parsed;
+                        else probes << "-";
+                        probes << "\t" << canonical << "\t"
+                               << (!textSupported ? "NOT_COVERED" :
+                                   (good ? "PASS" : "FAIL")) << "\n";
+                    }
+                } else {
+                    ++skipped;
+                }
+                const char* status = !eligible ? "SKIP" :
+                                     (bad ? "FAIL" :
+                                      (hasText ? "PASS" : "NOT_COVERED"));
+                if (bad) ++failed;
+                body << "param\t" << index << "\t" << p.id << "\t"
+                     << p.stepCount << "\t" << p.flags << "\t"
+                     << status << "\n";
+                body << probes.str();
+            }
+            controller.close();
+            if (!reportPath.parent_path().empty())
+                std::filesystem::create_directories(reportPath.parent_path());
+            std::ofstream output(reportPath, std::ios::trunc);
+            require(bool(output), "Parameter text probe cannot create evidence file");
+            output << "format\t125A-GUI-TEXT-v1\n"
+                   << "param_count\t" << count << "\n"
+                   << "tested\t" << tested << "\n"
+                   << "skipped\t" << skipped << "\n"
+                   << "failed\t" << failed << "\n"
+                   << "observations\t" << observations << "\n"
+                   << "readable\t" << readable << "\n"
+                   << "reversible\t" << reversible << "\n"
+                   << body.str();
+            output.flush();
+            require(output.good(), "Parameter text probe evidence write incomplete");
+        }
+        require(component->terminate() == kResultOk,
+                "Parameter text probe component termination failed");
+        std::cout << (failed ? "[FAIL]" : "[PASS]")
+                  << " VST3 parameter text mapping: " << readable
+                  << " labels, " << reversible
+                  << " reverse values, " << failed << " invalid controls\n";
+        return failed ? 1 : 0;
+    }
+    require(audioClasses == 1, "No unique VST3 audio class for parameter text probe");
+    return 10;
+}
+
 std::vector<std::uint8_t> captureActualComponentState(IComponent* component) {
     ResizableMemoryIBStream stream;
     require(component->getState(&stream) == kResultOk,
@@ -2210,6 +2379,8 @@ int main(int argc, char** argv) {
             return inventoryParameters(argv[2],argv[3]);
         if (argc == 4 && std::string(argv[1]) == "--sweep-parameters")
             return sweepParameters(argv[2], argv[3]);
+        if (argc == 4 && std::string(argv[1]) == "--verify-parameter-text")
+            return verifyParameterText(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "--snapshot-editor")
             return run(argv[2], false, 0, -1, -1, 1.0,
                        std::filesystem::path(argv[3]));
@@ -2219,6 +2390,7 @@ int main(int argc, char** argv) {
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
         std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"                  << "       125A_Test_Lab_GUI --gui-workflow <plugin.vst3> <approved-actions.tsv> <report.tsv> <screenshots-dir>\n"
                   << "       125A_Test_Lab_GUI --sweep-parameters <plugin.vst3> <sweep.tsv>\n"
+                  << "       125A_Test_Lab_GUI --verify-parameter-text <plugin.vst3> <text.tsv>\n"
 
                   << "       125A_Test_Lab_GUI --prove-click-and-snapshot <plugin.vst3> <param-id> <x> <y> <expected> <output.bmp>\n"
                   << "       125A_Test_Lab_GUI --snapshot-editor <plugin.vst3> <output.bmp>\n"
