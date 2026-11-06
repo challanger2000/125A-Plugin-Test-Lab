@@ -45,6 +45,12 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_PAINTED_ONLY
 #define QA_GUI_PAINTED_ONLY 0
 #endif
+#ifndef QA_GUI_ANALOG_GOOD
+#define QA_GUI_ANALOG_GOOD 0
+#endif
+#ifndef QA_GUI_ANALOG_BAD
+#define QA_GUI_ANALOG_BAD 0
+#endif
 #ifndef QA_GUI_EXPORT_GOOD
 #define QA_GUI_EXPORT_GOOD 0
 #endif
@@ -156,7 +162,15 @@ bool writeFixtureMidi() {
 }
 #endif
 
-#if QA_GUI_EXPORT_MIDI_GOOD
+#if QA_GUI_ANALOG_GOOD
+const FUID kProcessorCID(0x125A2026, 0x11060001, 0xA0000A11, 0xB0000A11);
+const FUID kControllerCID(0x125A2026, 0x11060001, 0xA0000A12, 0xB0000A12);
+constexpr const char* kName = "125A Analog GUI Continuous Control Fixture";
+#elif QA_GUI_ANALOG_BAD
+const FUID kProcessorCID(0x125A2026, 0x11060001, 0xA0000A21, 0xB0000A21);
+const FUID kControllerCID(0x125A2026, 0x11060001, 0xA0000A22, 0xB0000A22);
+constexpr const char* kName = "125A Analog GUI Quantized Defect Fixture";
+#elif QA_GUI_EXPORT_MIDI_GOOD
 const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA00000C1, 0xB00000C1);
 const FUID kControllerCID(0x125A2026, 0x11040004, 0xA00000C2, 0xB00000C2);
 constexpr const char* kName = "125A GUI Export Correct MIDI Fixture";
@@ -256,6 +270,7 @@ private:
     HWND nestedButton_{};
     bool hovered_{};
     bool paintedActive_{};
+    bool draggingAnalog_{};
 };
 
 class Controller final : public EditController {
@@ -263,8 +278,13 @@ public:
     static FUnknown* createInstance(void*) {return static_cast<IEditController*>(new Controller);}
     tresult PLUGIN_API initialize(FUnknown* context) override {
         if (EditController::initialize(context) != kResultOk) return kResultFalse;
+#if QA_GUI_ANALOG_GOOD || QA_GUI_ANALOG_BAD
+        parameters.addParameter(STR16("Analog"), nullptr, 0, 0.,
+                                ParameterInfo::kCanAutomate, kClickParam);
+#else
         parameters.addParameter(STR16("Clicked"), nullptr, 1, 0.,
                                 ParameterInfo::kCanAutomate, kClickParam);
+#endif
         return kResultOk;
     }
     tresult PLUGIN_API setParamNormalized(ParamID id, ParamValue value) override {
@@ -315,6 +335,19 @@ public:
     IPlugView* PLUGIN_API createView(FIDString type) override {
         if (!type || std::strcmp(type, ViewType::kEditor) != 0) return nullptr;
         return new ClickView(this);
+    }
+    void analogAt(int x) {
+#if QA_GUI_ANALOG_GOOD || QA_GUI_ANALOG_BAD
+        const double normalized = std::clamp((static_cast<double>(x) - 40.0) / 240.0, 0.0, 1.0);
+#if QA_GUI_ANALOG_BAD
+        // Fault fixture deliberately discards ALL mid-range values.
+        (void)setParamNormalized(kClickParam, normalized < 0.5 ? 0.0 : 1.0);
+#else
+        (void)setParamNormalized(kClickParam, normalized);
+#endif
+#else
+        (void)x;
+#endif
     }
     void clicked() {
 #if QA_GUI_HOVER
@@ -371,6 +404,26 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
         InvalidateRect(hwnd, nullptr, TRUE);
         return 0;
     }
+#if QA_GUI_ANALOG_GOOD || QA_GUI_ANALOG_BAD
+    if (self && self->owner_ && message == WM_LBUTTONDOWN) {
+        self->draggingAnalog_ = true;
+        return 0;
+    }
+    if (self && self->owner_ && message == WM_MOUSEMOVE && self->draggingAnalog_
+        && (w & MK_LBUTTON)) {
+        self->owner_->analogAt(static_cast<short>(LOWORD(l)));
+        InvalidateRect(hwnd, nullptr, TRUE);
+        return 0;
+    }
+    if (self && self->owner_ && message == WM_LBUTTONUP) {
+        if (self->draggingAnalog_) {
+            self->owner_->analogAt(static_cast<short>(LOWORD(l)));
+            self->draggingAnalog_ = false;
+            InvalidateRect(hwnd, nullptr, TRUE);
+        }
+        return 0;
+    }
+#endif
     if (message == WM_LBUTTONUP && self && self->owner_) {
 #if QA_GUI_PAINTED_ONLY
         // This genuinely custom-painted toggle exists *only* inside a
@@ -410,7 +463,11 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
 #else
         SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, RGB(240, 192, 110));
+#if QA_GUI_ANALOG_GOOD || QA_GUI_ANALOG_BAD
+        const wchar_t* label = L"P52 ANALOG CONTROL";
+#else
         const wchar_t* label = L"P04 CLICK TEST";
+#endif
         DrawTextW(dc, label, -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 #endif
         EndPaint(hwnd, &ps);
