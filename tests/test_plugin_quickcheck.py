@@ -358,6 +358,26 @@ with tempfile.TemporaryDirectory() as td:
             }
             (dest / "GUI-EXPLORATION-RESULT.json").write_text(
                 json.dumps(overview), encoding="utf-8")
+            if exploratory_failure["mode"] != "missing_draft":
+                suggestions = [
+                    {"probe_index": number,
+                     "approved_for_execution": False,
+                     "requires_independent_product_review": True}
+                    for number in range(2)]
+                draft = {
+                    "schema": "125a-gui-control-review-draft-v1",
+                    "status": "REVIEW_REQUIRED",
+                    "verified_module_sha256": sha,
+                    "verified_gui_host_sha256": hashlib.sha256(gui.read_bytes()).hexdigest(),
+                    "source_exploration_status": "OBSERVATIONS_COMPLETE",
+                    "candidate_count": (1 if exploratory_failure["mode"] == "wrong_count" else 2),
+                    "candidates": suggestions,
+                    "automatically_approved_oracles": 0,
+                    "executable_workflow_manifest": "NOT GENERATED",
+                    "product_gui_controls": "NOT COVERED",
+                    "release_approved": exploratory_failure["mode"] == "fake_approval"}
+                (dest / "GUI-CONTROL-REVIEW-DRAFT.json").write_text(
+                    json.dumps(draft), encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0,
                 "[OBSERVATIONS_COMPLETE] real VST3 GUI exploration", "")
         return all_native_gui(cmd, **kwargs)
@@ -370,10 +390,12 @@ with tempfile.TemporaryDirectory() as td:
     assert explored["gui_interaction_candidates"] == 2
     assert explored["observed_gui_probe_points"] == 9
     assert explored["sham_controlled_gui_probe_points"] == 9
+    assert explored["gui_review_candidates_generated"] == 2
     assert explored["coverage"]["product_gui_controls"] == "NOT COVERED"
     assert explored["release_approved"] is False
     for bad_mode in ("missing", "wrong_module", "incomplete",
-                     "missing_sham", "false_sham_pass"):
+                     "missing_sham", "false_sham_pass",
+                     "missing_draft", "wrong_count", "fake_approval"):
         exploratory_failure["mode"] = bad_mode
         broken = quick.run(bundle, host, stress, out,
                            runner=explorer_native, gui_host=gui,
