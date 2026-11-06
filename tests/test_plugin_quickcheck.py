@@ -312,6 +312,30 @@ with tempfile.TemporaryDirectory() as td:
                        gui_host=gui, gui_controls=controls_file)
     assert result["status"] == "FAIL", "stale GUI evidence accepted"
 
+    # A green wrapper report must not survive input mutations while the
+    # native subprocess is running (including external reference edits).
+    for name, input_path, original in (
+            ("plugin", binary, binary.read_bytes()),
+            ("host", host, host.read_bytes()),
+            ("reference", reference, reference.read_bytes())):
+        def mutate_input(cmd, **kwargs):
+            answer = synthetic_native(cmd, **kwargs)
+            if cmd[1].endswith("run_product_qa.py"):
+                input_path.write_bytes(b"replaced approved " + name.encode("ascii"))
+            return answer
+
+        try:
+            quick.run(bundle, host, stress, out, runner=mutate_input,
+                      reference_wav=reference if name == "reference" else None)
+        except ValueError as error:
+            assert "changed during test" in str(error), name
+        else:
+            raise AssertionError(name + " mutation escaped immutable input gate")
+        finally:
+            input_path.write_bytes(original)
+        assert not (out / "QUICKCHECK-RESULT.json").exists(), (
+            name + " mutation reused stale successful report")
+
     (bundle / "Contents" / "x86_64-win" / "Extra.vst3").write_bytes(b"extra")
     try:
         quick.run(bundle, host, stress, out, runner=synthetic_native)
