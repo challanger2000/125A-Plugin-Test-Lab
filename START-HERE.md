@@ -1,5 +1,15 @@
 # START HERE — 125A Plugin Test Lab
 
+## Latest universal P38 visible-only GUI controls — 6 November 2026
+
+**Latest Windows-verified reusable kit:** [P25 workflow #42169778586](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42169778586), artifact `125A-Universal-VST3-State-Stress-P25` (portable hosts and source runners). [PR #63](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/63) is merged after **P02/P03/P04/P25 Windows SUCCESS**.
+
+**New P38 capability:** A VST3 control need not expose a ParamID to be included in a real ordered GUI test. A `visual_oracle` declares a coordinate and independently approved RGB values **before and after** a mouse click/drag. The shared Win32 editor host captures real painted HWND pixels at both stages, and independent Python analysis rejects unchanged or stale painting and missing/forged screenshots. In CI, genuine VST3 positive, inert and stale-paint fixtures confirm that these controls can be assessed without inventing parameter mappings. The German report distinguishes `native_gui_visual_workflow` from the existing parameter/controller checks.
+
+**Usage:** For any existing/future plugin, give the common `run_plugin_quickcheck.py --gui-host ... --gui-workflow ...` driver a validated `125a-gui-workflow-v1` profile and its independently approved expected pixel colors. Full schema and examples are in `docs/GUI-CONTROL-MATRIX.md`. The GitHub Actions runner supplies Python, so no local Python install is needed for CI.
+
+**Scope remains explicit:** Verified painted feedback is *not* proof of hidden button semantics, MIDI/WAV exports, every GUI control, audio correctness or full DAW interaction. Those need independent product-specific reference oracles. Keep such fields `NOT COVERED`, never silently mark them as PASS.
+
 ## Latest universal P37 GUI workflow test infrastructure — 6 November 2026
 
 **Latest independently Windows-verified portable kit:** [P25 run #42168448905](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42168448905) → artifact `125A-Universal-VST3-State-Stress-P25`, `PORTABLE` directory. [PR #62](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/62) merged to `main` after P02/P03/P04/P25 Windows SUCCESS.
