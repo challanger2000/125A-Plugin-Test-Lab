@@ -39,6 +39,12 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_HOVER
 #define QA_GUI_HOVER 0
 #endif
+#ifndef QA_GUI_MENU_GOOD
+#define QA_GUI_MENU_GOOD 0
+#endif
+#ifndef QA_GUI_MENU_BAD
+#define QA_GUI_MENU_BAD 0
+#endif
 #ifndef QA_GUI_DIALOG_GOOD
 #define QA_GUI_DIALOG_GOOD 0
 #endif
@@ -171,7 +177,15 @@ bool writeFixtureMidi() {
 }
 #endif
 
-#if QA_GUI_DIALOG_NO_BUTTON
+#if QA_GUI_MENU_GOOD
+const FUID kProcessorCID(0x125A2026, 0x11060004, 0xA0000C11, 0xB0000C11);
+const FUID kControllerCID(0x125A2026, 0x11060004, 0xA0000C12, 0xB0000C12);
+constexpr const char* kName = "125A Native Dialog Menu Correct Fixture";
+#elif QA_GUI_MENU_BAD
+const FUID kProcessorCID(0x125A2026, 0x11060004, 0xA0000C21, 0xB0000C21);
+const FUID kControllerCID(0x125A2026, 0x11060004, 0xA0000C22, 0xB0000C22);
+constexpr const char* kName = "125A Native Dialog Missing Menu Item Fixture";
+#elif QA_GUI_DIALOG_NO_BUTTON
 const FUID kProcessorCID(0x125A2026, 0x11060003, 0xA0000B31, 0xB0000B31);
 const FUID kControllerCID(0x125A2026, 0x11060003, 0xA0000B32, 0xB0000B32);
 constexpr const char* kName = "125A Native Dialog Missing Button Fixture";
@@ -391,8 +405,14 @@ public:
     }
 };
 
-#if QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON
+#if QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON || QA_GUI_MENU_GOOD || QA_GUI_MENU_BAD
 LRESULT CALLBACK fixtureDialogProc(HWND dialog, UINT message, WPARAM w, LPARAM l) {
+#if QA_GUI_MENU_GOOD
+    if (message == WM_COMMAND && LOWORD(w) == 43062 && HIWORD(w) == 0) {
+        (void)DestroyWindow(dialog);
+        return 0;
+    }
+#endif
 #if QA_GUI_DIALOG_GOOD
     if (message == WM_COMMAND && LOWORD(w) == 43061 && HIWORD(w) == BN_CLICKED) {
         (void)DestroyWindow(dialog);
@@ -463,7 +483,7 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
     }
 #endif
     if (message == WM_LBUTTONUP && self && self->owner_) {
-#if QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON
+#if QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON || QA_GUI_MENU_GOOD || QA_GUI_MENU_BAD
         if (!self->dialogWindow_) {
             self->dialogWindow_ = CreateWindowExW(
                 WS_EX_DLGMODALFRAME, L"#32770", L"P60 Plugin Test Dialog",
@@ -473,6 +493,18 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
             if (self->dialogWindow_) {
                 (void)SetWindowLongPtrW(self->dialogWindow_, GWLP_WNDPROC,
                                         reinterpret_cast<LONG_PTR>(&fixtureDialogProc));
+#if QA_GUI_MENU_GOOD || QA_GUI_MENU_BAD
+                HMENU nativeMenu = CreateMenu();
+                if (nativeMenu) {
+#if QA_GUI_MENU_GOOD
+                    (void)AppendMenuW(nativeMenu, MF_STRING, 43062, L"Apply Preset");
+#else
+                    (void)AppendMenuW(nativeMenu, MF_STRING, 43063, L"Wrong Item");
+#endif
+                    if (!SetMenu(self->dialogWindow_, nativeMenu))
+                        (void)DestroyMenu(nativeMenu);
+                }
+#endif
 #if QA_GUI_DIALOG_GOOD
                 (void)CreateWindowExW(0, L"BUTTON", L"Close",
                     WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 100, 60, 120, 40,
