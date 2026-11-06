@@ -30,6 +30,7 @@ LABELS = {
     "native_gui_workflow": "Mehrstufige Maus- und Tastaturbedienung im selben Pluginfenster",
     "native_gui_visual_workflow": "Nur visuell belegte Buttons ohne VST3-Parameter",
     "native_gui_exploration": "GUI-Erkundung mit unabhängigen Klick-/Nichtklick-Kontrollen (nur Beobachtungen)",
+    "native_gui_bidirectional_observation": "Erneute Bedienung und Rueckkehrpruefung (A/B/A, nur Beobachtungen)",
     "declared_gui_controls": "Explizit definierte Bedienelemente",
     "product_gui_controls": "Alle Bedienelemente des Produktes",
     "independent_musical_audio": "Musikalisch korrekter Klang",

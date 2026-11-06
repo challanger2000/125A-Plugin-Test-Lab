@@ -218,6 +218,52 @@ interacting with a commercial DAW window and arbitrary keyboard shortcuts
 cannot be certified in every plugin without a product-specific observable
 oracle. The full set of undisclosed controls remains NOT COVERED.
 
+## P45 — Same-editor real GUI two-way observations (A/B/A)
+
+Previously, P44 created candidates only from one attributed click. A
+subsequent click could stop working, leave the editor in an inconsistent
+state, or trigger a momentary control rather than a toggle. The shared
+Windows host now has a third mode:
+
+\`125A_Test_Lab_GUI.exe --gui-observe-roundtrip <bundle.vst3> <x> <y> <native.tsv> <before-a.bmp> <before-b.bmp> <after-first.bmp> <after-second.bmp>\`
+
+The two genuine native mouse clicks occur inside the **same opened VST3
+editor instance**, with independent controller snapshots and screenshots
+A → B → A. The portable \`tests/run_gui_roundtrip.py\` accepts a previously
+sham-checked P44 exploration folder and tests only its unapproved candidate
+coordinates; no blind discovery clicks are made without the existing
+explicit opt-in. It validates module/host SHA256, the previously captured
+native click proof, the original child HWND hit depth, real pixel geometry,
+current VST3 parameter identities and every new native evidence row.
+
+Results distinguish:
+
+- \`OBSERVED_REVERSIBLE\`: the second click restored all observed parameter
+  values and painted pixels to the same initial state.
+- \`OBSERVED_NONREVERSIBLE\`: the first effect was reproduced, but the second
+  click did not restore that state. This can be a legitimate momentary
+  action, transport, one-shot effect, or real bug; without an independent
+  specification it is NOT automatically a release failure.
+- \`NOT_REPRODUCED\`: the click-associated first change was not reproduced.
+  Treat it as a review finding, never as successful functional coverage.
+
+An unexpected new parameter ID/change, missing second screenshot, changing
+native hit-depth or tampered artifact is a hard technical FAIL. The report
+always declares \`independent_product_semantics: NOT COVERED\` and
+\`release_approved: false\`.
+
+For an existing one-command VST3 test, explicitly choose:
+\`--gui-host <gui.exe> --gui-explore --gui-roundtrip --acknowledge-gui-explore\`.
+The standalone runner accepts \`--plugin\`, \`--gui-host\`, \`--exploration\`,
+\`--out\`, \`--acknowledge-ui-clicks\`. Both operate in GitHub Windows Actions
+without local Python installation. Unknown UI actions may have side effects:
+use only trusted test plugins and disposable state.
+
+A/B/A observes *reversibility*, not the independently intended function.
+It cannot prove drum pattern generation, MIDI/WAV exports, audio processing
+or commercial DAW integration. Those require a product-specific approved
+reference oracle even if painted state appears to return to A.
+
 ## P44 — Find custom-painted changes and prepare reviewable UI test candidates
 
 The shared Windows VST3 explorer now analyzes the **physical before-click

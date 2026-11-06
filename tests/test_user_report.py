@@ -96,6 +96,14 @@ assert page.count("BESTANDEN") == 5
 assert "KEINE PRODUKTFREIGABE" in page
 assert "NICHT GEPRUEFT" in page
 
+bidirectional = dict(passed)
+bidirectional["coverage"] = dict(passed["coverage"])
+bidirectional["coverage"]["native_gui_bidirectional_observation"] = "OBSERVATIONS_ONLY"
+page = report.report_html(bidirectional)
+assert "Erneute Bedienung und Rueckkehrpruefung" in page
+assert "BEOBACHTET (NICHT VERIFIZIERT)" in page
+assert "KEINE PRODUKTFREIGABE" in page
+
 critical = dict(passed)
 critical["coverage"] = dict(passed["coverage"])
 critical["coverage"]["realtime_deadline_observation"] = "FAIL"

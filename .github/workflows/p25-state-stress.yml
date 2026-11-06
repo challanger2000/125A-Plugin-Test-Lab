@@ -52,6 +52,8 @@ on:
       - 'tests/test_gui_exploration.py'
       - 'tests/gui_change_regions.py'
       - 'tests/test_gui_change_regions.py'
+      - 'tests/run_gui_roundtrip.py'
+      - 'tests/test_gui_roundtrip.py'
       - 'tests/test_gui_workflow.py'
       - 'tests/test_gui_workflow.py'
       - 'docs/GUI-CONTROL-MATRIX.md'
@@ -957,6 +959,59 @@ jobs:
           Write-Host '[PASS] P44 localized a genuine custom-painted GUI-only control and produced only an unapproved, reviewable oracle draft'
           exit 0
 
+      - name: P45 same-editor A/B/A toggle observation with real painted and nested-button VST3s
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/test_gui_roundtrip.py
+          if ($LASTEXITCODE -ne 0) { throw 'P45 forged, missing or nonreversible native GUI roundtrip test regression failed' }
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $nested = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Nested.vst3')
+          $painted = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_PaintedOnly.vst3')
+          if ($gui.Count -ne 1 -or $nested.Count -ne 1 -or $painted.Count -ne 1) {
+            throw 'P45 native Win32 host or genuine VST3 UI toggle fixtures missing'
+          }
+          New-Item -ItemType Directory -Force artifacts/P45 | Out-Null
+          foreach ($case in @(
+            @{name='painted';plugin=$painted[0].FullName;expected='painted'},
+            @{name='nested';plugin=$nested[0].FullName;expected='nested'}
+          )) {
+            $folder = "artifacts/P45/$($case.name)"
+            python tests/run_gui_exploration.py --plugin $case.plugin --gui-host $gui[0].FullName --out "$folder/exploration" --points "160,90" --acknowledge-ui-clicks --timeout 30
+            if ($LASTEXITCODE -ne 0) { throw "P45 source observation failed: $($case.name)" }
+            python tests/run_gui_roundtrip.py --plugin $case.plugin --gui-host $gui[0].FullName --exploration "$folder/exploration" --out "$folder/repeat" --acknowledge-ui-clicks --timeout 30
+            if ($LASTEXITCODE -ne 0) { throw "P45 real same-instance A/B/A second click failed: $($case.name)" }
+            $got = Get-Content "$folder/repeat/GUI-ROUNDTRIP-RESULT.json" -Raw | ConvertFrom-Json
+            if ($got.status -ne 'OBSERVATIONS_COMPLETE' -or
+                $got.tested_candidates -ne 1 -or
+                $got.not_reproduced -ne 0 -or
+                $got.cases[0].classification -eq 'NOT_REPRODUCED' -or
+                $got.cases[0].controller_restored_after_second_click -ne $true -or
+                $got.independent_product_semantics -ne 'NOT COVERED' -or
+                $got.product_gui_controls -ne 'NOT COVERED' -or
+                $got.release_approved -ne $false) {
+              throw "P45 repeated native GUI click did not restore VST3 controller state: $($case.name)"
+            }
+            # Standard Windows BUTTONs may retain keyboard focus outlines
+            # after a click. Controller reversal must PASS but a lingering
+            # focus indicator must be reported as a visual difference.
+            if ($case.expected -eq 'painted' -and
+                ($got.observed_reversible -ne 1 -or
+                 $got.observed_nonreversible -ne 0 -or
+                 $got.cases[0].classification -ne 'OBSERVED_REVERSIBLE' -or
+                 $got.cases[0].painted_pixels_remaining_after_second -ne 0 -or
+                 $got.cases[0].painted_pixels_changed_after_first -ne 4000 -or
+                 @($got.cases[0].controller_after_first_click).Count -ne 0)) {
+              throw 'P45 real parameterless 80x50 painted button not independently observed twice'
+            }
+            if ($case.expected -eq 'nested' -and
+                (($got.cases[0].controller_after_first_click -join ',') -ne '9001')) {
+              throw 'P45 nested Win32 button controller parameter was not independently reversed'
+            }
+          }
+          Write-Host '[PASS] P45 real Win32 VST3 controls perform repeatable A/B/A clicks in one editor, and no semantic release is asserted'
+          exit 0
+
       - name: One-command real VST3 quickcheck without handwritten manifests
         shell: pwsh
         run: |
@@ -1042,13 +1097,13 @@ jobs:
             if ($found.Count -ne 1) { throw "Portable Test Lab host missing: $binaryName" }
             Copy-Item -LiteralPath $found[0].FullName -Destination "$dir/$binaryName"
           }
-          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','run_gui_workflow.py','run_gui_exploration.py','gui_change_regions.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_instance_isolation.py','verify_multi_instance_smoke.py','run_product_dual_state.py','run_live_state_replay.py','verify_state_stress.py','verify_audio_reference.py','verify_parameter_inventory.py','verify_parameter_sweep.py','verify_parameter_text.py')) {
+          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','run_gui_workflow.py','run_gui_exploration.py','gui_change_regions.py','run_gui_roundtrip.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_instance_isolation.py','verify_multi_instance_smoke.py','run_product_dual_state.py','run_live_state_replay.py','verify_state_stress.py','verify_audio_reference.py','verify_parameter_inventory.py','verify_parameter_sweep.py','verify_parameter_text.py')) {
             if (-not (Test-Path "tests/$script")) { throw "Portable QA script missing: $script" }
             Copy-Item -LiteralPath "tests/$script" -Destination "$dir/$script"
           }
           Copy-Item tests/Run-VST3-Test.cmd "$dir/Run-VST3-Test.cmd"
           Copy-Item docs/ONE-COMMAND-QUICKCHECK.md "$dir/README.md"
-          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/run_gui_workflow.py" "$dir/run_gui_exploration.py" "$dir/gui_change_regions.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_instance_isolation.py" "$dir/verify_multi_instance_smoke.py" "$dir/run_product_dual_state.py" "$dir/run_live_state_replay.py" "$dir/verify_state_stress.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py" "$dir/verify_parameter_sweep.py" "$dir/verify_parameter_text.py"
+          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/run_gui_workflow.py" "$dir/run_gui_exploration.py" "$dir/gui_change_regions.py" "$dir/run_gui_roundtrip.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_instance_isolation.py" "$dir/verify_multi_instance_smoke.py" "$dir/run_product_dual_state.py" "$dir/run_live_state_replay.py" "$dir/verify_state_stress.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py" "$dir/verify_parameter_sweep.py" "$dir/verify_parameter_text.py"
           if ($LASTEXITCODE -ne 0) { throw 'Portable Python scripts syntax check failed' }
           python tests/test_user_report.py
           if ($LASTEXITCODE -ne 0) { throw 'German results/report mutation controls failed' }
@@ -1098,6 +1153,7 @@ jobs:
             artifacts/P40/
             artifacts/P41/            artifacts/P43/
             artifacts/P44/
+            artifacts/P45/
 
             artifacts/P36/
             artifacts/P37/
