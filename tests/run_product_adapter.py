@@ -136,6 +136,20 @@ def run(adapter_path, folder, timeout):
             if output.exists():
                 observed = evidence(output)
                 faults += check(observed, case["assertions"])
+                metrics = {}
+                for metric in ("callback_overruns", "callback_p99_ns",
+                               "callback_deadline_ns"):
+                    value = observed.get(metric)
+                    if value is None or not value.isdecimal():
+                        faults.append("missing/noninteger timing metric: " + metric)
+                    else:
+                        metrics[metric] = int(value)
+                certification = observed.get("timing_certification")
+                if certification not in ("PASS", "FAIL"):
+                    faults.append("invalid timing certification")
+                elif "callback_overruns" in metrics and (
+                        (metrics["callback_overruns"] == 0) != (certification == "PASS")):
+                    faults.append("timing certification contradicts measured overrun count")
                 for field, val in (("sample_rate", case["rate"]),
                                    ("block_size", case["block"]),
                                    ("iterations", case["iterations"])):
@@ -145,14 +159,25 @@ def run(adapter_path, folder, timeout):
             faults = ["native host timed out"]
         except (OSError, AssertionError, ValueError) as exc:
             faults = [str(exc)]
-        results.append({"id": case["id"], "status": "FAIL" if faults else "PASS",
-                        "faults": faults})
+        record = {"id": case["id"], "status": "FAIL" if faults else "PASS",
+                  "faults": faults, "realtime_certification": "NOT COVERED"}
+        if "metrics" in locals() and metrics and "certification" in locals():
+            record["realtime_certification"] = certification
+            record["timing"] = metrics
+        results.append(record)
+        metrics = {}
+        certification = None
     passed = all(c["status"] == "PASS" for c in results)
+    rt_certification = ("PASS" if passed and all(
+        c["realtime_certification"] == "PASS" for c in results)
+        else "FAIL" if any(c["realtime_certification"] == "FAIL" for c in results)
+        else "NOT COVERED")
     report = {"schema": "125a-p32-result-v1", "status": "PASS" if passed else "FAIL",
               "declared_product": {"name": product["name"], "version": product["version"],
                                    "commit_sha": product["commit_sha"]},
               "verified_vst3_sha256": digest(binary),
               "cases": results,
+              "realtime_deadline_observation": rt_certification,
               "coverage": {"playback_save_api": "PASS" if passed else "FAIL",
                            "bank_program_semantics": "NOT COVERED",
                            "actual_musical_audio": "NOT COVERED",
