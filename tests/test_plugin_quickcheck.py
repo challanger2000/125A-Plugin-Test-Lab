@@ -81,7 +81,9 @@ with tempfile.TemporaryDirectory() as td:
     assert report["coverage"]["product_gui_controls"] == "NOT COVERED"
     assert report["coverage"]["commercial_daw_integration"] == "NOT COVERED"
 
-    reference = out / "native" / "P34" / "captured.wav"
+    original_capture = out / "native" / "P34" / "captured.wav"
+    reference = root / "approved-independent-audio.wav"
+    reference.write_bytes(original_capture.read_bytes())
     assert quick.run(bundle, host, stress, out, runner=synthetic_native,
                      reference_wav=reference)["coverage"][
                          "externally_referenced_audio"] == "REFERENCE_MATCH"
