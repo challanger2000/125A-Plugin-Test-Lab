@@ -46,7 +46,9 @@ with tempfile.TemporaryDirectory() as td:
             adapter_path.parent.mkdir(parents=True, exist_ok=True)
             adapter_path.write_text(json.dumps({
                 "status": "PASS", "verified_vst3_sha256": sha,
-                "cases": [{"id": c["id"], "status": "PASS"} for c in cases]
+                "cases": [{"id": c["id"], "status": "PASS",
+                           "realtime_certification": "PASS",
+                           "timing": {"callback_overruns": 0}} for c in cases]
             }), encoding="utf-8")
             captured = target / "P34" / "captured-state.bin"
             captured.parent.mkdir(parents=True, exist_ok=True)
@@ -76,6 +78,8 @@ with tempfile.TemporaryDirectory() as td:
     assert report["verified_module_sha256"] == sha
     assert report["coverage"]["sample_rate_buffer_matrix"] == "PASS"
     assert report["sample_rate_buffer_matrix_cases"] == 6
+    assert report["coverage"]["realtime_deadline_observation"] == "PASS"
+    assert report["measured_callback_overruns"] == 0
     assert report["coverage"]["fresh_process_project_recall"] == "PASS"
     assert report["coverage"]["recall_audio_determinism"] == "NOT COVERED"
     assert report["coverage"]["product_gui_controls"] == "NOT COVERED"
@@ -147,6 +151,26 @@ with tempfile.TemporaryDirectory() as td:
     assert result["status"] == "FAIL", "five of six save matrix cases were accepted"
     assert result["release_approved"] is False
     assert result.get("reason") == "six-case real playback/save matrix incomplete or failed"
+
+    # A successful VST3 process() may still miss its real-time deadline.
+    # Show the violation prominently rather than converting it to a PASS.
+    def slow_audio_callback(cmd, **kwargs):
+        if cmd[1].endswith("run_product_qa.py"):
+            result = synthetic_native(cmd, **kwargs)
+            target = Path(cmd[cmd.index("--out") + 1])
+            path = target / "P32" / "ADAPTER-RESULT.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["cases"][0]["timing"]["callback_overruns"] = 3
+            data["cases"][0]["realtime_certification"] = "FAIL"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            return result
+        return synthetic_native(cmd, **kwargs)
+
+    measured = quick.run(bundle, host, stress, out, runner=slow_audio_callback)
+    assert measured["status"] == "TECHNICAL_PASS"
+    assert measured["coverage"]["realtime_deadline_observation"] == "FAIL"
+    assert measured["measured_callback_overruns"] == 3
+    assert measured["release_approved"] is False
 
     def mismatched(cmd, **kwargs):
         target = Path(cmd[cmd.index("--out") + 1])
