@@ -1,0 +1,56 @@
+name: P50 adaptive native GUI probing
+
+on:
+  pull_request:
+    paths:
+      - 'tests/run_gui_adaptive.py'
+      - 'tests/test_gui_adaptive.py'
+      - '.github/workflows/p50-adaptive-gui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: P50 adversarial and deterministic tests
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_gui_adaptive.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P50 unit/regression tests failed' }
+          python -m py_compile tests/run_gui_adaptive.py tests/test_gui_adaptive.py
+          if ($LASTEXITCODE -ne 0) { throw 'P50 syntax check failed' }
+
+  native-smoke:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build real Win32 GUI host and native VST3 test plugin
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
+          cmake --build build --config Release --target TestLabGUI QAGuiPaintedOnly --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'Native build failed' }
+      - name: Run bounded P50 on actual plugin window
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $plugins = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_PaintedOnly.vst3')
+          if ($hostExe.Count -ne 1 -or $plugins.Count -ne 1) { throw 'Native binary missing' }
+          python tests/run_gui_adaptive.py --plugin $plugins[0].FullName --gui-host $hostExe[0].FullName --out build/p50-real --columns 2 --rows 2 --max-candidates 1 --acknowledge-ui-clicks
+          if ($LASTEXITCODE -ne 0) { throw 'Real P50 adaptive scan failed' }
+          $r = Get-Content build/p50-real/ADAPTIVE-GUI-REPORT.json -Raw | ConvertFrom-Json
+          if ($r.status -ne 'OBSERVATIONS_COMPLETE' -or $r.release_approved -ne $false -or $r.independent_product_semantics -ne 'NOT COVERED') { throw 'P50 evidence not fail-closed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P50-native-Win32-adaptive-evidence
+          path: build/p50-real/
+          if-no-files-found: warn
