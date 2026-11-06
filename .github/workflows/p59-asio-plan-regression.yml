@@ -1,0 +1,43 @@
+name: P59 physical ASIO plan generator safety regression
+
+on:
+  pull_request:
+    paths:
+      - 'tests/generate_physical_asio_plan.py'
+      - 'tests/test_generate_physical_asio_plan.py'
+      - '.github/workflows/p59-one-click-asio-hardware.yml'
+      - '.github/workflows/p59-asio-plan-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  negative-and-planning:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify generated exact SHA256 plan rejects wrong driver and modified plugin
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_generate_physical_asio_plan.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P59 generated ASIO plan security regression failed' }
+          python -m py_compile tests/generate_physical_asio_plan.py
+          if ($LASTEXITCODE -ne 0) { throw 'P59 ASIO generator syntax failed' }
+      - name: Demonstrate no physical driver approval on cloud Windows
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/P59 | Out-Null
+          @{schema='125a-asio-hardware-summary-v1';status='NOT_RUN';hardware_asio='NOT_RUN';commercial_daw_session='NOT_RUN';release_approved=$false} |
+            ConvertTo-Json | Set-Content -Encoding utf8 artifacts/P59/CI-NOT-RUN.json
+          $r = Get-Content artifacts/P59/CI-NOT-RUN.json -Raw | ConvertFrom-Json
+          if ($r.status -ne 'NOT_RUN' -or $r.release_approved -ne $false) {
+            throw 'P59 falsely claimed cloud-run ASIO hardware pass'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P59-cloud-Windows-NOT-HARDWARE-TESTED
+          path: artifacts/P59/
+          if-no-files-found: warn
