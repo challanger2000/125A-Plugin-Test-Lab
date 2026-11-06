@@ -48,6 +48,31 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         gui_host = Path(gui_host).resolve(strict=True)
         if not gui_host.is_file():
             raise ValueError("native GUI host missing")
+    # The default one-click QA performs several native test stages. Pin
+    # *all* approved inputs across them, not just the initial module SHA.
+    # Otherwise a rebuild or edited reference during testing can inherit
+    # evidence that belongs to different bytes.
+    approved_inputs = [(binary, sha), (host, digest(host)),
+                       (stress_host, digest(stress_host))]
+    for optional in (dual_host, gui_host, gui_controls, reference_wav):
+        if optional is not None:
+            path = Path(optional).resolve(strict=True)
+            if not path.is_file():
+                raise ValueError("approved test input is not a file")
+            approved_inputs.append((path, digest(path)))
+
+    def verify_immutable_inputs():
+        for path, approved_hash in approved_inputs:
+            if not path.is_file() or digest(path) != approved_hash:
+                raise ValueError("approved plugin, host or reference changed during test: "
+                                 + str(path))
+
+    def checked_runner(command, **kwargs):
+        verify_immutable_inputs()
+        outcome = runner(command, **kwargs)
+        verify_immutable_inputs()
+        return outcome
+
     out.mkdir(parents=True, exist_ok=True)
     p32 = {
         "schema": "125a-p32-adapter-v1",
@@ -124,7 +149,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
     native_path.unlink(missing_ok=True)  # never reuse a previous fake PASS
     adapter_path = out / "native" / "P32" / "ADAPTER-RESULT.json"
     adapter_path.unlink(missing_ok=True)  # reject last run's old case matrix
-    proc = runner([sys.executable, str(Path(__file__).with_name("run_product_qa.py")),
+    proc = checked_runner([sys.executable, str(Path(__file__).with_name("run_product_qa.py")),
                    "--p32", str(p32_path), "--p34", str(p34_path),
                    "--out", str(out / "native"), "--timeout", str(timeout)],
                   capture_output=True, text=True, timeout=timeout * 2 + 30,
@@ -212,7 +237,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             recall_folder = out / "fresh-recall"
             recall_result = recall_folder / "RECALL-RESULT.json"
             recall_result.unlink(missing_ok=True)
-            recall_proc = runner([
+            recall_proc = checked_runner([
                 sys.executable, str(Path(__file__).with_name("run_state_reload.py")),
                 "--manifest", str(recall_manifest), "--out", str(recall_folder),
                 "--timeout", str(timeout)
@@ -248,7 +273,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             dual_dir.mkdir(parents=True, exist_ok=True)
             for name in ("MULTI-INSTANCE.tsv", "A-after.bin", "B-after.bin"):
                 (dual_dir / name).unlink(missing_ok=True)
-            dual_proc = runner([str(dual_host), "--dual-identical", str(bundle),
+            dual_proc = checked_runner([str(dual_host), "--dual-identical", str(bundle),
                                 str(saved.resolve()), str(dual_dir.resolve())],
                                capture_output=True, text=True,
                                timeout=timeout, check=False, errors="replace")
@@ -273,7 +298,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
     if summary["status"] == "TECHNICAL_PASS" and gui_host is not None:
         gui_log = out / "gui-lifecycle.log"
         gui_log.unlink(missing_ok=True)
-        gui_proc = runner([str(gui_host), "--probe", str(bundle)],
+        gui_proc = checked_runner([str(gui_host), "--probe", str(bundle)],
                           capture_output=True, text=True, timeout=timeout,
                           check=False, errors="replace")
         gui_text = (gui_proc.stdout or "") + "\n" + (gui_proc.stderr or "")
@@ -290,7 +315,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         from verify_parameter_inventory import audit as audit_parameters
         inventory_file = out / "native-parameters.tsv"
         inventory_file.unlink(missing_ok=True)
-        inventory_proc = runner([str(gui_host), "--inventory-parameters",
+        inventory_proc = checked_runner([str(gui_host), "--inventory-parameters",
                                  str(bundle), str(inventory_file)],
                                 capture_output=True, text=True, timeout=timeout,
                                 check=False, errors="replace")
@@ -333,7 +358,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             gui_dir = out / "gui-controls"
             gui_result = gui_dir / "GUI-CONTROL-RESULT.json"
             gui_result.unlink(missing_ok=True)
-            gui_proc = runner([sys.executable, str(Path(__file__).with_name(
+            gui_proc = checked_runner([sys.executable, str(Path(__file__).with_name(
                                "run_gui_control_matrix.py")),
                                "--manifest", str(gui_manifest_path),
                                "--out", str(gui_dir), "--timeout", str(timeout)],
@@ -358,6 +383,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
                 else:
                     summary["status"] = "FAIL"
                     summary["reason"] = "actual GUI control/pixel oracle failed"
+    verify_immutable_inputs()
     report_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary
 
