@@ -79,12 +79,17 @@ def validate(manifest):
     for step in steps:
         if not isinstance(step, dict):
             raise ValueError("invalid GUI action")
-        if not {"id", "action", "x", "y", "param_id", "before_normalized",
-                "expected_normalized"} <= set(step):
-            raise ValueError("missing action coordinate or independent oracle")
+        if not {"id", "action", "x", "y"} <= set(step):
+            raise ValueError("missing GUI action or coordinates")
+        visual_only = "visual_oracle" in step
+        if visual_only:
+            if {"param_id", "before_normalized", "expected_normalized", "expected_pixel"} & set(step):
+                raise ValueError("visual-only action must not fabricate controller values")
+        elif not {"param_id", "before_normalized", "expected_normalized"} <= set(step):
+            raise ValueError("missing independent VST3 controller oracle")
         if set(step) - {"id", "action", "x", "y", "end_x", "end_y", "param_id",
                         "before_normalized", "expected_normalized", "screenshot",
-                        "expected_pixel"}:
+                        "expected_pixel", "visual_oracle"}:
             raise ValueError("unknown GUI workflow command")
         if not isinstance(step["id"], str) or not IDENTIFIER.fullmatch(step["id"]):
             raise ValueError("invalid GUI workflow action identifier")
@@ -102,14 +107,32 @@ def validate(manifest):
             unsigned(step["end_y"], 8191)
         elif "end_x" in step or "end_y" in step:
             raise ValueError("click cannot silently specify drag coordinates")
-        unsigned(step["param_id"], 4294967295)
-        before = normalized(step["before_normalized"])
-        expected = normalized(step["expected_normalized"])
-        if abs(before - expected) <= 1e-5:
-            raise ValueError("step has no observable controller transition")
+        if not visual_only:
+            unsigned(step["param_id"], 4294967295)
+            before = normalized(step["before_normalized"])
+            expected = normalized(step["expected_normalized"])
+            if abs(before - expected) <= 1e-5:
+                raise ValueError("step has no observable controller transition")
         capture = step.get("screenshot", False)
         if type(capture) is not bool:
             raise ValueError("screenshot option must be a boolean")
+        if visual_only:
+            if not capture:
+                raise ValueError("visual-only action requires before/after screenshots")
+            pixel = step["visual_oracle"]
+            if not isinstance(pixel, dict) or set(pixel) != {
+                    "x", "y", "before_rgb", "after_rgb"}:
+                raise ValueError("missing independent visual transition oracle")
+            unsigned(pixel["x"], 4095)
+            unsigned(pixel["y"], 4095)
+            for name in ("before_rgb", "after_rgb"):
+                rgb = pixel[name]
+                if not isinstance(rgb, list) or len(rgb) != 3:
+                    raise ValueError("invalid visual-only RGB triplet")
+                for value in rgb:
+                    unsigned(value, 255)
+            if pixel["before_rgb"] == pixel["after_rgb"]:
+                raise ValueError("visual-only oracle must observe a painted state change")
         if "expected_pixel" in step:
             if not capture:
                 raise ValueError("pixel reference requires a real screenshot")
@@ -138,10 +161,14 @@ def make_native_manifest(initial, steps):
     for index, item in enumerate(steps):
         x2 = item.get("end_x", item["x"])
         y2 = item.get("end_y", item["y"])
-        rows.append("step\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%.17g\t%.17g\t%d" % (
-            index, item["action"], item["x"], item["y"], x2, y2,
-            item["param_id"], item["before_normalized"], item["expected_normalized"],
-            int(item.get("screenshot", False))))
+        if "visual_oracle" in item:
+            rows.append("step\t%d\t%s\t%d\t%d\t%d\t%d\t-\t-\t-\t1" % (
+                index, item["action"], item["x"], item["y"], x2, y2))
+        else:
+            rows.append("step\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%.17g\t%.17g\t%d" % (
+                index, item["action"], item["x"], item["y"], x2, y2,
+                item["param_id"], item["before_normalized"], item["expected_normalized"],
+                int(item.get("screenshot", False))))
     return "\n".join(rows) + "\n"
 
 
@@ -152,16 +179,23 @@ def audit_native(path, steps):
         raise ValueError("missing/stale/incomplete native workflow evidence")
     for index, (line, step) in enumerate(zip(rows[2:-1], steps)):
         parts = line.split("\t")
-        if len(parts) != 6 or parts[0] != "step" or parts[1] != str(index) or (
-                parts[2] != str(step["param_id"])):
-            raise ValueError("native action step missing/attributed to another control")
-        before, after = float(parts[3]), float(parts[4])
-        if not all(math.isfinite(x) and 0 <= x <= 1 for x in (before, after)):
-            raise ValueError("invalid native observed controller value")
-        good = abs(before - step["before_normalized"]) <= 1e-5 and (
-            abs(after - step["expected_normalized"]) <= 1e-5)
-        if (parts[5] == "PASS") != good or parts[5] != "PASS":
-            raise ValueError("real GUI action did not satisfy its independent oracle")
+        if len(parts) != 6 or parts[0] != "step" or parts[1] != str(index):
+            raise ValueError("native action missing/reordered")
+        if "visual_oracle" in step:
+            if parts[2:] != ["-", "-", "-", "PASS"]:
+                raise ValueError("visual-only GUI action contains false controller evidence")
+            # The independent visible before/after pixel checks are mandatory
+            # in run(), not inferred from this native marker.
+        else:
+            if parts[2] != str(step["param_id"]):
+                raise ValueError("native action attributed to another controller parameter")
+            before, after = float(parts[3]), float(parts[4])
+            if not all(math.isfinite(x) and 0 <= x <= 1 for x in (before, after)):
+                raise ValueError("invalid native observed controller value")
+            good = abs(before - step["before_normalized"]) <= 1e-5 and (
+                abs(after - step["expected_normalized"]) <= 1e-5)
+            if (parts[5] == "PASS") != good or parts[5] != "PASS":
+                raise ValueError("real GUI action did not satisfy its independent oracle")
     return True
 
 
@@ -184,6 +218,7 @@ def run(manifest, out, timeout=90, runner=subprocess.run):
     log_path.unlink(missing_ok=True)
     for index in range(len(steps)):
         (capture_dir / (str(index) + ".bmp")).unlink(missing_ok=True)
+        (capture_dir / (str(index) + ".before.bmp")).unlink(missing_ok=True)
     expected_native = make_native_manifest(initial, steps)
     native_input.write_text(expected_native, encoding="utf-8")
     approved_hash = digest(native_input)
@@ -192,6 +227,8 @@ def run(manifest, out, timeout=90, runner=subprocess.run):
         "status": "FAIL", "verified_module_sha256": source_hash,
         "gui_host_sha256": host_hash,
         "declared_actions": len(steps), "verified_actions": 0,
+        "verified_visual_only_actions": 0,
+        "visual_only_controls": "NOT COVERED",
         "controller_action_chain": "NOT COVERED",
         "product_gui_complete": "NOT COVERED",
         "product_audio_semantics": "NOT COVERED",
@@ -215,6 +252,7 @@ def run(manifest, out, timeout=90, runner=subprocess.run):
         if not native_output.is_file():
             raise ValueError("native GUI workflow produced no fresh action evidence")
         audit_native(native_output, steps)
+        visual_count = 0
         for index, item in enumerate(steps):
             if item.get("screenshot", False):
                 image = capture_dir / (str(index) + ".bmp")
@@ -225,12 +263,28 @@ def run(manifest, out, timeout=90, runner=subprocess.run):
                     actual = rgb_at(image, pixel["x"], pixel["y"])
                     if actual != pixel["rgb"]:
                         raise ValueError("native painted UI mismatch at step %d" % index)
+                visual = item.get("visual_oracle")
+                if visual is not None:
+                    before_image = capture_dir / (str(index) + ".before.bmp")
+                    if not before_image.is_file():
+                        raise ValueError("visual-only control has no pre-action native pixels")
+                    observed_before = rgb_at(before_image, visual["x"], visual["y"])
+                    observed_after = rgb_at(image, visual["x"], visual["y"])
+                    if (observed_before != visual["before_rgb"] or
+                            observed_after != visual["after_rgb"] or
+                            observed_before == observed_after):
+                        raise ValueError("visible-only GUI control did not change as expected at step %d" % index)
+                    visual_count += 1
         report["status"] = "TECHNICAL_PASS"
         report["verified_actions"] = len(steps)
+        report["verified_visual_only_actions"] = visual_count
+        report["visual_only_controls"] = "PASS" if visual_count else "NOT COVERED"
         report["controller_action_chain"] = "PASS"
     except (OSError, ValueError, IndexError, subprocess.TimeoutExpired) as error:
         report["faults"].append(str(error))
         report["controller_action_chain"] = "FAIL"
+        if any("visual_oracle" in action for action in steps):
+            report["visual_only_controls"] = "FAIL"
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
 
