@@ -29,6 +29,8 @@ assert "<script>alert(1)</script>" not in page
 assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
 assert "Freigabe des Plugins" in page
 assert "Alle automationsfaehigen VST3-Parameter" in page
+assert "Angezeigte Parametertexte der VST3-Schnittstelle" in page
+assert "Parametertexte wieder in korrekte Werte umwandeln" in page
 assert "Mehrstufige Maus- und Tastaturbedienung" in page
 assert "Nur visuell belegte Buttons" in page
 assert page.count("BESTANDEN") == 5
@@ -71,6 +73,16 @@ page = report.report_html(visual)
 assert "Nur visuell belegte Buttons" in page
 assert page.count("BESTANDEN") == 6
 assert "Alle Bedienelemente des Produktes" in page
+assert "KEINE PRODUKTFREIGABE" in page
+
+textchecked = dict(passed)
+textchecked["coverage"] = dict(passed["coverage"])
+textchecked["coverage"]["native_parameter_text_labels"] = "PASS"
+textchecked["coverage"]["native_parameter_text_reverse"] = "PASS"
+page = report.report_html(textchecked)
+assert page.count("BESTANDEN") == 7
+assert "Alle Bedienelemente des Produktes" in page
+assert "NICHT GEPRUEFT" in page
 assert "KEINE PRODUKTFREIGABE" in page
 
 critical = dict(passed)
