@@ -1,0 +1,27 @@
+name: P57 physical ASIO status propagated to universal quickcheck
+
+on:
+  pull_request:
+    paths:
+      - 'tests/run_plugin_quickcheck.py'
+      - 'tests/run_product_qa.py'
+      - 'tests/test_plugin_quickcheck.py'
+      - '.github/workflows/p57-asio-quickcheck-status.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-false-asio-approval:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise all quickcheck positive and negative controls
+        shell: pwsh
+        run: |
+          python tests/test_plugin_quickcheck.py
+          if ($LASTEXITCODE -ne 0) { throw 'P57 VST3/ASIO coverage gate regression failed' }
+          python -m py_compile tests/run_plugin_quickcheck.py tests/run_product_qa.py
+          if ($LASTEXITCODE -ne 0) { throw 'P57 Python syntax failed' }
