@@ -581,12 +581,13 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                 captureEditorBmp(child, baselineFirst);
                 pump(80);
                 captureEditorBmp(child, baselineSecond);
-                // A control run MUST dispatch no mouse messages at all.
-                // Identical dwell/repaint timing makes click-independent
-                // animation distinguishable from a button reaction.
+                // Send the SAME mouse motion to both modes: a hover
+                // highlight must NOT be misattributed to a click. Only
+                // the real-click run receives button down/up. Both modes
+                // keep exactly the same dwell and repaint timing.
+                const LPARAM point = MAKELPARAM(clickX, clickY);
+                SendMessageW(child, WM_MOUSEMOVE, 0, point);
                 if (performClick) {
-                    const LPARAM point = MAKELPARAM(clickX, clickY);
-                    SendMessageW(child, WM_MOUSEMOVE, 0, point);
                     SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, point);
                     SendMessageW(child, WM_LBUTTONUP, 0, point);
                 }
