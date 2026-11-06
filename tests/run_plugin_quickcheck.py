@@ -96,6 +96,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         "product": bundle.stem,
         "coverage": {
             "api_playback_save": "NOT EXECUTED",
+            "realtime_deadline_observation": "NOT COVERED",
             "sample_rate_buffer_matrix": "NOT EXECUTED",
             "native_audio_state_capture": "NOT EXECUTED",
             "fresh_process_project_recall": "NOT EXECUTED",
@@ -157,6 +158,20 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
                     summary["coverage"]["sample_rate_buffer_matrix"] = "PASS"
                     summary["coverage"]["native_audio_state_capture"] = "PASS"
                     summary["sample_rate_buffer_matrix_cases"] = len(expected_ids)
+                    # Audio callbacks can technically return success yet miss
+                    # the buffer deadline; never silently call that realtime PASS.
+                    timing = [case.get("realtime_certification") for case in cases]
+                    measured = [case.get("timing") for case in cases]
+                    if (all(t in ("PASS", "FAIL") for t in timing) and
+                            all(isinstance(m, dict) and
+                                type(m.get("callback_overruns")) is int and
+                                m["callback_overruns"] >= 0 for m in measured)):
+                        total_overruns = sum(m["callback_overruns"] for m in measured)
+                        summary["measured_callback_overruns"] = total_overruns
+                        summary["coverage"]["realtime_deadline_observation"] = (
+                            "FAIL" if any(t == "FAIL" for t in timing) or total_overruns else "PASS")
+                    else:
+                        summary["coverage"]["realtime_deadline_observation"] = "NOT COVERED"
     if summary["status"] == "TECHNICAL_PASS" and reference_wav is not None:
         from verify_audio_reference import compare
         audio = out / "native" / "P34" / "captured.wav"
