@@ -51,6 +51,12 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_EXPORT_BAD
 #define QA_GUI_EXPORT_BAD 0
 #endif
+#ifndef QA_GUI_EXPORT_MIDI_GOOD
+#define QA_GUI_EXPORT_MIDI_GOOD 0
+#endif
+#ifndef QA_GUI_EXPORT_MIDI_BAD
+#define QA_GUI_EXPORT_MIDI_BAD 0
+#endif
 
 namespace {
 constexpr ParamID kClickParam = 9001;
@@ -113,7 +119,52 @@ bool writeFixtureWav() {
 }
 #endif
 
-#if QA_GUI_EXPORT_GOOD
+#if QA_GUI_EXPORT_MIDI_GOOD || QA_GUI_EXPORT_MIDI_BAD
+bool writeFixtureMidi() {
+    std::array<wchar_t, 4096> path{};
+    const DWORD count = GetEnvironmentVariableW(
+        L"QA_TEST_LAB_EXPORT_ROOT", path.data(),
+        static_cast<DWORD>(path.size()));
+    if (count == 0 || count >= path.size() || count > 3500) return false;
+    std::wstring file(path.data(), count);
+    if (!file.empty() && file.back() != L'\\' && file.back() != L'/')
+        file += L'\\';
+    file += L"gui-export.mid";
+    const HANDLE handle = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr,
+                                      CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) return false;
+    // Separate source-defined MIDI fixture: SMF0, PPQ 96, one note-on at
+    // tick zero, note-off at tick 96, proper 12-byte track and EOT.
+    std::array<std::uint8_t, 34> midi = {
+        0x4d, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x60,
+        0x4d, 0x54, 0x72, 0x6b, 0x00, 0x00, 0x00, 0x0c,
+        0x00, 0x90, 0x3c, 0x64, 0x60, 0x80, 0x3c, 0x00,
+        0x00, 0xff, 0x2f, 0x00
+    };
+#if QA_GUI_EXPORT_MIDI_BAD
+    // A syntactically valid MIDI but objectively WRONG musical note.
+    midi[24] = 0x40;
+    midi[28] = 0x40;
+#endif
+    DWORD written = 0;
+    const BOOL ok = WriteFile(handle, midi.data(),
+                              static_cast<DWORD>(midi.size()), &written, nullptr);
+    const BOOL flushed = FlushFileBuffers(handle);
+    const BOOL closed = CloseHandle(handle);
+    return ok && flushed && closed && written == midi.size();
+}
+#endif
+
+#if QA_GUI_EXPORT_MIDI_GOOD
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA00000C1, 0xB00000C1);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA00000C2, 0xB00000C2);
+constexpr const char* kName = "125A GUI Export Correct MIDI Fixture";
+#elif QA_GUI_EXPORT_MIDI_BAD
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA00000D1, 0xB00000D1);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA00000D2, 0xB00000D2);
+constexpr const char* kName = "125A GUI Export Wrong Note MIDI Fixture";
+#elif QA_GUI_EXPORT_GOOD
 const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA00000A1, 0xB00000A1);
 const FUID kControllerCID(0x125A2026, 0x11040004, 0xA00000A2, 0xB00000A2);
 constexpr const char* kName = "125A GUI Export Correct WAV Fixture";
@@ -278,6 +329,8 @@ public:
         // The GUI-facing controller can report the expected value
         // even when the exported PCM is wrong or the WAV is missing.
         (void)writeFixtureWav();
+#elif QA_GUI_EXPORT_MIDI_GOOD || QA_GUI_EXPORT_MIDI_BAD
+        (void)writeFixtureMidi();
 #endif
 #endif
     }
