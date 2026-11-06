@@ -44,6 +44,8 @@ on:
       - 'tests/test_user_report.py'
       - 'tests/Run-VST3-Test.cmd'
       - 'tests/run_gui_control_matrix.py'
+      - 'tests/test_gui_control_matrix.py'
+      - 'docs/GUI-CONTROL-MATRIX.md'
       - 'tests/test_plugin_quickcheck.py'
       - 'tests/test_audio_reference.py'
       - 'tests/verify_audio_reference.py'
@@ -87,7 +89,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick QAGuiBadParam TestLabStateStress TestLabInstanceIsolation QAStateMode8 QAStateMode9 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
+          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick QAGuiBadParam QAGuiToggle QAGuiInert TestLabStateStress TestLabInstanceIsolation QAStateMode8 QAStateMode9 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -570,6 +572,47 @@ jobs:
           Write-Host '[PASS] Universal parameter sweep detects real missing writes; no fabricated GUI coverage'
           exit 0
 
+      - name: Real bidirectional Win32 VST3 GUI clicks and independent profile oracle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/test_gui_control_matrix.py
+          if ($LASTEXITCODE -ne 0) { throw 'Bidirectional GUI control profile adversarial tests failed' }
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Toggle.vst3')
+          $bad = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Inert.vst3')
+          if ($gui.Count -ne 1 -or $good.Count -ne 1 -or $bad.Count -ne 1) {
+            throw 'Genuine Win32 GUI toggle fixture or native host missing'
+          }
+          $modules = @(Get-ChildItem $good[0].FullName -Recurse -File -Filter '*.vst3')
+          if ($modules.Count -ne 1) { throw 'Ambiguous GUI toggle VST3 processor module' }
+          New-Item -ItemType Directory -Force artifacts/P36 | Out-Null
+          $manifest = @{
+            schema = '125a-gui-controls-v1'
+            product = @{
+              binary = $modules[0].FullName
+              sha256 = (Get-FileHash $modules[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+            gui_host = $gui[0].FullName
+            controls = @(
+              @{id='switch_on';param_id=9001;x=160;y=90;initial_normalized=0.0;expected_normalized=1.0},
+              @{id='switch_off';param_id=9001;x=160;y=90;initial_normalized=1.0;expected_normalized=0.0}
+            )
+          }
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content artifacts/P36/gui-controls.json
+          python tests/run_gui_control_matrix.py --manifest artifacts/P36/gui-controls.json --out artifacts/P36/good
+          if ($LASTEXITCODE -ne 0) { throw 'Real native GUI toggle to ON and OFF failed' }
+          $proof = Get-Content artifacts/P36/good/GUI-CONTROL-RESULT.json -Raw | ConvertFrom-Json
+          if ($proof.status -ne 'TECHNICAL_PASS' -or $proof.tested_controls -ne 2 -or
+              @($proof.cases | Where-Object {$_.status -ne 'PASS'}).Count -ne 0 -or
+              $proof.all_product_controls -ne 'NOT COVERED') {
+            throw 'Actual bidirectional GUI clicks or honest noncoverage are unproven'
+          }
+          & $gui[0].FullName --prove-click-at-from $bad[0].FullName 9001 160 90 1 0
+          if ($LASTEXITCODE -ne 1) { throw 'Intentionally inert real HWND falsely passed OFF click' }
+          Write-Host '[PASS] Native Win32 GUI controls are verified in both directions'
+          exit 0
+
       - name: One-command real VST3 quickcheck without handwritten manifests
         shell: pwsh
         run: |
@@ -708,6 +751,7 @@ jobs:
             artifacts/PRODUCT-QA/
             artifacts/QUICKCHECK/
             artifacts/P35/
+            artifacts/P36/
             artifacts/QUICKCHECK-DEEP/
             artifacts/QUICKCHECK-AB/
             artifacts/PORTABLE/
