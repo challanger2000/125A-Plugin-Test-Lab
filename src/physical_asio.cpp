@@ -187,6 +187,50 @@ struct Processing {
     }
 };
 
+// Actual device formats: reject unsupported layouts rather than writing
+// 32-bit words into non-32-bit driver buffers.
+int asioBytesPerSample(ASIOSampleType type) {
+    switch (type) {
+        case ASIOSTFloat32LSB: case ASIOSTInt32LSB:
+        case ASIOSTInt32LSB24: return 4;
+        case ASIOSTInt24LSB: return 3;
+        case ASIOSTInt16LSB: return 2;
+        default: return 0;
+    }
+}
+void writeAsioSamples(void* target, ASIOSampleType type, const Sample32* source,
+                      int frames, bool& ok) noexcept {
+    for (int i = 0; i < frames; ++i) {
+        const float raw = source[i];
+        if (!std::isfinite(raw)) { ok = false; return; }
+        const double value = std::clamp(static_cast<double>(raw), -1., 1.);
+        switch (type) {
+            case ASIOSTFloat32LSB:
+                static_cast<float*>(target)[i] = static_cast<float>(value);
+                break;
+            case ASIOSTInt32LSB:
+                static_cast<int32_t*>(target)[i] = static_cast<int32_t>(value * 2147483647.);
+                break;
+            case ASIOSTInt32LSB24:
+                static_cast<int32_t*>(target)[i] = static_cast<int32_t>(value * 8388607.);
+                break;
+            case ASIOSTInt16LSB:
+                static_cast<int16_t*>(target)[i] = static_cast<int16_t>(value * 32767.);
+                break;
+            case ASIOSTInt24LSB: {
+                const auto value24 = static_cast<uint32_t>(
+                    static_cast<int32_t>(value * 8388607.));
+                auto* bytes = static_cast<unsigned char*>(target) + static_cast<size_t>(i) * 3U;
+                bytes[0] = static_cast<unsigned char>(value24 & 255U);
+                bytes[1] = static_cast<unsigned char>((value24 >> 8) & 255U);
+                bytes[2] = static_cast<unsigned char>((value24 >> 16) & 255U);
+                break;
+            }
+            default: ok = false; return;
+        }
+    }
+}
+
 struct Engine {
     IASIO* driver{};
     IAudioProcessor* processor{};
@@ -238,22 +282,8 @@ struct Engine {
                 auto* target = asioBuffers[ch].buffers[index];
                 ensure(target != nullptr, "ASIO output buffer unavailable");
                 const auto& samples = p.outputs[0].channels[ch];
-                if (sampleTypes[ch] == ASIOSTFloat32LSB) {
-                    auto* output = static_cast<float*>(target);
-                    for (int n = 0; n < frames; ++n) {
-                        const float value = samples[static_cast<size_t>(n)];
-                        if (!std::isfinite(value)) {ok = false; break;}
-                        output[n] = std::clamp(value, -1.f, 1.f);
-                    }
-                } else if (sampleTypes[ch] == ASIOSTInt32LSB) {
-                    auto* output = static_cast<int32_t*>(target);
-                    for (int n = 0; n < frames; ++n) {
-                        const float value = samples[static_cast<size_t>(n)];
-                        if (!std::isfinite(value)) {ok = false; break;}
-                        output[n] = static_cast<int32_t>(std::clamp(
-                            static_cast<double>(value), -1., 1.) * 2147483647.);
-                    }
-                } else ok = false;
+                writeAsioSamples(target, sampleTypes[ch],
+                                 samples.data(), frames, ok);
             }
         } catch (...) { ok = false; }
         if (ok) processedCallbacks.fetch_add(1, std::memory_order_relaxed);
@@ -261,7 +291,8 @@ struct Engine {
         if (!ok) for (size_t ch = 0; ch < 2; ++ch) {
             if (asioBuffers[ch].buffers[index])
                 std::memset(asioBuffers[ch].buffers[index], 0,
-                            static_cast<size_t>(frames) * sizeof(int32_t));
+                            static_cast<size_t>(frames) *
+                            static_cast<size_t>(asioBytesPerSample(sampleTypes[ch])));
         }
         framePosition += static_cast<uint64_t>(frames);
         LARGE_INTEGER done{};
@@ -450,8 +481,8 @@ int run(const Arguments& a) {
                     info.channel = static_cast<long>(ch);
                     checkASIO(driver->getChannelInfo(&info),
                               "Cannot identify physical ASIO output format");
-                    ensure(info.type == ASIOSTFloat32LSB || info.type == ASIOSTInt32LSB,
-                           "Physical output format not supported (only float32/int32 little-endian)");
+                    ensure(asioBytesPerSample(info.type) != 0,
+                           "Physical output sample layout not supported");
                     engine.sampleTypes[ch] = info.type;
                     engine.asioBuffers[ch].isInput = ASIOFalse;
                     engine.asioBuffers[ch].channelNum = static_cast<long>(ch);
