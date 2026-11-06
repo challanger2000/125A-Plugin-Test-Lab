@@ -1091,8 +1091,16 @@ int observeOwnedDialog(const std::string& pluginPath, int x, int y,
                 out.flush();
                 require(out.good(), "P60 incomplete native owned-dialog report");
                 // Only close the popup(s) created by this editor after click.
-                for (auto* popup : after)
+                for (auto* popup : after) {
                     if (IsWindow(popup)) (void)SendMessageW(popup, WM_CLOSE, 0, 0);
+                    // The Win32 standard dialog class does not guarantee
+                    // WM_CLOSE destroys a modeless CreateWindowEx dialog.
+                    // On this disposable UI test thread, explicitly
+                    // destroy only the newly observed/owned popup.
+                    if (IsWindow(popup))
+                        require(DestroyWindow(popup) != FALSE,
+                                "P60 cannot clean up freshly observed popup");
+                }
                 pump(40);
                 require(ownedDialogs(window.get(), editor).empty(),
                         "P60 dialog did not close during cleanup");
