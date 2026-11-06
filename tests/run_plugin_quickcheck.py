@@ -24,7 +24,8 @@ def digest(path):
 def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         gui_host=None, gui_controls=None, reference_wav=None, reference_tolerance=0,
         dual_host=None, dual_state_manifest=None, active_replay=False,
-        gui_workflow=None, gui_explore=False, acknowledge_gui_explore=False):
+        gui_workflow=None, gui_explore=False, acknowledge_gui_explore=False,
+        gui_roundtrip=False):
     bundle = bundle.resolve(strict=True)
     host = host.resolve(strict=True)
     stress_host = stress_host.resolve(strict=True)
@@ -40,6 +41,8 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         raise ValueError("invalid GUI exploration options")
     if gui_explore and not acknowledge_gui_explore:
         raise ValueError("GUI exploration requires explicit acknowledgement of arbitrary UI clicks")
+    if type(gui_roundtrip) is not bool or (gui_roundtrip and not gui_explore):
+        raise ValueError("P45 roundtrip requires opt-in native GUI exploration")
     binaries = [p for p in bundle.rglob("*.vst3") if p.is_file()]
     if len(binaries) != 1:
         raise ValueError("exactly one VST3 processor module expected in bundle")
@@ -187,6 +190,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "native_gui_workflow": "NOT COVERED",
             "native_gui_visual_workflow": "NOT COVERED",
             "native_gui_exploration": "NOT COVERED",
+            "native_gui_bidirectional_observation": "NOT COVERED",
             "midi_wav_export": "NOT COVERED",
             "preset_semantics": "NOT COVERED",
             "commercial_daw_integration": "NOT COVERED"
@@ -616,6 +620,51 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             summary["coverage"]["native_gui_exploration"] = "FAIL"
             summary["reason"] = "native opt-in GUI exploration failed: " + str(error)
 
+    # P45 only rechecks the candidate set from a fully sham-verified P44
+    # scan. No observed color or controller value becomes an approved
+    # product oracle; A/B/A merely distinguishes reversible from
+    # nonreversible or unreproduced behavior.
+    if gui_roundtrip:
+        summary["coverage"]["native_gui_bidirectional_observation"] = "NOT EXECUTED"
+    if gui_roundtrip and summary["status"] == "TECHNICAL_PASS":
+        replay_dir = out / "gui-roundtrip"
+        replay_report = replay_dir / "GUI-ROUNDTRIP-RESULT.json"
+        replay_report.unlink(missing_ok=True)
+        pair = checked_runner([
+            sys.executable, str(Path(__file__).with_name("run_gui_roundtrip.py")),
+            "--plugin", str(bundle), "--gui-host", str(gui_host),
+            "--exploration", str(out / "gui-exploration"),
+            "--out", str(replay_dir), "--acknowledge-ui-clicks",
+            "--timeout", str(min(timeout, 90))
+        ], capture_output=True, text=True,
+            timeout=timeout * 10 + 90, check=False, errors="replace")
+        (out / "gui-roundtrip.log").write_text(
+            (pair.stdout or "") + "\n" + (pair.stderr or ""), encoding="utf-8")
+        try:
+            verified = json.loads(replay_report.read_text(encoding="utf-8"))
+            if (pair.returncode != 0 or
+                verified.get("schema") != "125a-gui-roundtrip-observations-v1" or
+                verified.get("status") != "OBSERVATIONS_COMPLETE" or
+                verified.get("verified_module_sha256") != sha or
+                verified.get("verified_gui_host_sha256") != digest(gui_host) or
+                verified.get("release_approved") is not False or
+                verified.get("product_gui_controls") != "NOT COVERED" or
+                verified.get("independent_product_semantics") != "NOT COVERED" or
+                verified.get("tested_candidates") !=
+                    verified.get("observed_reversible", -1) +
+                    verified.get("observed_nonreversible", -1) +
+                    verified.get("not_reproduced", -1) or
+                len(verified.get("cases", [])) != verified.get("tested_candidates")):
+                raise ValueError("native P45 GUI roundtrip evidence incomplete or falsely approved")
+            summary["coverage"]["native_gui_bidirectional_observation"] = "OBSERVATIONS_ONLY"
+            summary["gui_observed_reversible"] = verified["observed_reversible"]
+            summary["gui_observed_nonreversible"] = verified["observed_nonreversible"]
+            summary["gui_observed_not_reproduced"] = verified["not_reproduced"]
+        except (ValueError, TypeError, KeyError, OSError) as error:
+            summary["status"] = "FAIL"
+            summary["coverage"]["native_gui_bidirectional_observation"] = "FAIL"
+            summary["reason"] = "native opt-in GUI A/B/A observation failed: " + str(error)
+
     # An explicitly requested high-concurrency test uses the plugin's
     # genuine getState() bytes. It is not safe to require for every VST3:
     # some plugins only allow setState() with processing inactive.
@@ -716,6 +765,7 @@ def main():
     p.add_argument("--gui-controls", type=Path)
     p.add_argument("--gui-workflow", type=Path)
     p.add_argument("--gui-explore", action="store_true")
+    p.add_argument("--gui-roundtrip", action="store_true")
     p.add_argument("--acknowledge-gui-explore", action="store_true")
     p.add_argument("--reference-wav", type=Path)
     p.add_argument("--dual-state-manifest", type=Path)
@@ -732,7 +782,8 @@ def main():
                      active_replay=a.active_replay,
                      gui_workflow=a.gui_workflow,
                      gui_explore=a.gui_explore,
-                     acknowledge_gui_explore=a.acknowledge_gui_explore)
+                     acknowledge_gui_explore=a.acknowledge_gui_explore,
+                     gui_roundtrip=a.gui_roundtrip)
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired,
             json.JSONDecodeError) as error:
         a.out.mkdir(parents=True, exist_ok=True)
