@@ -11,7 +11,10 @@
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
 #include <cstring>
+#include <string>
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 
@@ -42,10 +45,83 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_PAINTED_ONLY
 #define QA_GUI_PAINTED_ONLY 0
 #endif
+#ifndef QA_GUI_EXPORT_GOOD
+#define QA_GUI_EXPORT_GOOD 0
+#endif
+#ifndef QA_GUI_EXPORT_BAD
+#define QA_GUI_EXPORT_BAD 0
+#endif
 
 namespace {
 constexpr ParamID kClickParam = 9001;
-#if QA_GUI_PAINTED_ONLY
+
+// Real Win32 file side effect performed by the *VST3 editor*, not by
+// the test harness. The independent Python contract must inspect the
+// produced RIFF/PCM bytes and reject the deliberately broken variant.
+#if QA_GUI_EXPORT_GOOD || QA_GUI_EXPORT_BAD
+bool writeFixtureWav() {
+    std::array<wchar_t, 4096> path{};
+    const DWORD count = GetEnvironmentVariableW(
+        L"QA_TEST_LAB_EXPORT_ROOT", path.data(),
+        static_cast<DWORD>(path.size()));
+    if (count == 0 || count >= path.size() || count > 3500) return false;
+    std::wstring file(path.data(), count);
+    if (!file.empty() && file.back() != L'\\' && file.back() != L'/')
+        file += L'\\';
+    file += L"gui-export.wav";
+    const HANDLE handle = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr,
+                                      CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) return false;
+    constexpr std::array<std::int16_t, 16> samples = {
+        0, 1000, -1000, 32767, -32768, 4321, -4321, 0,
+        256, -256, 8192, -8192, 123, -123, 1, -1
+    };
+    std::array<std::uint8_t, 76> wav{};
+    auto put16 = [&](int offset, std::uint16_t n) {
+        wav[offset] = static_cast<std::uint8_t>(n & 255);
+        wav[offset + 1] = static_cast<std::uint8_t>(n >> 8);
+    };
+    auto put32 = [&](int offset, std::uint32_t n) {
+        put16(offset, static_cast<std::uint16_t>(n));
+        put16(offset + 2, static_cast<std::uint16_t>(n >> 16));
+    };
+    std::memcpy(wav.data(), "RIFF", 4);
+    put32(4, 68);
+    std::memcpy(wav.data() + 8, "WAVEfmt ", 8);
+    put32(16, 16);
+    put16(20, 1);
+    put16(22, 1);
+    put32(24, 44100);
+    put32(28, 88200);
+    put16(32, 2);
+    put16(34, 16);
+    std::memcpy(wav.data() + 36, "data", 4);
+    put32(40, 32);
+    for (int i = 0; i < 16; ++i) {
+        auto sample = samples[static_cast<std::size_t>(i)];
+#if QA_GUI_EXPORT_BAD
+        if (i == 3) sample = 0; // Valid WAV, *incorrect actual audio*
+#endif
+        put16(44 + i * 2, static_cast<std::uint16_t>(sample));
+    }
+    DWORD written = 0;
+    const BOOL ok = WriteFile(handle, wav.data(), static_cast<DWORD>(wav.size()),
+                              &written, nullptr);
+    const BOOL flushed = FlushFileBuffers(handle);
+    const BOOL closed = CloseHandle(handle);
+    return ok && flushed && closed && written == wav.size();
+}
+#endif
+
+#if QA_GUI_EXPORT_GOOD
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA00000A1, 0xB00000A1);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA00000A2, 0xB00000A2);
+constexpr const char* kName = "125A GUI Export Correct WAV Fixture";
+#elif QA_GUI_EXPORT_BAD
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA00000B1, 0xB00000B1);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA00000B2, 0xB00000B2);
+constexpr const char* kName = "125A GUI Export Wrong PCM Fixture";
+#elif QA_GUI_PAINTED_ONLY
 const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000091, 0xB0000091);
 const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000092, 0xB0000092);
 constexpr const char* kName = "125A Custom Painted GUI Only Fixture";
@@ -198,6 +274,11 @@ public:
         (void)setParamNormalized(kClickParam, current >= 0.5 ? 0.0 : 1.0);
 #elif !QA_GUI_INERT
         (void)setParamNormalized(kClickParam, 1.0);
+#if QA_GUI_EXPORT_GOOD || QA_GUI_EXPORT_BAD
+        // The GUI-facing controller can report the expected value
+        // even when the exported PCM is wrong or the WAV is missing.
+        (void)writeFixtureWav();
+#endif
 #endif
     }
 };
