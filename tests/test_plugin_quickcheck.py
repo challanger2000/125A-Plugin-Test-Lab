@@ -302,12 +302,16 @@ with tempfile.TemporaryDirectory() as td:
             mode = workflow_failure["mode"]
             if mode == "missing":
                 return subprocess.CompletedProcess(cmd, 0, "fake native success", "")
+            loaded_steps = json.loads(workflow_file.read_text(encoding="utf-8"))["steps"]
+            visual_count = sum("visual_oracle" in item for item in loaded_steps)
             payload = {
                 "status": "TECHNICAL_PASS",
                 "verified_module_sha256": sha if mode != "wrong_identity" else "f" * 64,
                 "gui_host_sha256": hashlib.sha256(gui.read_bytes()).hexdigest(),
                 "declared_actions": len(workflow_steps),
-                "verified_actions": len(workflow_steps) if mode != "missing_step" else 1,
+                "verified_actions": len(loaded_steps) if mode != "missing_step" else 1,
+                "verified_visual_only_actions": (visual_count if mode != "wrong_visual_count" else 0),
+                "visual_only_controls": "PASS" if visual_count else "NOT COVERED",
                 "controller_action_chain": "PASS",
                 "product_gui_complete": "NOT COVERED"}
             (target / "GUI-WORKFLOW-RESULT.json").write_text(
@@ -348,6 +352,27 @@ with tempfile.TemporaryDirectory() as td:
         assert "missing/incorrect" in str(error) or "another VST3" in str(error)
     else:
         raise AssertionError("incorrect GUI workflow source fingerprints accepted")
+    workflow_file.write_text(json.dumps(workflow_spec), encoding="utf-8")
+
+    visual_spec = dict(workflow_spec)
+    visual_spec["steps"] = [{
+        "id": "hidden_led_toggle", "action": "click", "x": 100, "y": 90,
+        "screenshot": True, "visual_oracle": {
+            "x": 1, "y": 1, "before_rgb": [30, 36, 48],
+            "after_rgb": [12, 142, 85]}}]
+    workflow_file.write_text(json.dumps(visual_spec), encoding="utf-8")
+    visually = quick.run(bundle, host, stress, out, runner=native_workflow,
+                         gui_host=gui, gui_workflow=workflow_file)
+    assert visually["status"] == "TECHNICAL_PASS"
+    assert visually["coverage"]["native_gui_visual_workflow"] == "PASS"
+    assert visually["gui_only_painted_controls_verified"] == 1
+    assert visually["coverage"]["product_gui_controls"] == "NOT COVERED"
+    workflow_failure["mode"] = "wrong_visual_count"
+    visually_bad = quick.run(bundle, host, stress, out, runner=native_workflow,
+                             gui_host=gui, gui_workflow=workflow_file)
+    assert visually_bad["status"] == "FAIL"
+    assert visually_bad["coverage"]["native_gui_visual_workflow"] == "FAIL"
+    workflow_failure["mode"] = None
     workflow_file.write_text(json.dumps(workflow_spec), encoding="utf-8")
 
     def gui_not_available(cmd, **kwargs):
