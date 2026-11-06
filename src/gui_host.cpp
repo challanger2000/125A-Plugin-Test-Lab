@@ -777,23 +777,6 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                     if (roundtrip) out << "\t" << row.second;
                     out << "\n";
                 }
-                if (exerciseButton) {
-                    require(after.size() == 1, "P61 exactly one real dialog required");
-                    HWND popup = after.front();
-                    HWND button = GetDlgItem(popup, 43061);
-                    require(button && IsWindow(button),
-                            "P61 required native dialog child button missing");
-                    wchar_t kind[64]{};
-                    require(GetClassNameW(button, kind, 64) &&
-                            wcscmp(kind, L"Button") == 0 &&
-                            IsWindowVisible(button) && IsWindowEnabled(button),
-                            "P61 required native dialog button not actionable");
-                    (void)SendMessageW(button, BM_CLICK, 0, 0);
-                    pump(75);
-                    require(ownedDialogs(window.get(), editor).empty(),
-                            "P61 native dialog button did not dismiss owned popup");
-                    out << "button\t43061\tButton\tactioned\tdialog_closed\n";
-                }
                 out << "end\tCOMPLETE\n";
                 out.flush();
                 require(out.good(), "P41 incomplete real native exploration evidence");
@@ -1104,6 +1087,23 @@ int observeOwnedDialog(const std::string& pluginPath, int x, int y,
                             wcscmp(clsName, L"#32770") == 0,
                             "P60 observed window is not an OS dialog");
                     out << "dialog\t" << i << "\t#32770\tvisible\towned\n";
+                }
+                if (exerciseButton) {
+                    require(after.size() == 1, "P61 exactly one real dialog required");
+                    HWND popup = after.front();
+                    HWND button = GetDlgItem(popup, 43061);
+                    require(button && IsWindow(button),
+                            "P61 required native dialog child button missing");
+                    wchar_t kind[64]{};
+                    require(GetClassNameW(button, kind, 64) &&
+                            wcscmp(kind, L"Button") == 0 &&
+                            IsWindowVisible(button) && IsWindowEnabled(button),
+                            "P61 required native dialog button not actionable");
+                    (void)SendMessageW(button, BM_CLICK, 0, 0);
+                    pump(75);
+                    require(ownedDialogs(window.get(), editor).empty(),
+                            "P61 native dialog button did not dismiss owned popup");
+                    out << "button\t43061\tButton\tactioned\tdialog_closed\n";
                 }
                 out << "end\tCOMPLETE\n";
                 out.flush();
