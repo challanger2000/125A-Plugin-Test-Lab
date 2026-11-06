@@ -48,8 +48,20 @@ page = report.report_html(critical)
 assert "Gemessene Audio-Deadline-Ueberschreitungen" in page
 assert "Gemessene Audio-Callback-Deadlines" in page
 assert "FEHLER" in page
+assert "Technische Pruefung mit Fehlern" in page
+assert "Technische Pruefungen bestanden" not in page
+assert "kein vollstaendig bestandener Test" in page
 assert "KEINE PRODUKTFREIGABE" in page
 
+
+# A fabricated top-level TECHNICAL_PASS cannot conceal another domain FAIL.
+contradictory = dict(passed)
+contradictory["coverage"] = dict(passed["coverage"])
+contradictory["coverage"]["native_audio_state_capture"] = "FAIL"
+page = report.report_html(contradictory)
+assert "Technische Pruefung mit Fehlern" in page
+assert "Technische Pruefungen bestanden" not in page
+assert "FEHLER" in page
 
 bad = {
     "status": "FAIL",
