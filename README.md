@@ -1,5 +1,8 @@
 # 125A Plugin Test Lab
 
+**P59 hardware one-click workflow:** A protected/explicitly opted-in self-hosted Windows Actions workflow can now build P58, detect the selected installed ASIO driver's registry CLSID, hash the actual VST3/executable and run the P56 physical callback matrix without manual hash/plan entry. Only redacted callback statistics are uploaded. It requires a dedicated isolated Windows machine, secure runner configuration and explicit consent; **the public GitHub cloud CI still reports real ASIO hardware NOT RUN.** [Instructions and public-runner security caveats](docs/P59-HARDWARE-ONE-CLICK.md).
+
+
 **P58 native real ASIO callback host:** The Test Lab now contains an optional source-built Windows x64 `125A_Test_Lab_Physical_ASIO.exe`: it instantiates the real registered ASIO COM driver, creates genuine device buffers, runs native VST3 `process()` from hardware driver callbacks, and measures callback overruns/XRUN signals. Source-built Windows CI can compile the host using a separately obtained ASIO SDK and reject unregistered-driver scenarios. **GitHub Windows-2022 has no physical device: hardware ASIO remains NOT RUN, and commercial DAW coverage remains NOT RUN.** Documentation: [P58](docs/P58-NATIVE-ASIO-HOST.md).
 
 

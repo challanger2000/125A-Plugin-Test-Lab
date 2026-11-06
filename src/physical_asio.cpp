@@ -200,11 +200,11 @@ int asioBytesPerSample(ASIOSampleType type) {
     }
 }
 void writeAsioSamples(void* target, ASIOSampleType type, const Sample32* source,
-                      int frames, bool& ok) noexcept {
+                      int frames, bool& ok, double outputCeiling = 1.) noexcept {
     for (int i = 0; i < frames; ++i) {
         const float raw = source[i];
         if (!std::isfinite(raw)) { ok = false; return; }
-        const double value = std::clamp(static_cast<double>(raw), -1., 1.);
+        const double value = std::clamp(static_cast<double>(raw), -outputCeiling, outputCeiling);
         switch (type) {
             case ASIOSTFloat32LSB:
                 static_cast<float*>(target)[i] = static_cast<float>(value);
@@ -255,6 +255,14 @@ int formatSelfTest() {
             ensure(middle == .5f, "ASIO float32 sample conversion wrong");
         }
     }
+    std::array<unsigned char, 32> limited{};
+    bool limitedOkay = true;
+    writeAsioSamples(limited.data(), ASIOSTFloat32LSB,
+                     values.data(), 3, limitedOkay, 0.10);
+    float capped{};
+    std::memcpy(&capped, limited.data() + sizeof(float), sizeof(float));
+    ensure(limitedOkay && std::abs(capped - .10f) < 0.000001f,
+           "P59 hardware-output safety ceiling ineffective");
     std::array<unsigned char, 32> buffer{};
     const std::array<float, 1> invalid{std::numeric_limits<float>::quiet_NaN()};
     bool good = true;
@@ -316,7 +324,7 @@ struct Engine {
                 ensure(target != nullptr, "ASIO output buffer unavailable");
                 const auto& samples = p.outputs[0].channels[ch];
                 writeAsioSamples(target, sampleTypes[ch],
-                                 samples.data(), frames, ok);
+                                 samples.data(), frames, ok, 0.10); // -20 dBFS safety ceiling
             }
         } catch (...) { ok = false; }
         if (ok) processedCallbacks.fetch_add(1, std::memory_order_relaxed);
