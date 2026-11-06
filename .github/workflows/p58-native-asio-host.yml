@@ -32,7 +32,7 @@ jobs:
         run: |
           cmake -S . -B build-p58 -G "Visual Studio 17 2022" -A x64 "-DASIO_SDK_DIR=$env:GITHUB_WORKSPACE/asio-sdk"
           if ($LASTEXITCODE -ne 0) { throw 'P58 native CMake configure failed' }
-          cmake --build build-p58 --config Release --parallel 4 --target TestLabPhysicalASIO
+          cmake --build build-p58 --config Release --parallel 4 --target TestLabPhysicalASIO QASignalGood
           if ($LASTEXITCODE -ne 0) { throw 'Native physical ASIO/VST3 host does not compile' }
       - name: Prove missing or unapproved hardware cannot report success
         shell: pwsh
@@ -41,6 +41,8 @@ jobs:
           $hostExe = @(Get-ChildItem build-p58 -Recurse -File -Filter '125A_Test_Lab_Physical_ASIO.exe')
           if ($hostExe.Count -ne 1) { throw 'P58 native executor not produced' }
           New-Item -ItemType Directory -Force artifacts/P58 | Out-Null
+          # Negative A: no plugin DLL may be accepted.
+          $PSNativeCommandUseErrorActionPreference = $false
           $argv = @(
             '--physical-asio-probe', '--plugin', 'C:/not-found/Plugin.vst3',
             '--driver-clsid', '{00000000-0000-0000-0000-000000000000}',
@@ -49,10 +51,18 @@ jobs:
             '--nonce', '0123456789abcdef0123456789abcdef0123456789abcdef',
             '--out', 'artifacts/P58/forbidden-pass.json'
           )
-          $PSNativeCommandUseErrorActionPreference = $false
           & $hostExe[0].FullName @argv
           if ($LASTEXITCODE -eq 0 -or (Test-Path artifacts/P58/forbidden-pass.json)) {
-            throw 'P58 fabricated successful ASIO evidence without a real driver'
+            throw 'P58 fabricated successful ASIO evidence without a real plugin'
+          }
+          # Negative B: an actual compiled VST3 DLL must not pass with
+          # an unregistered COM ASIO driver on GitHub-hosted Windows.
+          $dll = @(Get-ChildItem build-p58 -Recurse -File -Filter '125A_QA_SignalGood.vst3')
+          if ($dll.Count -ne 1) { throw 'Real native source-built VST3 fixture missing' }
+          $argv[2] = $dll[0].FullName
+          & $hostExe[0].FullName @argv
+          if ($LASTEXITCODE -eq 0 -or (Test-Path artifacts/P58/forbidden-pass.json)) {
+            throw 'P58 fabricated physical ASIO evidence without a registered driver'
           }
           $hash = (Get-FileHash $hostExe[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           @{
