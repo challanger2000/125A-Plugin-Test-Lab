@@ -291,8 +291,8 @@ void writeNativeHwndTree(HWND editor, const std::filesystem::path& path) {
         RECT rect{};
         require(GetWindowRect(hwnd, &rect) != FALSE, "P54 cannot read child HWND rectangle");
         POINT corners[2]{{rect.left, rect.top}, {rect.right, rect.bottom}};
-        require(MapWindowPoints(HWND_DESKTOP, editor, corners, 2) != 0 ||
-                GetLastError() == ERROR_SUCCESS,
+        require(ScreenToClient(editor, &corners[0]) != FALSE &&
+                ScreenToClient(editor, &corners[1]) != FALSE,
                 "P54 cannot transform child rectangle to editor coordinates");
         output << "node\t" << i << "\t" << parent << "\t"
                << cls << "\t" << (IsWindowVisible(hwnd) ? 1 : 0) << "\t"
