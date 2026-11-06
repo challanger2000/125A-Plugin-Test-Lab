@@ -418,7 +418,8 @@ jobs:
               $report.coverage.product_gui_controls -ne 'NOT COVERED' -or
               $report.coverage.api_playback_save -ne 'PASS' -or
               $report.coverage.fresh_process_project_recall -ne 'PASS' -or
-              $report.coverage.recall_audio_determinism -ne 'NOT COVERED') {
+              $report.coverage.recall_audio_determinism -ne 'NOT COVERED' -or
+              $report.coverage.realtime_deadline_observation -notin @('PASS','FAIL')) {
             throw 'Quickcheck coverage or release classification incorrect'
           }
           $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
@@ -426,7 +427,17 @@ jobs:
           if ($gui.Count -ne 1 -or $click.Count -lt 1) { throw 'Portable GUI host or real GUI fixture missing' }
           & $gui[0].FullName --probe $click[0].FullName
           if ($LASTEXITCODE -ne 0) { throw 'Portable native GUI probe failed to attach/detach real VST3 editor' }
-          Write-Host '[PASS] One command exercises actual VST3 playback-save and PCM/state; no false release approval'
+          $deadlineProof = Get-Content artifacts/QUICKCHECK/native/P32/ADAPTER-RESULT.json -Raw | ConvertFrom-Json
+          if ($deadlineProof.cases.Count -ne 6 -or
+              @($deadlineProof.cases | Where-Object {
+                $_.realtime_certification -notin @('PASS','FAIL') -or
+                $null -eq $_.timing.callback_overruns -or
+                $null -eq $_.timing.callback_p99_ns -or
+                $null -eq $_.timing.callback_deadline_ns
+              }).Count -ne 0) {
+            throw 'Native audio deadline report incomplete; realtime PASS would be ungrounded'
+          }
+          Write-Host '[PASS] One command exercises actual VST3 playback-save, PCM/state and real callback timing evidence'
           exit 0
 
       - name: Stage portable one-command Windows VST3 quickcheck kit
