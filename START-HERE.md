@@ -1,5 +1,15 @@
 # START HERE — 125A Plugin Test Lab
 
+## Current Windows-tested P40 value-label QA — 6 November 2026
+
+**Current verified common test lab:** [merged PR #65](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/65). The exact feature commit `beea15a716240b47d909c2d7639d9bb92f201b94` passed **P02, P03, P04, P25 and P29 Windows CI**. [Windows P25 evidence, including portable test kit](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42174156173) → artifact `125A-Universal-VST3-State-Stress-P25`. No Drumator or AWE production source was modified.
+
+**P40 is now in the default one-command GUI QA:** the native Windows test host probes every advertised *writable automatable* VST3 parameter's textual value representation at endpoints and quartiles using `getParamStringByValue()`, then exercises `getParamValueByString()` when implemented. An independent TSV verifier rejects forged or corrupted test evidence, inconsistent labels, incorrect discrete steps and false PASS reports. Continuous parameters may have deliberately rounded display strings; such roundtrips are validated for stable text instead of requiring exact decimal equality. The native Windows fixtures include a deliberately broken plugin that maps labels to the **wrong** normalized values; CI proves the failure is caught.
+
+**Noncoverage remains explicit:** a plugin without text/reverse API support is `NOT COVERED`; *partial* availability never receives global PASS. The German HTML result separates `native_parameter_text_labels` from `native_parameter_text_reverse` and from actual GUI pixel assertions. **P40 checks the VST3 text API, not custom-painted labels in a plugin screenshot.** Full GUI discovery, product semantics, DAW sessions and independent PCM references are not automatically proven. See `docs/ONE-COMMAND-QUICKCHECK.md` and `docs/GUI-CONTROL-MATRIX.md`.
+
+**No local Python required** when other development chats run it through GitHub Windows Actions. The optional portable drag-and-drop runner is a separate local workflow and still needs its own Python installation.
+
 ## Latest universal P39 keyboard user-journey testing — 6 November 2026
 
 **Verified source and Windows evidence:** [merged PR #64](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/64), [P25 Windows run 42171948171](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42171948171). The exact PR commit also passed P02, P03 (real Drumator V1.5 tests) and P04 Windows workflows. The tested commit was `a9445c2dcd50aaba33c4a87e6d10e402515a81a8`.
