@@ -349,6 +349,8 @@ with tempfile.TemporaryDirectory() as td:
                 "verified_gui_host_sha256": hashlib.sha256(gui.read_bytes()).hexdigest(),
                 "requested_points": 9, "completed_points": (
                     8 if exploratory_failure["mode"] == "incomplete" else 9),
+                "sham_verified_points": (8 if exploratory_failure["mode"] == "missing_sham" else 9),
+                "sham_control": ("FAIL" if exploratory_failure["mode"] == "false_sham_pass" else "COMPLETE"),
                 "probes": [{"x": 160, "y": 90}] * 9,
                 "candidates": [{"x": 160, "y": 90}] * 2,
                 "product_gui_controls": "NOT COVERED",
@@ -367,9 +369,11 @@ with tempfile.TemporaryDirectory() as td:
     assert explored["coverage"]["native_gui_exploration"] == "OBSERVATIONS_ONLY"
     assert explored["gui_interaction_candidates"] == 2
     assert explored["observed_gui_probe_points"] == 9
+    assert explored["sham_controlled_gui_probe_points"] == 9
     assert explored["coverage"]["product_gui_controls"] == "NOT COVERED"
     assert explored["release_approved"] is False
-    for bad_mode in ("missing", "wrong_module", "incomplete"):
+    for bad_mode in ("missing", "wrong_module", "incomplete",
+                     "missing_sham", "false_sham_pass"):
         exploratory_failure["mode"] = bad_mode
         broken = quick.run(bundle, host, stress, out,
                            runner=explorer_native, gui_host=gui,
