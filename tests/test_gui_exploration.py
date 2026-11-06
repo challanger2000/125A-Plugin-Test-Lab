@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory() as td:
         if mode == "tamper_binary":
             binary.write_bytes(b"modified mid-test module")
         params = [(9001, 0.0, 1.0)] if (
-            actual_click and mode not in ("inert", "visual_only", "spontaneous")
+            actual_click and mode not in ("inert", "visual_only", "spontaneous", "hover_only")
             or mode == "sham_parameter") else [(9001, 0.0, 0.0)]
         text = ["format\t125A-GUI-EXPLORE-v2",
                 "mode\t" + ("click" if actual_click else "sham"),
@@ -77,7 +77,7 @@ with tempfile.TemporaryDirectory() as td:
         bmp(Path(argv[6]), base)
         bmp(Path(argv[7]), base if mode != "baseline_drift" else (42, 36, 48))
         post = ((12, 142, 85)
-                if (mode in ("spontaneous", "baseline_drift")
+                if (mode in ("spontaneous", "baseline_drift", "hover_only")
                     or (actual_click and mode not in ("stale_paint", "inert", "sham_parameter")))
                 else base)
         bmp(Path(argv[8]), post)
@@ -150,6 +150,12 @@ with tempfile.TemporaryDirectory() as td:
     assert spontaneous["probes"][0]["sham_pixels_changed"] > 0
     assert spontaneous["probes"][0]["classification"] == "UNSTABLE_CONTROL"
     assert spontaneous["candidates"] == [], "spontaneous animation falsely discovered as button"
+
+    hover = inspect("hover_only")
+    assert hover["status"] == "OBSERVATIONS_COMPLETE"
+    assert hover["probes"][0]["sham_pixels_changed"] > 0
+    assert hover["probes"][0]["classification"] == "UNSTABLE_CONTROL"
+    assert hover["candidates"] == [], "hover painted without any actual click change"
 
     sham_parameter = inspect("sham_parameter")
     assert sham_parameter["status"] == "OBSERVATIONS_COMPLETE"
