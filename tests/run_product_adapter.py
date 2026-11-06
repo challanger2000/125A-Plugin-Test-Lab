@@ -21,7 +21,7 @@ BLOCKS = (17, 64, 127, 512, 1024)
 FIELDS = {"format", "plugin", "sample_rate", "block_size", "iterations",
           "callbacks", "process_failures", "set_failures", "save_failures",
           "save_success", "domain_correctness", "result", "timing_certification",
-          "callback_overruns", "callback_p99_ns"}
+          "callback_overruns", "callback_p99_ns", "saves_during_playback"}
 
 
 def digest(path):
@@ -144,6 +144,14 @@ def run(adapter_path, folder, timeout):
                         faults.append("missing/noninteger timing metric: " + metric)
                     else:
                         metrics[metric] = int(value)
+                active_saves = observed.get("saves_during_playback")
+                if active_saves is None or not active_saves.isdecimal():
+                    faults.append("missing measured saves_during_playback")
+                else:
+                    during = int(active_saves)
+                    saves = int(observed.get("save_success", "0"))
+                    if not 0 < during <= saves:
+                        faults.append("no proven saves while audio playback was active")
                 certification = observed.get("timing_certification")
                 if certification not in ("PASS", "FAIL"):
                     faults.append("invalid timing certification")
@@ -160,6 +168,10 @@ def run(adapter_path, folder, timeout):
         except (OSError, AssertionError, ValueError) as exc:
             faults = [str(exc)]
         record = {"id": case["id"], "status": "FAIL" if faults else "PASS",
+                  "measured_active_playback_saves": (
+                      int(active_saves) if "active_saves" in locals() and
+                      isinstance(active_saves, str) and active_saves.isdecimal()
+                      else 0),
                   "faults": faults, "realtime_certification": "NOT COVERED"}
         if "metrics" in locals() and metrics and "certification" in locals():
             record["realtime_certification"] = certification
@@ -167,6 +179,7 @@ def run(adapter_path, folder, timeout):
         results.append(record)
         metrics = {}
         certification = None
+        active_saves = None
     passed = all(c["status"] == "PASS" for c in results)
     rt_certification = ("PASS" if passed and all(
         c["realtime_certification"] == "PASS" for c in results)
