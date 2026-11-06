@@ -65,6 +65,11 @@ def run(plugin, host, out, *, timeout=90, runner=subprocess.run):
                     "status": "FAIL", "sets_during_playback": 0,
                     "saves_during_playback": 0}
             try:
+                # Pin the exact binaries throughout all six cases. A VST3 or
+                # host replaced between callbacks must never inherit PASS
+                # evidence from the initially measured SHA-256.
+                if sha256(modules[0]) != identity or sha256(host) != result["native_host_sha256"]:
+                    raise ValueError("VST3 module or test host changed during replay suite")
                 cmd = [str(host), "--stress", str(plugin), str(state_file),
                        str(rate), str(block), "2500", "none",
                        "--replay-valid-state"]
@@ -72,6 +77,8 @@ def run(plugin, host, out, *, timeout=90, runner=subprocess.run):
                                     text=True, timeout=timeout, errors="replace")
                 output = (run_result.stdout or "") + "\n" + (run_result.stderr or "")
                 log_file.write_text(output, encoding="utf-8")
+                if sha256(modules[0]) != identity or sha256(host) != result["native_host_sha256"]:
+                    raise ValueError("VST3 module or test host changed during replay suite")
                 if not state_file.is_file():
                     raise ValueError("native host did not produce fresh replay evidence")
                 rows = parse(state_file)
