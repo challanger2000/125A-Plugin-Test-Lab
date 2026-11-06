@@ -16,7 +16,7 @@ import subprocess
 import sys
 
 
-NATIVE = "125A-GUI-EXPLORE-v2"
+NATIVE = "125A-GUI-EXPLORE-v3"
 SCHEMA = "125a-gui-exploration-result-v1"
 MAX_PIXELS = 4_194_304
 MAX_POINTS = 16
@@ -86,22 +86,26 @@ def native_evidence(path, x, y, width, height, *, mode):
     lines = Path(path).read_text(encoding="utf-8").splitlines()
     if mode not in ("click", "sham"):
         raise ValueError("unknown GUI exploration control mode")
-    if len(lines) < 6 or lines[0] != "format\t" + NATIVE or (
+    if len(lines) < 7 or lines[0] != "format\t" + NATIVE or (
             lines[1] != "mode\t" + mode) or (
             lines[2] != "coordinate\t%d\t%d" % (x, y)) or (
             lines[3] != "canvas\t%d\t%d" % (width, height)) or (
             lines[-1] != "end\tCOMPLETE"):
         raise ValueError("missing/stale/misattributed native GUI control evidence")
-    fields = lines[4].split("\t")
+    hit = lines[4].split("\t")
+    if len(hit) != 2 or hit[0] != "target_depth":
+        raise ValueError("P43 native child hit depth not reported")
+    depth = positive_int(hit[1], 16)
+    fields = lines[5].split("\t")
     if len(fields) != 2 or fields[0] != "param_count":
         raise ValueError("no declared native GUI parameter observation count")
     count = positive_int(fields[1], 8192)
-    if len(lines) != count + 6:
+    if len(lines) != count + 7:
         raise ValueError("missing/extra native GUI parameter observations")
     ids = set()
     changed = []
     values = {}
-    for index, line in enumerate(lines[5:-1]):
+    for index, line in enumerate(lines[6:-1]):
         parts = line.split("\t")
         if len(parts) != 5 or parts[0] != "param" or (
                 positive_int(parts[1], 8192) != index):
@@ -116,7 +120,7 @@ def native_evidence(path, x, y, width, height, *, mode):
             changed.append({"param_id": identifier,
                             "before_normalized": before,
                             "after_normalized": after})
-    return count, changed, values
+    return count, changed, values, depth
 
 
 def grid_points(width, height, count):
@@ -229,15 +233,17 @@ def run(bundle, gui_host, out, *, points=None, max_points=9,
                     (first_bmp, second_bmp, after_bmp)]
                 if any(p[:2] != (width, height) for p in (a, b, after)):
                     raise ValueError("native %s editor dimensions changed" % mode)
-                total, changed, values = native_evidence(
+                total, changed, values, depth = native_evidence(
                     report, x, y, width, height, mode=mode)
-                captures[mode] = (a, b, after, total, changed, values)
+                captures[mode] = (a, b, after, total, changed, values, depth)
                 if module_hash != digest(binary) or host_hash != digest(host):
                     raise ValueError("VST3 module or host changed during %s control" % mode)
-            sham_a, sham_b, sham_after, sham_total, sham_changes, sham_values = (
+            sham_a, sham_b, sham_after, sham_total, sham_changes, sham_values, sham_depth = (
                 captures["sham"])
-            click_a, click_b, click_after, total, parameters, click_values = (
+            click_a, click_b, click_after, total, parameters, click_values, click_depth = (
                 captures["click"])
+            if sham_depth != click_depth:
+                raise ValueError("P43 sham and actual click routed to different child HWND depths")
             if total != sham_total or set(click_values) != set(sham_values):
                 raise ValueError("native sham and click returned incompatible parameter inventories")
             matching_initial = all(
@@ -268,6 +274,8 @@ def run(bundle, gui_host, out, *, points=None, max_points=9,
                 classification = "NO_OBSERVED_CHANGE"
             observed = {
                 "x": x, "y": y, "classification": classification,
+                "native_child_depth": click_depth,
+                "routed_to_descendant_hwnd": click_depth > 0,
                 "parameters_inspected": total,
                 "changed_parameters": attributed_parameters,
                 "unattributed_parameters_changed": (
@@ -289,6 +297,7 @@ def run(bundle, gui_host, out, *, points=None, max_points=9,
             if attributed_parameters or visual:
                 result["candidates"].append({
                     "x": x, "y": y, "observation": classification,
+                    "native_child_depth": click_depth,
                     "parameter_ids_changed": [
                         p["param_id"] for p in attributed_parameters],
                 })
