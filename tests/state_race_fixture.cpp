@@ -23,6 +23,10 @@ const FUID uid(0x125A3525,0x20261105,0x00002500 + QA_STATE_MODE,0xA5000000 + QA_
 constexpr int32 kA=11, kB=22, kC=33, kD=44;
 struct State {uint32 magic; int32 bank; int32 program; uint32 check;};
 constexpr uint32 magic=0x125A2526;
+#if QA_STATE_MODE==8
+// Deliberate multi-instance defect: shared state among independent instances.
+std::atomic<uint64> globalPair{(uint64(kA)<<32)|uint32(kB)};
+#endif
 void badFixtureWindow() {
     // Deliberately incorrect realtime writer publishes two fields apart.
     // High-resolution delay avoids the 1-16 ms Windows Sleep quantum.
@@ -67,7 +71,9 @@ public:
 #endif
             return kResultFalse;
         }
-#if QA_STATE_MODE==1
+#if QA_STATE_MODE==8
+        globalPair.store((uint64(uint32(s.bank))<<32)|uint32(s.program),std::memory_order_release);
+#elif QA_STATE_MODE==1
         bank_.store(s.bank,std::memory_order_relaxed);
         badFixtureWindow();
         program_.store(s.program,std::memory_order_relaxed);
@@ -83,7 +89,10 @@ public:
             (++saves_ % 5)==0) return kResultFalse;
 #endif
         int32 b,p;
-#if QA_STATE_MODE==1
+#if QA_STATE_MODE==8
+        const auto pair=globalPair.load(std::memory_order_acquire);
+        b=int32(pair>>32);p=int32(uint32(pair));
+#elif QA_STATE_MODE==1
         b=bank_.load(std::memory_order_relaxed);
         std::this_thread::yield();
         p=program_.load(std::memory_order_relaxed);
@@ -108,7 +117,7 @@ public:
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
 #endif
         // Deliberate concurrent WRITE from the audio callback, not just READ.
-#if QA_STATE_MODE!=4 && QA_STATE_MODE!=5
+#if QA_STATE_MODE!=4 && QA_STATE_MODE!=5 && QA_STATE_MODE!=8
         if ((++blocks_ & 3)==0) {
             const bool alternate=(blocks_ & 4)!=0;
             const int32 bank=alternate?kC:kA, program=alternate?kD:kB;
@@ -137,8 +146,12 @@ public:
             const Sample32 v=Sample32(0.25 * std::min(1.0,
                 double(blocks_ * 64) / (0.1 * rate_)));
             ++samples_;
-#elif QA_STATE_MODE==4 || QA_STATE_MODE==5
+#elif QA_STATE_MODE==4 || QA_STATE_MODE==5 || QA_STATE_MODE==8
+#if QA_STATE_MODE==8
+            const auto pair=globalPair.load(std::memory_order_acquire);
+#else
             const auto pair=pair_.load(std::memory_order_acquire);
+#endif
             const auto bank=int32(pair>>32);
             const auto program=int32(uint32(pair));
             const Sample32 v=bank==kA && program==kB ? 0.25f :
@@ -178,6 +191,8 @@ constexpr const char* name="125A QA Recovery Broken Rollback";
 constexpr const char* name="125A QA Wrong Host Block Partition";
 #elif QA_STATE_MODE==7
 constexpr const char* name="125A QA Blocking Audio Callback";
+#elif QA_STATE_MODE==8
+constexpr const char* name="125A QA Broken Multi Instance Global State";
 #endif
 }
 BEGIN_FACTORY_DEF("125A Universal QA","https://github.com/challanger2000","qa@125a.invalid")

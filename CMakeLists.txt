@@ -124,6 +124,23 @@ foreach(mode RANGE 4 5)
   target_compile_definitions(QAStateMode${mode} PRIVATE NOMINMAX QA_STATE_MODE=${mode})
 endforeach()
 
+# Actual same-process two-instance state isolation; deliberately shared-global
+# broken fixture must fail an independent state/PCM oracle.
+add_executable(TestLabInstanceIsolation src/instance_isolation.cpp)
+set_target_properties(TestLabInstanceIsolation PROPERTIES
+    OUTPUT_NAME "125A_Test_Lab_Instance_Isolation")
+target_link_libraries(TestLabInstanceIsolation PRIVATE
+    Vst3WinModule sdk_hosting sdk_common base pluginterfaces)
+target_compile_definitions(TestLabInstanceIsolation PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+if(MSVC)
+  target_compile_options(TestLabInstanceIsolation PRIVATE /W4 /permissive- /utf-8)
+endif()
+smtg_add_vst3plugin(QAStateMode8
+    PACKAGE_NAME "125A_QA_State_8"
+    SOURCES_LIST tests/state_race_fixture.cpp)
+target_link_libraries(QAStateMode8 PRIVATE sdk)
+target_compile_definitions(QAStateMode8 PRIVATE NOMINMAX QA_STATE_MODE=8)
+
 # P27: product-independent time/partition PCM recorder and known-bad
 # block-dependent VST3 synthetic DSP. Expected math remains external.
 add_executable(TestLabRateBlock src/rate_block.cpp)

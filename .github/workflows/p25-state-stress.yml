@@ -27,6 +27,9 @@ on:
       - 'tests/test_product_acceptance.py'
       - 'tests/run_product_qa.py'
       - 'tests/run_plugin_quickcheck.py'
+      - 'src/instance_isolation.cpp'
+      - 'tests/verify_instance_isolation.py'
+      - 'tests/test_instance_isolation.py'
       - 'tests/verify_parameter_inventory.py'
       - 'tests/write_user_report.py'
       - 'tests/test_user_report.py'
@@ -75,7 +78,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick TestLabStateStress TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
+          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick TestLabStateStress TestLabInstanceIsolation QAStateMode8 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -120,6 +123,35 @@ jobs:
           }
           Write-Host '[PASS] P25 eleven real VST3 concurrent playback/state and sample-rate cases, including three deliberate defects'
           exit 0
+      - name: Same-process two-instance VST3 isolation and global-state leakage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $native = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Instance_Isolation.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_4.vst3')
+          $bad = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_8.vst3')
+          if ($native.Count -ne 1 -or $good.Count -ne 1 -or $bad.Count -ne 1) {
+            throw 'Two-instance host or genuine independent/shared-state VST3 fixtures missing'
+          }
+          python tests/test_instance_isolation.py --make-states artifacts/INSTANCE/fixtures
+          if ($LASTEXITCODE -ne 0) { throw 'Independent dual-instance oracle mutation tests failed' }
+          $a = 'artifacts/INSTANCE/fixtures/A.bin'
+          $b = 'artifacts/INSTANCE/fixtures/B.bin'
+          & $native[0].FullName --dual-state $good[0].FullName $a $b artifacts/INSTANCE/good
+          if ($LASTEXITCODE -ne 0) { throw 'Two genuine good VST3 instances did not process in one host' }
+          python tests/verify_instance_isolation.py --folder artifacts/INSTANCE/good --expect good
+          if ($LASTEXITCODE -ne 0) { throw 'Real same-process correct instance independence not proven' }
+          & $native[0].FullName --dual-state $bad[0].FullName $a $b artifacts/INSTANCE/broken
+          if ($LASTEXITCODE -ne 0) { throw 'Shared-global broken plugin did not execute the full native API lifecycle' }
+          python tests/verify_instance_isolation.py --folder artifacts/INSTANCE/broken --expect broken
+          if ($LASTEXITCODE -ne 0) { throw 'Independent oracle failed to detect shared-global-state defect' }
+          $negative = Get-Content artifacts/INSTANCE/broken/INSTANCE-ISOLATION-RESULT.json -Raw | ConvertFrom-Json
+          if ($negative.state_isolation -ne 'FAIL' -or $negative.state_A_matched -ne $false) {
+            throw 'Shared-global-state negative fixture was rejected for an unrelated reason'
+          }
+          Write-Host '[PASS] Two genuine VST3 instances keep separate state/PCM; shared static global state detected'
+          exit 0
+
       - name: P26 real VST3 state rejection, rollback, recovery, independent PCM adapter
         shell: pwsh
         run: |
@@ -455,18 +487,18 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $dir = 'artifacts/PORTABLE'
           New-Item -ItemType Directory -Force $dir | Out-Null
-          foreach ($binaryName in @('125A_Test_Lab_Host.exe','125A_Test_Lab_State_Stress.exe','125A_Test_Lab_GUI.exe')) {
+          foreach ($binaryName in @('125A_Test_Lab_Host.exe','125A_Test_Lab_State_Stress.exe','125A_Test_Lab_GUI.exe','125A_Test_Lab_Instance_Isolation.exe')) {
             $found = @(Get-ChildItem build -Recurse -File -Filter $binaryName)
             if ($found.Count -ne 1) { throw "Portable Test Lab host missing: $binaryName" }
             Copy-Item -LiteralPath $found[0].FullName -Destination "$dir/$binaryName"
           }
-          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_audio_reference.py','verify_parameter_inventory.py')) {
+          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_instance_isolation.py','verify_audio_reference.py','verify_parameter_inventory.py')) {
             if (-not (Test-Path "tests/$script")) { throw "Portable QA script missing: $script" }
             Copy-Item -LiteralPath "tests/$script" -Destination "$dir/$script"
           }
           Copy-Item tests/Run-VST3-Test.cmd "$dir/Run-VST3-Test.cmd"
           Copy-Item docs/ONE-COMMAND-QUICKCHECK.md "$dir/README.md"
-          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py"
+          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_instance_isolation.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py"
           if ($LASTEXITCODE -ne 0) { throw 'Portable Python scripts syntax check failed' }
           python tests/test_user_report.py
           if ($LASTEXITCODE -ne 0) { throw 'German results/report mutation controls failed' }
@@ -501,6 +533,7 @@ jobs:
           name: 125A-Universal-VST3-State-Stress-P25
           path: |
             artifacts/P25/
+            artifacts/INSTANCE/
             artifacts/P26/
             artifacts/P27/
             artifacts/P30/
