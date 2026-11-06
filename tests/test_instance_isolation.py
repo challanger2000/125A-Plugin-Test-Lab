@@ -65,6 +65,7 @@ def mutations():
             assert "duplicate" in str(ex)
         else:
             raise AssertionError("duplicated native PCM proof accepted")
+        synthetic_evidence(good)  # isolate the missing-file negative from duplicate-row fault
         (good/"A-after.bin").unlink()
         try:
             oracle.audit(good,expect="good")
