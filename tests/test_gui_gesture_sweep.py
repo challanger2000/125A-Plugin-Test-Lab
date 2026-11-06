@@ -44,7 +44,7 @@ class GestureSweepTests(unittest.TestCase):
             elif variant == 1:
                 c["checkpoints"][2]["expected_normalized"] = 1.1
             elif variant == 2:
-                c["checkpoints"][2]["expected_normalized"] = .99
+                c["checkpoints"][2]["expected_normalized"] = 1.0
             elif variant == 3:
                 c["checkpoints"][0]["end_x"] = 100
                 c["checkpoints"][0]["end_y"] = 70
