@@ -36,10 +36,17 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_HOVER
 #define QA_GUI_HOVER 0
 #endif
+#ifndef QA_GUI_NESTED
+#define QA_GUI_NESTED 0
+#endif
 
 namespace {
 constexpr ParamID kClickParam = 9001;
-#if QA_GUI_HOVER
+#if QA_GUI_NESTED
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000081, 0xB0000081);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000082, 0xB0000082);
+constexpr const char* kName = "125A Nested Child HWND Button Fixture";
+#elif QA_GUI_HOVER
 const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000071, 0xB0000071);
 const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000072, 0xB0000072);
 constexpr const char* kName = "125A GUI Hover Without Click Fixture";
@@ -112,6 +119,7 @@ private:
     static LRESULT CALLBACK clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM l);
     Controller* owner_{};
     HWND clickWindow_{};
+    HWND nestedButton_{};
     bool hovered_{};
 };
 
@@ -177,7 +185,7 @@ public:
 #if QA_GUI_HOVER
         // A hover effect is not a button click: do not change any state.
         (void)0;
-#elif QA_GUI_TOGGLE
+#elif QA_GUI_TOGGLE || QA_GUI_NESTED
         const auto current = getParamNormalized(kClickParam);
         (void)setParamNormalized(kClickParam, current >= 0.5 ? 0.0 : 1.0);
 #elif !QA_GUI_INERT
@@ -201,6 +209,17 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
         return 0;
     }
 #endif
+#if QA_GUI_NESTED
+    if (message == WM_COMMAND && LOWORD(w) == 43001 &&
+        HIWORD(w) == BN_CLICKED && self && self->owner_ &&
+        reinterpret_cast<HWND>(l) == self->nestedButton_) {
+        // P43 only the genuine Win32 BUTTON child notification may
+        // change the parameter. Root-surface clicks intentionally do not.
+        self->owner_->clicked();
+        InvalidateRect(hwnd, nullptr, TRUE);
+        return 0;
+    }
+#endif
     if (message == WM_KEYDOWN && (w == VK_SPACE || w == VK_RETURN) &&
         self && self->owner_) {
         // True native HWND keyboard input exercises the same semantic toggle
@@ -211,8 +230,10 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
         return 0;
     }
     if (message == WM_LBUTTONUP && self && self->owner_) {
+#if !QA_GUI_NESTED
         self->owner_->clicked();
         InvalidateRect(hwnd, nullptr, TRUE);
+#endif
         return 0;
     }
     if (message == WM_PAINT) {
@@ -252,9 +273,30 @@ tresult PLUGIN_API ClickView::attached(void* parent, FIDString type) {
     clickWindow_ = CreateWindowExW(0, className, L"P04", WS_CHILD | WS_VISIBLE,
                                    0, 0, 320, 180, static_cast<HWND>(parent), nullptr,
                                    GetModuleHandleW(nullptr), this);
+#if QA_GUI_NESTED
+    if (clickWindow_) {
+        // Standard native button is a child of the child-editor HWND.
+        // A mouse message delivered only to the editor surface will
+        // fail to operate this control: this tests true nested hit routing.
+        nestedButton_ = CreateWindowExW(
+            0, L"BUTTON", L"NESTED ON/OFF",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            120, 65, 80, 50, clickWindow_,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(43001)),
+            GetModuleHandleW(nullptr), nullptr);
+        if (!nestedButton_) {
+            DestroyWindow(clickWindow_);
+            clickWindow_ = nullptr;
+        }
+    }
+#endif
     return clickWindow_ ? kResultTrue : kResultFalse;
 }
 tresult PLUGIN_API ClickView::removed() {
+    if (nestedButton_) {
+        DestroyWindow(nestedButton_);
+        nestedButton_ = nullptr;
+    }
     if (clickWindow_) {
         DestroyWindow(clickWindow_);
         clickWindow_ = nullptr;
