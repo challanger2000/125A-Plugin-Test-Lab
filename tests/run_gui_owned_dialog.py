@@ -17,7 +17,7 @@ def digest(path):
     return h.hexdigest()
 
 
-def validate_native(raw):
+def validate_native(raw, *, expect_button=False):
     lines = raw.splitlines()
     if len(lines) < 4 or lines[0] != "format\t125A-OWNED-DIALOG-v1" or lines[-1] != "end\tCOMPLETE":
         raise ValueError("P60 owned-dialog native observation missing or truncated")
@@ -27,18 +27,24 @@ def validate_native(raw):
     if not count.isascii() or not count.isdecimal() or str(int(count)) != count:
         raise ValueError("P60 dialog count malformed")
     number = int(count)
-    if not 0 <= number <= 15 or len(lines) != number + 4:
-        raise ValueError("P60 missing, duplicated or excessive native dialogs")
-    for i, line in enumerate(lines[3:-1]):
+    expected_lines = number + 4 + (1 if expect_button else 0)
+    if not 0 <= number <= 15 or len(lines) != expected_lines:
+        raise ValueError("P60/P61 missing, duplicated or excessive native dialog records")
+    if expect_button and lines[-2] != "button\\t43061\\tButton\\tactioned\\tdialog_closed":
+        raise ValueError("P61 dialog button not independently observed and dismissed")
+    dialog_records = lines[3:3 + number]
+    for i, line in enumerate(dialog_records):
         if line != f"dialog\t{i}\t#32770\tvisible\towned":
             raise ValueError("P60 dialog class, native ownership or order invalid")
     return number
 
 
 def run(plugin, host, out, *, x=160, y=90, acknowledge=False,
-        timeout=35, runner=subprocess.run):
+        timeout=35, runner=subprocess.run, button=False):
     if acknowledge is not True:
-        raise ValueError("P60 requires opt-in to real plugin UI click")
+        raise ValueError("P60/P61 requires opt-in to real plugin UI click")
+    if type(button) is not bool:
+        raise ValueError("P61 native dialog button mode invalid")
     if type(x) is not int or type(y) is not int or not 0 <= x <= 8191 or not 0 <= y <= 8191:
         raise ValueError("P60 invalid approved GUI click coordinate")
     if type(timeout) is not int or not 5 <= timeout <= 120:
@@ -58,13 +64,15 @@ def run(plugin, host, out, *, x=160, y=90, acknowledge=False,
         "verified_module_sha256": module_sha, "verified_host_sha256": host_sha,
         "baseline_owned_dialogs": 0, "observed_owned_dialogs": 0,
         "popup_cleanup": "NOT VERIFIED",
+        "native_dialog_button": "NOT TESTED",
         "custom_painted_popups": "NOT COVERED",
         "blocking_modal_file_dialogs": "NOT COVERED",
         "complete_gui_controls": "NOT COVERED",
         "commercial_daw_sessions": "NOT COVERED", "release_approved": False
     }
     try:
-        p = runner([str(host), "--observe-owned-dialog", str(plugin),
+        p = runner([str(host), "--exercise-owned-dialog-button"
+                    if button else "--observe-owned-dialog", str(plugin),
                     str(x), str(y), str(native)], capture_output=True,
                    text=True, errors="replace", check=False, timeout=timeout)
         (out / "native.log").write_text(
@@ -73,9 +81,12 @@ def run(plugin, host, out, *, x=160, y=90, acknowledge=False,
             raise ValueError("P60 real native editor click or dialog cleanup failed")
         if module_sha != digest(binary[0]) or host_sha != digest(host):
             raise ValueError("P60 native VST3 module or GUI host modified during run")
-        count = validate_native(native.read_text(encoding="utf-8"))
+        count = validate_native(native.read_text(encoding="utf-8"),
+                                expect_button=button)
         report["observed_owned_dialogs"] = count
         report["popup_cleanup"] = "NATIVE_HOST_VERIFIED"
+        if button:
+            report["native_dialog_button"] = "ACTUATED_AND_CLOSED"
         if count != 1:
             raise ValueError("P60 approved UI click did not open exactly one native owned dialog")
         report["status"] = "CONTRACT_PASS"
@@ -93,10 +104,12 @@ def main():
     parser.add_argument("--x", type=int, default=160)
     parser.add_argument("--y", type=int, default=90)
     parser.add_argument("--acknowledge-ui-clicks", action="store_true")
+    parser.add_argument("--exercise-dialog-button", action="store_true")
     args = parser.parse_args()
     try:
         result = run(args.plugin, args.gui_host, args.out, x=args.x, y=args.y,
-                     acknowledge=args.acknowledge_ui_clicks)
+                     acknowledge=args.acknowledge_ui_clicks,
+                     button=args.exercise_dialog_button)
     except (OSError, ValueError, TypeError) as exc:
         args.out.mkdir(parents=True, exist_ok=True)
         result = {"schema": SCHEMA, "status": "FAIL",
