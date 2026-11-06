@@ -22,7 +22,10 @@ Manifest example:
   "gui_host": "C:/QA/125A_Test_Lab_GUI.exe",
   "controls": [
     {"id": "enable_switch", "param_id": 9001,
-     "x": 160, "y": 90, "expected_normalized": 1.0}
+     "x": 160, "y": 90, "expected_normalized": 1.0},
+    {"id": "disable_switch", "param_id": 9001,
+     "x": 160, "y": 90, "initial_normalized": 1.0,
+     "expected_normalized": 0.0}
   ]
 }
 ```
@@ -35,8 +38,23 @@ parameter does not match. The Windows P04 workflow proves the matrix using
 a working genuine VST3 GUI fixture and intentionally inert, wrong-expected
 and out-of-bounds negative controls.
 
-**Explicit limits:** This first generic contract works for click-to-parameter
-controls resettable to zero. It does not infer a plugin's complete clickable
+**Two-way toggles:** A control profile can now supply `initial_normalized`
+(default 0.0) and a distinct `expected_normalized` anywhere in [0, 1].
+The Windows GUI host sets the initial VST3 controller state, dispatches a
+real native mouse click and checks the resulting controller value in **two**
+editor attach/input/detach cycles. This covers both ON and OFF transitions
+using exactly the same shared test engine across current and future plugins:
+
+```powershell
+125A_Test_Lab_GUI.exe --prove-click-at-from Plugin.vst3 9001 160 90 1.0 0.0
+```
+
+Optional painted-pixel checks also accept `initial_normalized` via
+`--prove-click-and-snapshot-from`. Invalid or identical initial/final
+values and missing native evidence fail closed. The CI verifies an actual
+Win32 toggle in both directions and rejects an intentionally inert VST3.
+
+**Explicit limits:** The generic contract does not infer a plugin's complete clickable
 control inventory, visual appearance, draw correctness, drag operations,
 gesture ranges, parameter persistence in the processor, DAW integration,
 or dialog behavior. The report always marks `all_product_controls` as

@@ -257,7 +257,8 @@ void captureEditorBmp(HWND nativeChild, const std::filesystem::path& path) {
 
 void runView(IEditController* controller, int cycle, bool checkClick, ParamID paramID,
              int clickX = -1, int clickY = -1, double expectedValue = 1.0,
-             const std::filesystem::path& screenshot = {}) {
+             const std::filesystem::path& screenshot = {},
+             double initialNormalized = 0.0) {
     IPlugView* view = controller->createView(ViewType::kEditor);
     if (!view) throw std::runtime_error("plugin supplies no editor view (INCONCLUSIVE)");
     bool frameSet = false;
@@ -283,10 +284,15 @@ void runView(IEditController* controller, int cycle, bool checkClick, ParamID pa
         if (checkClick) {
             require(std::isfinite(controller->getParamNormalized(paramID)),
                     "Parameter is not supported by VST3 edit controller");
-            require(controller->setParamNormalized(paramID, 0.0) == kResultTrue,
+            require(std::isfinite(initialNormalized) &&
+                    initialNormalized >= 0.0 && initialNormalized <= 1.0,
+                    "Invalid initial GUI parameter value");
+            require(controller->setParamNormalized(paramID, initialNormalized) == kResultTrue,
                     "Cannot initialize expected GUI parameter");
             const auto before = controller->getParamNormalized(paramID);
-            require(before == 0.0, "Click parameter failed reset to zero");
+            require(std::isfinite(before) &&
+                    std::abs(before - initialNormalized) < 0.00001,
+                    "Click parameter failed reset to requested initial value");
             HWND child = GetWindow(window.get(), GW_CHILD);
             require(child != nullptr && IsWindow(child), "GUI has no native child HWND");
             RECT rect{};
@@ -345,7 +351,8 @@ void runView(IEditController* controller, int cycle, bool checkClick, ParamID pa
 
 int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
         int clickX = -1, int clickY = -1, double expectedValue = 1.0,
-        const std::filesystem::path& screenshot = {}) {
+        const std::filesystem::path& screenshot = {},
+        double initialNormalized = 0.0) {
     std::string error;
     auto module = Module::create(pluginPath, error);
     require(static_cast<bool>(module), ("Cannot load VST3: " + error).c_str());
@@ -365,7 +372,8 @@ int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
             acquireController(component.get(), factory, &host, controller);
             for (int cycle = 1; cycle <= 2; ++cycle)
                 runView(controller.ptr, cycle, checkClick, paramID,
-                        clickX, clickY, expectedValue, screenshot);
+                        clickX, clickY, expectedValue, screenshot,
+                        initialNormalized);
             controller.close();
         }
         require(component->terminate() == kResultOk,
@@ -1835,6 +1843,32 @@ int main(int argc, char** argv) {
             runRealDrumatorGui(argv[2], argv[3], argv[4], argv[5]);
             return 0;
         }
+        if (argc == 8 && std::string(argv[1]) == "--prove-click-at-from") {
+            const int x = std::stoi(argv[4]);
+            const int y = std::stoi(argv[5]);
+            const double initial = std::stod(argv[6]);
+            const double expected = std::stod(argv[7]);
+            require(x >= 0 && y >= 0 && std::isfinite(initial) &&
+                    std::isfinite(expected) && initial >= 0.0 && initial <= 1.0 &&
+                    expected >= 0.0 && expected <= 1.0 &&
+                    std::abs(initial - expected) > 0.00001,
+                    "invalid bidirectional GUI click oracle");
+            return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])),
+                       x, y, expected, {}, initial);
+        }
+        if (argc == 9 && std::string(argv[1]) == "--prove-click-and-snapshot-from") {
+            const int x = std::stoi(argv[4]);
+            const int y = std::stoi(argv[5]);
+            const double initial = std::stod(argv[6]);
+            const double expected = std::stod(argv[7]);
+            require(x >= 0 && y >= 0 && std::isfinite(initial) &&
+                    std::isfinite(expected) && initial >= 0.0 && initial <= 1.0 &&
+                    expected >= 0.0 && expected <= 1.0 &&
+                    std::abs(initial - expected) > 0.00001,
+                    "invalid screenshot click initial/final values");
+            return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])),
+                       x, y, expected, std::filesystem::path(argv[8]), initial);
+        }
         if (argc == 7 && std::string(argv[1]) == "--prove-click-at") {
             const int x = std::stoi(argv[4]);
             const int y = std::stoi(argv[5]);
@@ -1873,6 +1907,8 @@ int main(int argc, char** argv) {
                   << "       125A_Test_Lab_GUI --probe <plugin.vst3>\n"
                   << "       125A_Test_Lab_GUI --prove-click <plugin.vst3> <param-id>\n"
                   << "       125A_Test_Lab_GUI --prove-click-at <plugin.vst3> <param-id> <x> <y> <expected-normalized>\n"
+                  << "       125A_Test_Lab_GUI --prove-click-at-from <plugin.vst3> <param-id> <x> <y> <initial> <expected>\n"
+                  << "       125A_Test_Lab_GUI --prove-click-and-snapshot-from <plugin.vst3> <param-id> <x> <y> <initial> <expected> <output.bmp>\n"
                   << "       125A_Test_Lab_GUI --drumator-beat-creator <plugin.vst3> <before.bin> <cancel.bin> <after.bin>\n"
                   << "       125A_Test_Lab_GUI --drumator-export-dialog-cancel <plugin.vst3> <evidence-folder>\n"
                   << "       125A_Test_Lab_GUI --drumator-export-dialog-save <plugin.vst3> <state.bin> <output-folder>\n"

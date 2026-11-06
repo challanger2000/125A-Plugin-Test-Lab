@@ -85,6 +85,13 @@ smtg_add_vst3plugin(QAGuiBadParam
     SOURCES_LIST tests/gui_fixture.cpp)
 target_link_libraries(QAGuiBadParam PRIVATE sdk user32 gdi32)
 target_compile_definitions(QAGuiBadParam PRIVATE NOMINMAX QA_GUI_BAD_PARAM=1)
+# Real Win32 GUI click fixture that toggles both 0->1 and 1->0.
+smtg_add_vst3plugin(QAGuiToggle
+    PACKAGE_NAME "125A_QA_GUI_Toggle"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiToggle PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiToggle PRIVATE NOMINMAX QA_GUI_TOGGLE=1)
+
 
 
 smtg_add_vst3plugin(QAGuiInert

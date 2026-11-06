@@ -24,10 +24,17 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_BAD_PARAM
 #define QA_GUI_BAD_PARAM 0
 #endif
+#ifndef QA_GUI_TOGGLE
+#define QA_GUI_TOGGLE 0
+#endif
 
 namespace {
 constexpr ParamID kClickParam = 9001;
-#if QA_GUI_BAD_PARAM
+#if QA_GUI_TOGGLE
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000041, 0xB0000041);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000042, 0xB0000042);
+constexpr const char* kName = "125A GUI Bidirectional Toggle Fixture";
+#elif QA_GUI_BAD_PARAM
 const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000031, 0xB0000031);
 const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000032, 0xB0000032);
 constexpr const char* kName = "125A GUI Bad Parameter API Fixture";
@@ -109,7 +116,10 @@ public:
         return new ClickView(this);
     }
     void clicked() {
-#if !QA_GUI_INERT
+#if QA_GUI_TOGGLE
+        const auto current = getParamNormalized(kClickParam);
+        (void)setParamNormalized(kClickParam, current >= 0.5 ? 0.0 : 1.0);
+#elif !QA_GUI_INERT
         (void)setParamNormalized(kClickParam, 1.0);
 #endif
     }
