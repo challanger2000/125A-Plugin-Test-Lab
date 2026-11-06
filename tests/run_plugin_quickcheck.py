@@ -105,6 +105,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "externally_referenced_audio": "NOT COVERED",
             "product_gui_controls": "NOT COVERED",
             "native_gui_lifecycle": "NOT COVERED",
+            "native_parameter_inventory": "NOT COVERED",
             "midi_wav_export": "NOT COVERED",
             "preset_semantics": "NOT COVERED",
             "commercial_daw_integration": "NOT COVERED"
@@ -246,6 +247,33 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         else:
             summary["status"] = "FAIL"
             summary["reason"] = "actual native editor attach/reopen/detach failed"
+    if summary["status"] == "TECHNICAL_PASS" and gui_host is not None:
+        from verify_parameter_inventory import audit as audit_parameters
+        inventory_file = out / "native-parameters.tsv"
+        inventory_file.unlink(missing_ok=True)
+        inventory_proc = runner([str(gui_host), "--inventory-parameters",
+                                 str(bundle), str(inventory_file)],
+                                capture_output=True, text=True, timeout=timeout,
+                                check=False, errors="replace")
+        inventory_log = (inventory_proc.stdout or "") + "\n" + (inventory_proc.stderr or "")
+        (out / "native-parameters.log").write_text(inventory_log, encoding="utf-8")
+        if inventory_proc.returncode == 10 and "[INCONCLUSIVE]" in inventory_log:
+            summary["coverage"]["native_parameter_inventory"] = "NOT COVERED"
+        elif inventory_proc.returncode != 0 or not inventory_file.is_file():
+            summary["status"] = "FAIL"
+            summary["reason"] = "native VST3 parameter enumeration failed or produced no new evidence"
+        else:
+            try:
+                observed = audit_parameters(inventory_file)
+                count = observed["advertised_parameters"]
+                expected = "[PASS] VST3 parameter inventory verified %d unique parameters" % count
+                if expected not in inventory_log:
+                    raise ValueError("native VST3 parameter inventory count not independently observed")
+                summary["coverage"]["native_parameter_inventory"] = "PASS"
+                summary["advertised_vst3_parameters"] = count
+            except (ValueError, OSError, OverflowError) as error:
+                summary["status"] = "FAIL"
+                summary["reason"] = "invalid native VST3 parameter inventory: " + str(error)
     if summary["status"] == "TECHNICAL_PASS" and gui_controls is not None:
         control_spec = json.loads(Path(gui_controls).read_text(encoding="utf-8"))
         if not isinstance(control_spec, dict) or set(control_spec) != {"controls"}:
