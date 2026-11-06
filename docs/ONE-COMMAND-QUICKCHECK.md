@@ -10,8 +10,9 @@ The universal P41 GUI explorer now performs **two disposable VST3 process
 runs per coordinate**:
 
 1. A **sham** run uses the same editor attach, message-pump timing, parameter
-   snapshots and three real HWND captures but does **not send any mouse
-   input**.
+   snapshots and three real HWND captures. It sends the **same WM_MOUSEMOVE**
+   as the click run (to control for hover-only feedback), but sends **no
+   mouse-button down/up**.
 2. A separate actual **click** run captures the same evidence after real
    Win32 mouse down/up.
 
@@ -21,6 +22,12 @@ in the sham, and post-click-versus-sham pixels. When the sham itself shows
 animation or parameter changes, or the starting states disagree, the result
 is `UNSTABLE_CONTROL` and **no discovered-control candidate is emitted**.
 Otherwise genuine controller/painted transitions are classified as before.
+
+A source-built real VST3 **hover-only** fixture is included in Windows CI:
+its painted highlight changes under both sham and click, but no controller
+parameter changes, so it must never be reported as a clickable candidate.
+Separate adversarial tests model spontaneous animation and background
+parameter automation. A mere hover highlight is not button operation.
 
 The native evidence format is versioned as `125A-GUI-EXPLORE-v2` and names
 each run `mode=sham` or `mode=click`; missing, mismatched or forged
