@@ -422,6 +422,8 @@ with tempfile.TemporaryDirectory() as td:
     workflow_file.write_text(json.dumps(workflow_spec), encoding="utf-8")
 
     def gui_not_available(cmd, **kwargs):
+        if cmd[1] == "--verify-parameter-text":
+            return subprocess.CompletedProcess(cmd, 10, "", "[INCONCLUSIVE] no controller")
         if cmd[1] == "--sweep-parameters":
             return subprocess.CompletedProcess(cmd, 10, "", "[INCONCLUSIVE] no controller")
         if cmd[1] == "--inventory-parameters":
