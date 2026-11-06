@@ -156,4 +156,20 @@ with tempfile.TemporaryDirectory() as work:
     assert check("reversible")["status"] == "FAIL"
     report.write_text(original, encoding="utf-8")
 
+    # Previously observed RGB samples are not automatically trusted merely
+    # because their JSON says the sham was complete.
+    import json
+    original_data = json.loads(original)
+    original_data["probes"][0]["pixel_localization"]["regions"][0]["sample"][
+        "after_rgb"] = [9, 9, 9]
+    report.write_text(json.dumps(original_data), encoding="utf-8")
+    assert check("reversible")["status"] == "FAIL"
+    report.write_text(original, encoding="utf-8")
+
+    screenshot = root / "exploration" / "probe-00" / "click-after.bmp"
+    image_bytes = screenshot.read_bytes()
+    screenshot.write_bytes(image_bytes[:80])
+    assert check("reversible")["status"] == "FAIL"
+    screenshot.write_bytes(image_bytes)
+
 print("[PASS] P45 native A/B/A observes real two-way transitions, false success rejected")
