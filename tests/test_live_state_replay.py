@@ -30,6 +30,10 @@ with tempfile.TemporaryDirectory() as temp:
         rate=int(cmd[4]);block=int(cmd[5])
         if mode["current"]=="missing":
             return subprocess.CompletedProcess(cmd,0,"[PASS] universal VST3 live process/set/get","")
+        if mode["current"]=="changed_module":
+            processor.write_bytes(b"modified plugin after initial identity check")
+        elif mode["current"]=="changed_host":
+            host.write_bytes(b"modified host after initial identity check")
         values={
             "format":"125A-P25-v1", "plugin":cmd[2],
             "sample_rate":rate, "block_size":block,"iterations":2500,
@@ -80,4 +84,19 @@ with tempfile.TemporaryDirectory() as temp:
         assert all(x["status"]=="FAIL" for x in failed["cases"]),label
         assert failed["release_approved"] is False,label
 
-print("[PASS] replay only accepts 6 fresh genuine-mode 500-setState/500-save/2500-audio proofs")
+    # An apparently successful host must not certify another module or
+    # executable that replaced the SHA-256-pinned input during a test run.
+    original_module = b"test module binary exact identity"
+    original_host = b"native host identity"
+    for label in ("changed_module", "changed_host"):
+        processor.write_bytes(original_module)
+        host.write_bytes(original_host)
+        mode["current"] = label
+        failed = live.run(bundle, host, out, runner=mock_native)
+        assert failed["status"] == "FAIL", label
+        assert all(case["status"] == "FAIL" for case in failed["cases"]), label
+        assert "changed during replay" in failed["cases"][0]["reason"], label
+    processor.write_bytes(original_module)
+    host.write_bytes(original_host)
+
+print("[PASS] replay accepts only immutable binaries and 6 fresh 500-state/500-save/2500-audio proofs")
