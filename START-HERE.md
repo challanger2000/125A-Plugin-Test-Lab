@@ -1,5 +1,15 @@
 # START HERE — 125A Plugin Test Lab
 
+## Latest universal P41 automatic GUI exploration — 6 November 2026
+
+**Verified source and Windows evidence:** [merged PR #66](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/66), [P25 Windows run 42176006331](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42176006331). The exact PR commit `506cd9118f18b79d32ae122697eac83f8f7357b8` passed **P02, P03, P04 and P25 Windows CI**; the P25 artifact `125A-Universal-VST3-State-Stress-P25` includes the portable GUI explorer runner.
+
+**P41 requires no product-specific control map:** With explicit opt-in, `tests/run_gui_exploration.py` obtains the plugin's actual HWND viewport and tries a bounded 3×3 grid of *real Win32 clicks*, one per fresh disposable VST3 process, while taking two baseline screenshots and one post-click screenshot. It records every controller parameter before and after the click, compares real painted RGB pixels, and flags only **observed interaction candidates**. Distinguishes changes to parameters/pixels, inert or out-of-control coordinates, and unstable painted baselines. Real native positive, inert and stale-paint VST3 fixtures were verified in CI; forged/truncated/stale evidence and timeouts fail. Defaults to nine clicks; maximum sixteen.
+
+**Usage and safety:** this is a deliberate *potentially action-triggering* exploration. In the one-command Windows QA runner use `--gui-host <native-host> --gui-explore --acknowledge-gui-explore`; or run `tests/run_gui_exploration.py --plugin <bundle.vst3> --gui-host <host.exe> --out <results> --acknowledge-ui-clicks`. Only run on trusted, disposable test instances, because an unknown button could open a dialog or write a file. The results are `OBSERVATIONS_ONLY`, **never a green product GUI or release certification**. A click without a visible or parameter change is not proof of a broken button. The core is universal, not Drumator/AWE-specific, and neither product repository was changed.
+
+**GitHub Actions:** no Python installation is required on the user's PC when using the Windows CI runner. The optional local portable launcher still requires Python.
+
 ## Current Windows-tested P40 value-label QA — 6 November 2026
 
 **Current verified common test lab:** [merged PR #65](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/65). The exact feature commit `beea15a716240b47d909c2d7639d9bb92f201b94` passed **P02, P03, P04, P25 and P29 Windows CI**. [Windows P25 evidence, including portable test kit](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42174156173) → artifact `125A-Universal-VST3-State-Stress-P25`. No Drumator or AWE production source was modified.
