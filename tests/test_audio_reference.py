@@ -31,7 +31,6 @@ with tempfile.TemporaryDirectory() as folder:
     expected = root / "expected.wav"
     make_expected(expected)
     assert oracle.compare(expected, expected, root / "good")["status"] == "PASS"
-    assert oracle.compare(expected, expected, root / "bad-reference", 129) if False else True
     raw = bytearray(expected.read_bytes())
     raw[-100] ^= 127
     changed = root / "mutated.wav"
