@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory() as td:
     def native(cmd, **_):
         seen.append(list(cmd))
         assert cmd[1] == "--prove-click-at-from", cmd
-        assert cmd[2] == str(bundle), cmd
+        assert Path(cmd[2]).samefile(bundle), (cmd, str(bundle))
         assert cmd[3:6] == ["9001", "100", "90"], cmd
         assert cmd[6:8] in (["0.0", "1.0"], ["1.0", "0.0"]), cmd
         before, after = cmd[6:8]
