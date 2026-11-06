@@ -39,6 +39,12 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_HOVER
 #define QA_GUI_HOVER 0
 #endif
+#ifndef QA_GUI_DIALOG_GOOD
+#define QA_GUI_DIALOG_GOOD 0
+#endif
+#ifndef QA_GUI_DIALOG_BAD
+#define QA_GUI_DIALOG_BAD 0
+#endif
 #ifndef QA_GUI_NESTED
 #define QA_GUI_NESTED 0
 #endif
@@ -162,7 +168,15 @@ bool writeFixtureMidi() {
 }
 #endif
 
-#if QA_GUI_ANALOG_GOOD
+#if QA_GUI_DIALOG_GOOD
+const FUID kProcessorCID(0x125A2026, 0x11060002, 0xA0000B11, 0xB0000B11);
+const FUID kControllerCID(0x125A2026, 0x11060002, 0xA0000B12, 0xB0000B12);
+constexpr const char* kName = "125A Native Owned Dialog Good Fixture";
+#elif QA_GUI_DIALOG_BAD
+const FUID kProcessorCID(0x125A2026, 0x11060002, 0xA0000B21, 0xB0000B21);
+const FUID kControllerCID(0x125A2026, 0x11060002, 0xA0000B22, 0xB0000B22);
+constexpr const char* kName = "125A Native Owned Dialog Missing Fixture";
+#elif QA_GUI_ANALOG_GOOD
 const FUID kProcessorCID(0x125A2026, 0x11060001, 0xA0000A11, 0xB0000A11);
 const FUID kControllerCID(0x125A2026, 0x11060001, 0xA0000A12, 0xB0000A12);
 constexpr const char* kName = "125A Analog GUI Continuous Control Fixture";
@@ -268,6 +282,7 @@ private:
     Controller* owner_{};
     HWND clickWindow_{};
     HWND nestedButton_{};
+    HWND dialogWindow_{};
     bool hovered_{};
     bool paintedActive_{};
     bool draggingAnalog_{};
@@ -425,7 +440,22 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
     }
 #endif
     if (message == WM_LBUTTONUP && self && self->owner_) {
-#if QA_GUI_PAINTED_ONLY
+#if QA_GUI_DIALOG_GOOD
+        if (!self->dialogWindow_) {
+            self->dialogWindow_ = CreateWindowExW(
+                WS_EX_DLGMODALFRAME, L"#32770", L"P60 Plugin Test Dialog",
+                WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+                CW_USEDEFAULT, CW_USEDEFAULT, 320, 180, hwnd, nullptr,
+                GetModuleHandleW(nullptr), nullptr);
+        }
+        self->owner_->clicked();
+        return 0;
+#elif QA_GUI_DIALOG_BAD
+        // Deliberately changes an advertised VST3 parameter WITHOUT
+        // opening the required native dialog.
+        self->owner_->clicked();
+        return 0;
+#elif QA_GUI_PAINTED_ONLY
         // This genuinely custom-painted toggle exists *only* inside a
         // single HWND. It changes NO VST3 parameter or audio state.
         // P44 must detect its local pixels without inventing semantics.
@@ -510,6 +540,10 @@ tresult PLUGIN_API ClickView::attached(void* parent, FIDString type) {
     return clickWindow_ ? kResultTrue : kResultFalse;
 }
 tresult PLUGIN_API ClickView::removed() {
+    if (dialogWindow_ && IsWindow(dialogWindow_)) {
+        DestroyWindow(dialogWindow_);
+        dialogWindow_ = nullptr;
+    }
     if (nestedButton_) {
         DestroyWindow(nestedButton_);
         nestedButton_ = nullptr;
