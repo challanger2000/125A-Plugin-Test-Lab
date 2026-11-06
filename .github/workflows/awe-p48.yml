@@ -65,7 +65,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           cmake -S awe-src -B build-awe -G "Visual Studio 17 2022" -A x64 -D125A_BUILD_VST3=ON -D125A_BUILD_ENGINE_PROBES=ON -D125A_BUILD_EDITORHOST_TEST=ON
           if ($LASTEXITCODE -ne 0) { throw 'Real AWE configure failed' }
-          cmake --build build-awe --config Release --parallel 2
+          # The AWE CMake test targets share build-awe/p128-generated/ProcessorUnderTest.h.\n          # Parallel MSBuild re-enters the same generator and sporadically raises\n          # PermissionError [Errno 13] on Windows. Serialize this product build.\n          cmake --build build-awe --config Release --parallel 1
           if ($LASTEXITCODE -ne 0) { throw 'Real AWE Windows build failed' }
 
       - name: Run entire actual AWE CTest suite
