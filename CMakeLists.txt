@@ -334,6 +334,16 @@ smtg_add_vst3plugin(QAGuiDialogNoButton
 target_link_libraries(QAGuiDialogNoButton PRIVATE sdk user32 gdi32)
 target_compile_definitions(QAGuiDialogNoButton PRIVATE NOMINMAX QA_GUI_DIALOG_NO_BUTTON=1)
 
+# P62: actual menu declaration and command routing positive/negative VST3s.
+foreach(kind IN ITEMS Good Bad)
+  smtg_add_vst3plugin(QAGuiMenu${kind}
+      PACKAGE_NAME "125A_QA_GUI_Menu${kind}"
+      SOURCES_LIST tests/gui_fixture.cpp)
+  target_link_libraries(QAGuiMenu${kind} PRIVATE sdk user32 gdi32)
+endforeach()
+target_compile_definitions(QAGuiMenuGood PRIVATE NOMINMAX QA_GUI_MENU_GOOD=1)
+target_compile_definitions(QAGuiMenuBad PRIVATE NOMINMAX QA_GUI_MENU_BAD=1)
+
 # P58: optional actual Windows ASIO driver host. The ASIO SDK is NOT shipped
 # in the Test Lab; supply separately under its applicable license.
 set(ASIO_SDK_DIR "" CACHE PATH "Path containing Steinberg ASIO SDK common/asio.h")

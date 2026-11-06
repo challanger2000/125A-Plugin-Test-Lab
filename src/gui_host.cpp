@@ -1021,7 +1021,8 @@ std::vector<HWND> ownedDialogs(HWND host, HWND editor) {
 }
 int observeOwnedDialog(const std::string& pluginPath, int x, int y,
                        const std::filesystem::path& reportPath,
-                       bool exerciseButton = false) {
+                       bool exerciseButton = false,
+                       bool exerciseMenu = false) {
     require(x >= 0 && x < 8192 && y >= 0 && y < 8192,
             "P60 click coordinates outside approved bound");
     std::string error;
@@ -1087,6 +1088,31 @@ int observeOwnedDialog(const std::string& pluginPath, int x, int y,
                             wcscmp(clsName, L"#32770") == 0,
                             "P60 observed window is not an OS dialog");
                     out << "dialog\t" << i << "\t#32770\tvisible\towned\n";
+                }
+                if (exerciseMenu) {
+                    require(after.size() == 1,
+                            "P62 expected one actual native dialog for menu audit");
+                    HWND popup = after.front();
+                    HMENU menu = GetMenu(popup);
+                    require(menu && IsMenu(menu) && GetMenuItemCount(menu) == 1,
+                            "P62 actual Win32 menu is absent or structurally invalid");
+                    require(GetMenuItemID(menu, 0) == 43062,
+                            "P62 expected native menu command 43062 missing");
+                    const UINT state = GetMenuState(menu, 0, MF_BYPOSITION);
+                    require(state != static_cast<UINT>(-1) &&
+                            (state & (MF_DISABLED | MF_GRAYED)) == 0,
+                            "P62 native menu entry disabled or unavailable");
+                    wchar_t text[128]{};
+                    require(GetMenuStringW(menu, 0, text, 128, MF_BYPOSITION) > 0 &&
+                            wcscmp(text, L"Apply Preset") == 0,
+                            "P62 native menu item label does not match test contract");
+                    // Command dispatch exercises the genuine menu owner handler,
+                    // NOT OS cursor selection; the report must not claim otherwise.
+                    (void)SendMessageW(popup, WM_COMMAND, MAKEWPARAM(43062, 0), 0);
+                    pump(75);
+                    require(ownedDialogs(window.get(), editor).empty(),
+                            "P62 native menu command did not close owned dialog");
+                    out << "menu\t43062\tApply Preset\tenabled\tcommand_dispatched\tdialog_closed\n";
                 }
                 if (exerciseButton) {
                     require(after.size() == 1, "P61 exactly one real dialog required");
@@ -2882,6 +2908,9 @@ int main(int argc, char** argv) {
             return sweepParameters(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "--verify-parameter-text")
             return verifyParameterText(argv[2], argv[3]);
+        if (argc == 6 && std::string(argv[1]) == "--audit-owned-dialog-menu")
+            return observeOwnedDialog(argv[2], std::stoi(argv[3]),
+                                      std::stoi(argv[4]), argv[5], false, true);
         if (argc == 6 && std::string(argv[1]) == "--exercise-owned-dialog-button")
             return observeOwnedDialog(argv[2], std::stoi(argv[3]),
                                       std::stoi(argv[4]), argv[5], true);
