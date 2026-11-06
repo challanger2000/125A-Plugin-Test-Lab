@@ -110,7 +110,9 @@ def check(request, output, runner=subprocess.run, timeout=120):
             return report
         report["audio_determinism"] = "PASS"
     if ref is not None:
-        if first != ref:
+        # Each fresh process must independently match the approved reference.
+        # Matching only run 1 could silently certify a broken second recall.
+        if first != ref or second != ref:
             report["musical_correctness"] = "FAIL"
             report["error"] = "independent PCM reference mismatch"
             return report

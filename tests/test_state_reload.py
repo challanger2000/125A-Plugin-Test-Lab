@@ -74,6 +74,36 @@ with tempfile.TemporaryDirectory() as td:
     assert result["status"] == "FAIL" and result["musical_correctness"] == "FAIL"
     del product["expected_audio_sha256"]
 
+    # A valid first host may hide a broken second fresh-process recall.
+    # Pin an actual independent reference and require BOTH outputs to match.
+    reference_out = root / "reference_capture"
+    result = recall.check(product, reference_out, runner=fake_host)
+    assert result["status"] == "PASS"
+    product["expected_audio_sha256"] = result["artifacts"]["1"]["wav_sha256"]
+    second_calls = []
+
+    def bad_second_audio(cmd, **kwargs):
+        second_calls.append(cmd)
+        outcome = fake_host(cmd, **kwargs)
+        if len(second_calls) == 2:
+            wav = Path(cmd[4])
+            with wave.open(str(wav), "wb") as w:
+                w.setnchannels(2)
+                w.setframerate(44100)
+                w.setsampwidth(3)
+                w.writeframes(b"\x01" * (352800 * 2 * 3))
+        return outcome
+
+    product["deterministic_audio"] = False
+    result = recall.check(product, root / "second_bad_pcm", runner=bad_second_audio)
+    assert result["status"] == "FAIL", "second host PCM escaped independent reference"
+    assert result["fresh_process_recall"] == "PASS"
+    assert result["musical_correctness"] == "FAIL"
+    assert result["audio_determinism"] == "NOT COVERED"
+    assert result["new_process_instances"] == 2
+    product["deterministic_audio"] = True
+    del product["expected_audio_sha256"]
+
     def absent(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 0, "", "")
     result = recall.check(product, out, runner=absent)
