@@ -145,6 +145,9 @@ def parse(data: bytes) -> Parsed:
 
 def validate(data: bytes, mode: str, bpm: int, swing: int) -> dict:
     p = parse(data)
+    check(p.format == 1 and p.tracks == 17,
+          f"V1.5 export regression: expected one SMF Type-1 with 17 tracks, "
+          f"got format={p.format}, tracks={p.tracks}")
     target_tempo = round(60_000_000 / bpm)
     check(p.tempo == [(0, target_tempo)],
           f"tempo metadata mismatch {p.tempo} != {[(0, target_tempo)]}")
