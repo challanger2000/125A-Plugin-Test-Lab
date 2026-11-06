@@ -131,6 +131,22 @@ smtg_add_vst3plugin(QAGuiPaintedOnly
 target_link_libraries(QAGuiPaintedOnly PRIVATE sdk user32 gdi32)
 target_compile_definitions(QAGuiPaintedOnly PRIVATE NOMINMAX QA_GUI_PAINTED_ONLY=1)
 
+# P46: Real native VST3 editor exports valid/WAV-but-wrong PCM on click.
+# Both plugins expose the SAME passing GUI parameter, so only independent
+# file/PCM verification can distinguish the semantic defect.
+smtg_add_vst3plugin(QAGuiExportGood
+    PACKAGE_NAME "125A_QA_GUI_ExportGood"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiExportGood PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiExportGood PRIVATE NOMINMAX QA_GUI_EXPORT_GOOD=1)
+
+smtg_add_vst3plugin(QAGuiExportBad
+    PACKAGE_NAME "125A_QA_GUI_ExportBad"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiExportBad PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiExportBad PRIVATE NOMINMAX QA_GUI_EXPORT_BAD=1)
+
+
 
 
 
