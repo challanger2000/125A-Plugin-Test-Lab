@@ -637,20 +637,22 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                         rect.bottom <= 4096, "P41 invalid real editor geometry");
                 require(clickX < rect.right && clickY < rect.bottom,
                         "P41 click would fall outside real editor");
+                // First settle actual hover state in BOTH fresh native
+                // instances. Capturing the initial baseline *before*
+                // WM_MOUSEMOVE made normal hover highlights appear as
+                // spontaneous sham updates and hid legitimate buttons.
+                const auto hit = resolveGuiHitTarget(child, clickX, clickY);
+                const LPARAM point = MAKELPARAM(hit.point.x, hit.point.y);
+                SendMessageW(hit.window, WM_MOUSEMOVE, 0, point);
+                pump(80);
                 InvalidateRect(child, nullptr, TRUE);
                 (void)UpdateWindow(child);
                 pump(40);
                 captureEditorBmp(child, baselineFirst);
                 pump(80);
                 captureEditorBmp(child, baselineSecond);
-                // Send the SAME mouse motion to both modes: a hover
-                // highlight must NOT be misattributed to a click. Only
-                // the real-click run receives button down/up. Both modes
-                // keep exactly the same dwell and repaint timing.
-                const auto hit = resolveGuiHitTarget(child, clickX, clickY);
-                const LPARAM point = MAKELPARAM(hit.point.x, hit.point.y);
-                // Both sham and click use the SAME deepest native HWND and
-                // the same mouse-move; only the actual click adds down/up.
+                // Send the SAME pointer motion to sham and real-click:
+                // only button down/up distinguishes the intervention.
                 SendMessageW(hit.window, WM_MOUSEMOVE, 0, point);
                 if (performClick) {
                     SendMessageW(hit.window, WM_LBUTTONDOWN, MK_LBUTTON, point);
