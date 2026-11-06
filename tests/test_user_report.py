@@ -33,7 +33,7 @@ assert "Angezeigte Parametertexte der VST3-Schnittstelle" in page
 assert "Parametertexte wieder in korrekte Werte umwandeln" in page
 assert "Mehrstufige Maus- und Tastaturbedienung" in page
 assert "Nur visuell belegte Buttons" in page
-assert "Automatische GUI-Erkundung" in page
+assert "GUI-Erkundung mit unabhängigen Klick-/Nichtklick-Kontrollen" in page
 assert page.count("BESTANDEN") == 5
 enriched = dict(passed)
 enriched["coverage"] = dict(passed["coverage"])
@@ -90,7 +90,7 @@ exploratory = dict(passed)
 exploratory["coverage"] = dict(passed["coverage"])
 exploratory["coverage"]["native_gui_exploration"] = "OBSERVATIONS_ONLY"
 page = report.report_html(exploratory)
-assert "Automatische GUI-Erkundung" in page
+assert "GUI-Erkundung mit unabhängigen Klick-/Nichtklick-Kontrollen" in page
 assert "BEOBACHTET (NICHT VERIFIZIERT)" in page
 assert page.count("BESTANDEN") == 5
 assert "KEINE PRODUKTFREIGABE" in page
