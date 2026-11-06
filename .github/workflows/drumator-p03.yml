@@ -54,8 +54,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: challanger2000/125A-Drumator-Final
-          # PR checks use pinned benchmark; manual actions use selected ref.
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.drumator_ref || 'eed1bf232b61f6fb725ca00d82a99658cfba07e2' }}
+          # PR checks MUST exercise the exact independently CI-verified 6 Nov V1.5 GUI-polish release source.
+          # Manual actions may use a different explicit branch/commit but are never confused with release SHA.
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.drumator_ref || '3f1e82c99e716071486fa73b81c3e4f062400276' }}
           path: drumator-src
           persist-credentials: false
 
@@ -70,7 +71,7 @@ jobs:
             throw "Invalid resolved product SHA: $actual"
           }
           if ($env:GITHUB_EVENT_NAME -ne 'workflow_dispatch' -and
-              $actual -cne 'eed1bf232b61f6fb725ca00d82a99658cfba07e2') {
+              $actual -cne '3f1e82c99e716071486fa73b81c3e4f062400276') {
             throw "PR benchmark revision changed unexpectedly: $actual"
           }
           if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
