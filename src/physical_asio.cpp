@@ -255,6 +255,14 @@ int formatSelfTest() {
             ensure(middle == .5f, "ASIO float32 sample conversion wrong");
         }
     }
+    std::array<unsigned char, 32> limited{};
+    bool limitedOkay = true;
+    writeAsioSamples(limited.data(), ASIOSTFloat32LSB,
+                     values.data(), 3, limitedOkay, 0.10);
+    float capped{};
+    std::memcpy(&capped, limited.data() + sizeof(float), sizeof(float));
+    ensure(limitedOkay && std::abs(capped - .10f) < 0.000001f,
+           "P59 hardware-output safety ceiling ineffective");
     std::array<unsigned char, 32> buffer{};
     const std::array<float, 1> invalid{std::numeric_limits<float>::quiet_NaN()};
     bool good = true;
