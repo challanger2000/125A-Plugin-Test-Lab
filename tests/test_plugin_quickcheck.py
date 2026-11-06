@@ -404,6 +404,70 @@ with tempfile.TemporaryDirectory() as td:
         assert broken["coverage"]["native_gui_exploration"] == "FAIL"
     exploratory_failure["mode"] = None
 
+    # P45 must never run arbitrary double-clicks without *both* explicit
+    # exploration and its existing user consent.
+    try:
+        quick.run(bundle, host, stress, out, runner=explorer_native,
+                  gui_host=gui, gui_roundtrip=True)
+    except ValueError as error:
+        assert "opt-in" in str(error)
+    else:
+        raise AssertionError("P45 unconsented native GUI double-click accepted")
+
+    roundtrip_failure = {"mode": None}
+
+    def replay_native(cmd, **kwargs):
+        if cmd[1].endswith("run_gui_roundtrip.py"):
+            target = Path(cmd[cmd.index("--out") + 1])
+            target.mkdir(parents=True, exist_ok=True)
+            if roundtrip_failure["mode"] == "missing":
+                return subprocess.CompletedProcess(cmd, 0, "fake green", "")
+            r = {
+                "schema": "125a-gui-roundtrip-observations-v1",
+                "status": "OBSERVATIONS_COMPLETE",
+                "verified_module_sha256": sha,
+                "verified_gui_host_sha256": hashlib.sha256(gui.read_bytes()).hexdigest(),
+                "tested_candidates": 2, "observed_reversible": 1,
+                "observed_nonreversible": 1, "not_reproduced": 0,
+                "cases": [{"classification": "OBSERVED_REVERSIBLE"},
+                          {"classification": "OBSERVED_NONREVERSIBLE"}],
+                "independent_product_semantics": "NOT COVERED",
+                "product_gui_controls": "NOT COVERED",
+                "release_approved": False
+            }
+            if roundtrip_failure["mode"] == "wrong_hash":
+                r["verified_module_sha256"] = "f" * 64
+            if roundtrip_failure["mode"] == "wrong_count":
+                r["tested_candidates"] = 1
+            if roundtrip_failure["mode"] == "fake_release":
+                r["release_approved"] = True
+            if roundtrip_failure["mode"] == "fake_semantics":
+                r["independent_product_semantics"] = "PASS"
+            (target / "GUI-ROUNDTRIP-RESULT.json").write_text(
+                json.dumps(r), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "[OBSERVATIONS_COMPLETE]", "")
+        return explorer_native(cmd, **kwargs)
+
+    two_way = quick.run(bundle, host, stress, out, runner=replay_native,
+                        gui_host=gui, gui_explore=True,
+                        acknowledge_gui_explore=True, gui_roundtrip=True)
+    assert two_way["status"] == "TECHNICAL_PASS"
+    assert two_way["coverage"]["native_gui_bidirectional_observation"] == "OBSERVATIONS_ONLY"
+    assert two_way["gui_observed_reversible"] == 1
+    assert two_way["gui_observed_nonreversible"] == 1
+    assert two_way["coverage"]["product_gui_controls"] == "NOT COVERED"
+    assert two_way["release_approved"] is False
+    for bad_mode in ("missing", "wrong_hash", "wrong_count",
+                     "fake_release", "fake_semantics"):
+        roundtrip_failure["mode"] = bad_mode
+        fake = quick.run(bundle, host, stress, out, runner=replay_native,
+                         gui_host=gui, gui_explore=True,
+                         acknowledge_gui_explore=True, gui_roundtrip=True)
+        assert fake["status"] == "FAIL", (bad_mode, fake)
+        assert fake["coverage"]["native_gui_bidirectional_observation"] == "FAIL"
+        assert fake["release_approved"] is False
+    roundtrip_failure["mode"] = None
+
     # Product-independent click/drag sequences require a declared oracle;
     # a successful native host alone must never imply every button was tested.
     workflow_file = root / "approved-gui-workflow.json"
