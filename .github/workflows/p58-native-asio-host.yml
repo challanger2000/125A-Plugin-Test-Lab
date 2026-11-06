@@ -41,6 +41,8 @@ jobs:
           $hostExe = @(Get-ChildItem build-p58 -Recurse -File -Filter '125A_Test_Lab_Physical_ASIO.exe')
           if ($hostExe.Count -ne 1) { throw 'P58 native executor not produced' }
           New-Item -ItemType Directory -Force artifacts/P58 | Out-Null
+          & $hostExe[0].FullName --sample-format-selftest
+          if ($LASTEXITCODE -ne 0) { throw 'P58 native hardware-format conversion selftest failed' }
           # Negative A: no plugin DLL may be accepted.
           $PSNativeCommandUseErrorActionPreference = $false
           $argv = @(
