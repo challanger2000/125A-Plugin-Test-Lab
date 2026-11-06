@@ -638,7 +638,9 @@ jobs:
             @{id='drag_on';action='drag';x=100;y=90;end_x=160;end_y=90;param_id=9001;before_normalized=0.0;expected_normalized=1.0;screenshot=$true;expected_pixel=@{x=10;y=10;rgb=@(12,142,85)}},
             @{id='drag_off';action='drag';x=100;y=90;end_x=160;end_y=90;param_id=9001;before_normalized=1.0;expected_normalized=0.0;screenshot=$true;expected_pixel=@{x=10;y=10;rgb=@(30,36,48)}},
             @{id='visual_on';action='click';x=160;y=90;screenshot=$true;visual_oracle=@{x=10;y=10;before_rgb=@(30,36,48);after_rgb=@(12,142,85)}},
-            @{id='visual_off';action='click';x=160;y=90;screenshot=$true;visual_oracle=@{x=10;y=10;before_rgb=@(12,142,85);after_rgb=@(30,36,48)}}
+            @{id='visual_off';action='click';x=160;y=90;screenshot=$true;visual_oracle=@{x=10;y=10;before_rgb=@(12,142,85);after_rgb=@(30,36,48)}},
+            @{id='keyboard_space_on';action='key';x=160;y=90;key_code=32;param_id=9001;before_normalized=0.0;expected_normalized=1.0;screenshot=$true;expected_pixel=@{x=10;y=10;rgb=@(12,142,85)}},
+            @{id='keyboard_modified_enter_off';action='key';x=160;y=90;key_code=13;modifiers=@('ctrl','shift');param_id=9001;before_normalized=1.0;expected_normalized=0.0;screenshot=$true;expected_pixel=@{x=10;y=10;rgb=@(30,36,48)}}
           )
           foreach ($entry in @(@{name='positive';bundle=$good[0].FullName},@{name='inert';bundle=$inert[0].FullName},@{name='stale';bundle=$stale[0].FullName})) {
             $modules = @(Get-ChildItem $entry.bundle -Recurse -File -Filter '*.vst3')
@@ -657,14 +659,14 @@ jobs:
             $result = Get-Content "$dest/$($entry.name)/GUI-WORKFLOW-RESULT.json" -Raw | ConvertFrom-Json
             if ($entry.name -eq 'positive') {
               if ($exitCode -ne 0 -or $result.status -ne 'TECHNICAL_PASS' -or
-                  $result.verified_actions -ne 6 -or
+                  $result.verified_actions -ne 8 -or
                   $result.verified_visual_only_actions -ne 2 -or
                   $result.visual_only_controls -ne 'PASS' -or
                   $result.controller_action_chain -ne 'PASS' -or
                   $result.product_gui_complete -ne 'NOT COVERED') {
                 throw 'True ordered GUI click/drag and painted pixel proof missing'
               }
-              foreach ($index in 0..5) {
+              foreach ($index in 0..7) {
                 if (-not (Test-Path "$dest/positive/snapshots/$index.bmp")) {
                   throw "Genuine painted HWND snapshot missing: $index"
                 }
@@ -709,6 +711,21 @@ jobs:
               }
             }
           }
+          # An unrelated virtual key must NOT act like a valid shortcut.
+          # This is a genuine negative native-HWND input control.
+          $wrongKey = Get-Content "$dest/positive.json" -Raw | ConvertFrom-Json
+          $wrongKey.steps = @(@{
+            id='unbound_escape';action='key';x=160;y=90;key_code=27;
+            param_id=9001;before_normalized=0.0;expected_normalized=1.0
+          })
+          $wrongKey | ConvertTo-Json -Depth 12 | Set-Content "$dest/wrong-key.json"
+          python tests/run_gui_workflow.py --manifest "$dest/wrong-key.json" --out "$dest/wrong-key"
+          if ($LASTEXITCODE -ne 1) { throw 'Unbound keyboard key falsely changed actual VST3 parameter' }
+          $wrongResult = Get-Content "$dest/wrong-key/GUI-WORKFLOW-RESULT.json" -Raw | ConvertFrom-Json
+          if ($wrongResult.status -ne 'FAIL' -or $wrongResult.verified_actions -ne 0) {
+            throw 'Unbound native keyboard shortcut wrongly certified'
+          }
+          Write-Host '[PASS] P39 Win32 key-down/up and modifier shortcuts verified; unbound key rejected'
           Write-Host '[PASS] Same-editor click/drag history, value transitions, pixels and bad plugins independently verified'
           exit 0
 

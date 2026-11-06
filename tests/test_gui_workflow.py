@@ -176,6 +176,74 @@ with tempfile.TemporaryDirectory() as td:
             raise AssertionError("visual-only oracle accepted invalid/faked state: " +
                                  str(addition))
 
+    # P39: keyboard shortcuts are sent to the real native HWND rather than
+    # silently changing a VST3 controller value directly.
+    keyboard_profile = dict(manifest)
+    keyboard_profile["steps"] = [
+        {"id": "space_on", "action": "key", "x": 160, "y": 90,
+         "key_code": 32, "param_id": 9001,
+         "before_normalized": 0.0, "expected_normalized": 1.0},
+        {"id": "modified_enter_off", "action": "key", "x": 160, "y": 90,
+         "key_code": 13, "modifiers": ["ctrl", "shift"], "param_id": 9001,
+         "before_normalized": 1.0, "expected_normalized": 0.0}]
+    expected_keyboard = workflow.make_native_manifest(
+        keyboard_profile["initial"], keyboard_profile["steps"])
+    assert "step\t0\tkey\t160\t90\t32\t0\t9001\t0\t1\t0" in expected_keyboard
+    assert "step\t1\tkey\t160\t90\t13\t3\t9001\t1\t0\t0" in expected_keyboard
+    keyboard_bad = {"mode": None}
+
+    def native_keyboard(argv, **_):
+        assert argv[1] == "--gui-workflow"
+        assert Path(argv[3]).read_text(encoding="utf-8") == expected_keyboard
+        rows = [
+            "format\t125A-GUI-WORKFLOW-RESULT-v1", "step_count\t2",
+            "step\t0\t9001\t0\t1\tPASS",
+            "step\t1\t9001\t1\t0\tPASS", "end\tPASS"]
+        if keyboard_bad["mode"] == "missing_first":
+            rows.pop(2)
+        if keyboard_bad["mode"] == "false_second":
+            rows[3] = "step\t1\t9001\t1\t1\tPASS"
+        Path(argv[4]).write_text("\n".join(rows) + "\n", encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "real keyboard messages observed", "")
+
+    keyboard_ok = workflow.run(keyboard_profile, out, runner=native_keyboard)
+    assert keyboard_ok["status"] == "TECHNICAL_PASS", keyboard_ok
+    assert keyboard_ok["verified_actions"] == 2
+    assert keyboard_ok["product_gui_complete"] == "NOT COVERED"
+    for bad_key in ("missing_first", "false_second"):
+        keyboard_bad["mode"] = bad_key
+        keyboard_result = workflow.run(keyboard_profile, out, runner=native_keyboard)
+        assert keyboard_result["status"] == "FAIL", (bad_key, keyboard_result)
+        assert keyboard_result["verified_actions"] == 0
+    keyboard_bad["mode"] = None
+
+    disallowed_keyboard = [
+        {"key_code": 0}, {"key_code": 7}, {"key_code": 256},
+        {"key_code": 91}, {"key_code": 92}, {"key_code": True},
+        {"key_code": "32"}, {"modifiers": ["ctrl", "ctrl"]},
+        {"modifiers": ["super"]}, {"modifiers": "shift"},
+        {"modifiers": [1]}, {"end_x": 160}, {"end_y": 90},
+    ]
+    for change in disallowed_keyboard:
+        incorrect = dict(keyboard_profile)
+        incorrect["steps"] = [dict(keyboard_profile["steps"][0], **change)]
+        try:
+            workflow.validate(incorrect)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unsafe/incomplete keyboard action accepted: " + repr(change))
+
+    # Keyboard messages must not be smuggled into mouse events.
+    mouse_with_key = dict(manifest)
+    mouse_with_key["steps"] = [dict(manifest["steps"][0], key_code=32)]
+    try:
+        workflow.validate(mouse_with_key)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("mouse action accepted silent keyboard payload")
+
     invalid = [
         {"id": "bad", "action": "click", "x": -1, "y": 90},
         {"id": "bad", "action": "drag", "x": 0, "y": 0},

@@ -24,7 +24,7 @@ running these checks in GitHub Actions.
 ## Optional ordered user journeys on the real VST3 GUI
 
 In addition to the independent controller sweep and isolated GUI clicks,
-the shared Windows editor now supports a real **ordered click/drag workflow
+the shared Windows editor now supports a real **ordered click/drag/keyboard workflow
 in one persistent native VST3 window**. Use an independently approved JSON
 profile described in `docs/GUI-CONTROL-MATRIX.md` (P37).
 

@@ -133,6 +133,15 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
                           reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
         return TRUE;
     }
+    if (message == WM_KEYDOWN && (w == VK_SPACE || w == VK_RETURN) &&
+        self && self->owner_) {
+        // True native HWND keyboard input exercises the same semantic toggle
+        // path as mouse input. The inert variant still ignores it and the
+        // stale-paint variant still fails a visual oracle.
+        self->owner_->clicked();
+        InvalidateRect(hwnd, nullptr, TRUE);
+        return 0;
+    }
     if (message == WM_LBUTTONUP && self && self->owner_) {
         self->owner_->clicked();
         InvalidateRect(hwnd, nullptr, TRUE);
