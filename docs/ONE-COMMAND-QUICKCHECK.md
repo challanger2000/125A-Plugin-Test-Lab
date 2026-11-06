@@ -155,3 +155,28 @@ false evidence containing 0, 501 or missing in-playback saves.
 This proves temporal overlap of playback activity with project-state
 retrieval, not necessarily that a save blocked an individual `process()`
 call. Deadline and state-consistency checks remain separate.
+
+## Automatic controller parameter inventory
+
+With the native GUI host installed, the portable quickcheck now requests
+`--inventory-parameters` from the **actual loaded VST3 controller**. No
+handwritten GUI control map or preselected parameter IDs are required.
+For up to 8,192 advertised VST3 parameters it verifies that:
+
+- Each advertised index returns information and a unique 32-bit parameter ID.
+- Default and current normalized values are finite and in the inclusive
+  0–1 range, and step counts are valid.
+- Native enumeration count matches the independently parsed TSV rows.
+
+A malformed or missing record, a duplicate ID, an invalid value or a
+silent host failure is **FAIL**. A plugin with no exposed controller is
+`NOT COVERED`, not a fabricated PASS. The actual parameter count is
+shown in the JSON result and the human-readable test report includes
+the parameter-inventory domain.
+
+The inventory is **read-only**: it does not write parameters, load
+banks, reset automation, or pretend to know which on-screen control
+belongs to which VST3 parameter. Musical behavior, parameter automation
+through `process()`, GUI-click relationships and DAW-specific recall
+remain independent product-specific checks. See
+`tests/verify_parameter_inventory.py` for the strict external parser.
