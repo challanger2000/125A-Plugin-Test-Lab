@@ -568,6 +568,7 @@ jobs:
             throw 'Negative fixture not rejected for proven mismatched controller value'
           }
           Write-Host '[PASS] Universal parameter sweep detects real missing writes; no fabricated GUI coverage'
+          exit 0
 
       - name: One-command real VST3 quickcheck without handwritten manifests
         shell: pwsh
