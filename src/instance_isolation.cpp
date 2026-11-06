@@ -66,8 +66,9 @@ struct Instance {
         if(component) (void)component->terminate();
     }
 };
-void start(Instance& instance,const PluginFactory& factory,
-           const PClassInfo2::ClassID& classID,HostApplication& host,
+template<class Factory,class Id>
+void start(Instance& instance,Factory& factory,
+           const Id& classID,HostApplication& host,
            const std::vector<char>& state) {
     instance.component=factory.createInstance<IComponent>(classID);
     check(bool(instance.component),"cannot create second independent VST3 processor");
