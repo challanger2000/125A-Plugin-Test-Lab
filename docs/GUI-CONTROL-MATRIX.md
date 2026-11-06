@@ -218,6 +218,41 @@ interacting with a commercial DAW window and arbitrary keyboard shortcuts
 cannot be certified in every plugin without a product-specific observable
 oracle. The full set of undisclosed controls remains NOT COVERED.
 
+## P42 — Matched no-click control for automatic GUI exploration
+
+An unknown GUI control may appear to change because of animation, meters,
+randomized starting state, background UI updates, or an unrelated parameter
+change. A pixel difference **alone** cannot prove the click caused it.
+
+The universal P41 GUI explorer now performs **two disposable VST3 process
+runs per coordinate**:
+
+1. A **sham** run uses the same editor attach, message-pump timing, parameter
+   snapshots and three real HWND captures but does **not send any mouse
+   input**.
+2. A separate actual **click** run captures the same evidence after real
+   Win32 mouse down/up.
+
+The independent verifier compares the entire parameter inventory and initial
+normalized values, both no-click and click pixel baselines, changes over time
+in the sham, and post-click-versus-sham pixels. When the sham itself shows
+animation or parameter changes, or the starting states disagree, the result
+is `UNSTABLE_CONTROL` and **no discovered-control candidate is emitted**.
+Otherwise genuine controller/painted transitions are classified as before.
+
+The native evidence format is versioned as `125A-GUI-EXPLORE-v2` and names
+each run `mode=sham` or `mode=click`; missing, mismatched or forged
+pairing is a hard FAIL. Report includes `sham_verified_points`,
+`sham_control`, sham motion, cross-instance baseline mismatch and a
+click-versus-sham pixel difference. This remains **opt-in only** because
+the actual-click run may trigger actions in an unknown plugin.
+
+A passed pairing supports an observation of a click-associated change;
+it does **not** establish the product's intended functionality, identify
+every clickable area, or authorize release. User interaction should be
+tested only on trusted VST3s with disposable state. On GitHub Actions,
+Windows Python is supplied by the runner.
+
 ## P41 — Optional automatic GUI exploration (no manually mapped controls)
 
 The shared Windows tester can now **automatically probe unknown native
