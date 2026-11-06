@@ -562,7 +562,9 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
     if gui_explore and summary["status"] == "TECHNICAL_PASS":
         survey_dir = out / "gui-exploration"
         survey_report = survey_dir / "GUI-EXPLORATION-RESULT.json"
+        draft_path = survey_dir / "GUI-CONTROL-REVIEW-DRAFT.json"
         survey_report.unlink(missing_ok=True)
+        draft_path.unlink(missing_ok=True)
         survey_proc = checked_runner([
             sys.executable, str(Path(__file__).with_name("run_gui_exploration.py")),
             "--plugin", str(bundle), "--gui-host", str(gui_host),
@@ -587,6 +589,24 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
                 outcome.get("product_gui_controls") != "NOT COVERED" or
                 outcome.get("release_approved") is not False):
                 raise ValueError("bounded GUI exploration omitted or forged actual probe evidence")
+            draft = json.loads(draft_path.read_text(encoding="utf-8"))
+            candidates = draft.get("candidates", [])
+            if (draft.get("schema") != "125a-gui-control-review-draft-v1" or
+                draft.get("status") != "REVIEW_REQUIRED" or
+                draft.get("source_exploration_status") != "OBSERVATIONS_COMPLETE" or
+                draft.get("verified_module_sha256") != sha or
+                draft.get("verified_gui_host_sha256") != digest(gui_host) or
+                draft.get("candidate_count") != len(candidates) or
+                draft.get("candidate_count") > len(outcome["probes"]) or
+                draft.get("automatically_approved_oracles") != 0 or
+                draft.get("executable_workflow_manifest") != "NOT GENERATED" or
+                draft.get("product_gui_controls") != "NOT COVERED" or
+                draft.get("release_approved") is not False or
+                any(item.get("approved_for_execution") is not False or
+                    item.get("requires_independent_product_review") is not True
+                    for item in candidates)):
+                raise ValueError("P44 unapproved GUI review draft is missing, stale or falsely certified")
+            summary["gui_review_candidates_generated"] = len(candidates)
             summary["coverage"]["native_gui_exploration"] = "OBSERVATIONS_ONLY"
             summary["observed_gui_probe_points"] = 9
             summary["sham_controlled_gui_probe_points"] = 9
