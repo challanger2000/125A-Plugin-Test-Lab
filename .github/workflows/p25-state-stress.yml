@@ -31,6 +31,8 @@ on:
       - 'tests/Run-VST3-Test.cmd'
       - 'tests/run_gui_control_matrix.py'
       - 'tests/test_plugin_quickcheck.py'
+      - 'tests/test_audio_reference.py'
+      - 'tests/verify_audio_reference.py'
       - 'docs/PRODUCT-USER-ACCEPTANCE.md'
       - 'tests/run_p34_capture.py'
       - 'tests/run_state_reload.py'
@@ -327,6 +329,20 @@ jobs:
           Write-Host '[PASS] P34 native captured PCM/state with binary SHA and negative controls'
           exit 0
 
+      - name: Independent real VST3 audible PCM reference and mutation proof
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/test_audio_reference.py --real-captured artifacts/P34/positive/captured.wav --out artifacts/P34/independent-audio
+          if ($LASTEXITCODE -ne 0) { throw 'Source-built real VST3 PCM differs from separate mathematical reference or mutations were missed' }
+          $proof = Get-Content artifacts/P34/independent-audio/AUDIO-REFERENCE-RESULT.json -Raw | ConvertFrom-Json
+          if ($proof.status -ne 'PASS' -or $proof.musical_correctness -ne 'REFERENCE_MATCH' -or
+              $proof.mismatched_samples -ne 0) {
+            throw 'Independent mathematical audio reference missing or falsely green'
+          }
+          Write-Host '[PASS] Real VST3 PCM compared to separately generated reference and mutations rejected'
+          exit 0
+
       - name: Production acceptance false-PASS negative controls
         shell: pwsh
         run: |
@@ -424,13 +440,13 @@ jobs:
             if ($found.Count -ne 1) { throw "Portable Test Lab host missing: $binaryName" }
             Copy-Item -LiteralPath $found[0].FullName -Destination "$dir/$binaryName"
           }
-          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py')) {
+          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_audio_reference.py')) {
             if (-not (Test-Path "tests/$script")) { throw "Portable QA script missing: $script" }
             Copy-Item -LiteralPath "tests/$script" -Destination "$dir/$script"
           }
           Copy-Item tests/Run-VST3-Test.cmd "$dir/Run-VST3-Test.cmd"
           Copy-Item docs/ONE-COMMAND-QUICKCHECK.md "$dir/README.md"
-          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py"
+          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_audio_reference.py"
           if ($LASTEXITCODE -ne 0) { throw 'Portable Python scripts syntax check failed' }
           python tests/test_user_report.py
           if ($LASTEXITCODE -ne 0) { throw 'German results/report mutation controls failed' }
