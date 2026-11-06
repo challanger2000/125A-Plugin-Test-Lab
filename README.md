@@ -2,6 +2,8 @@
 
 **Windows x64 · C++23 · Visual Studio 2022 · VST3 · GitHub Actions**
 
+**Validated portable technical test kit (6 November 2026):** [P25 Windows run 42159432741](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42159432741), with source integration in [PR #59](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/59). The `PORTABLE` folder is ready for a trusted VST3 folder drag-and-drop test. Optional `--active-replay` and `--dual-state-manifest` modes extend the same one-command runner to real active-playback state replay and independently referenced A/B bank/PCM checks. A technical PASS is **never a blanket product release approval**; commercial DAW and product-domain behavior require independent evidence.
+
 The 125A Plugin Test Lab is an independent functional test host and test-oracle
 suite. It supplements the [125A Plugin Tester](https://github.com/challanger2000/125A-Plugin-Tester)
 and the Steinberg VST3 validator; it does not replace a complete commercial-DAW
