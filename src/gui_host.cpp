@@ -984,6 +984,146 @@ int runGuiWorkflow(const std::string& pluginPath,
     throw std::runtime_error("GUI workflow no VST3 audio class (INCONCLUSIVE)");
 }
 
+
+// P60: observe actual process-owned dialog windows after an explicitly approved
+// click. No dialog button is activated, and the popup is closed for cleanup.
+// This checks a modeless owned Win32 dialog. Arbitrary blocking OS file dialogs
+// require P10's separate modal cancellation path.
+struct DialogWindowInventory {
+    DWORD process{};
+    HWND editor{};
+    HWND host{};
+    std::vector<HWND> windows;
+};
+BOOL CALLBACK enumOwnedDialogWindows(HWND hwnd, LPARAM context) {
+    auto& result = *reinterpret_cast<DialogWindowInventory*>(context);
+    DWORD process{};
+    (void)GetWindowThreadProcessId(hwnd, &process);
+    if (process != result.process || !IsWindowVisible(hwnd)) return TRUE;
+    wchar_t cls[64]{};
+    if (!GetClassNameW(hwnd, cls, 64) || wcscmp(cls, L"#32770")) return TRUE;
+    const HWND owner = GetWindow(hwnd, GW_OWNER);
+    if (!owner || (owner != result.editor && owner != result.host &&
+                   !IsChild(result.host, owner))) return TRUE;
+    if (result.windows.size() >= 16) return FALSE;
+    result.windows.push_back(hwnd);
+    return TRUE;
+}
+std::vector<HWND> ownedDialogs(HWND host, HWND editor) {
+    DialogWindowInventory inventory{};
+    inventory.process = GetCurrentProcessId();
+    inventory.host = host;
+    inventory.editor = editor;
+    (void)EnumWindows(enumOwnedDialogWindows, reinterpret_cast<LPARAM>(&inventory));
+    require(inventory.windows.size() < 16,
+            "P60 dialog count exceeds strict observation bound");
+    return inventory.windows;
+}
+int observeOwnedDialog(const std::string& pluginPath, int x, int y,
+                       const std::filesystem::path& reportPath) {
+    require(x >= 0 && x < 8192 && y >= 0 && y < 8192,
+            "P60 click coordinates outside approved bound");
+    std::string error;
+    auto module = Module::create(pluginPath, error);
+    require(bool(module), "P60 cannot load real VST3");
+    HostApplication host;
+    auto factory = module->getFactory();
+    factory.setHostContext(&host);
+    for (const auto& cls : factory.classInfos()) {
+        if (cls.category() != kVstAudioEffectClass) continue;
+        auto component = factory.createInstance<IComponent>(cls.ID());
+        require(bool(component) && component->initialize(&host) == kResultOk,
+                "P60 VST3 component failed initialization");
+        try {
+            Controller controller;
+            acquireController(component.get(), factory, &host, controller);
+            IPlugView* view = controller.ptr->createView(ViewType::kEditor);
+            require(view != nullptr, "P60 VST3 did not expose an actual GUI editor");
+            HostFrame* frame = nullptr;
+            bool attached = false;
+            bool frameSet = false;
+            try {
+                ViewRect size{};
+                require(view->getSize(&size) == kResultTrue,
+                        "P60 cannot obtain actual VST3 editor dimensions");
+                require(view->isPlatformTypeSupported(kPlatformTypeHWND) == kResultTrue,
+                        "P60 VST3 editor not Win32 HWND-backed");
+                Window window(size);
+                frame = new HostFrame(window.get());
+                require(view->setFrame(frame) == kResultTrue,
+                        "P60 cannot attach native editor frame");
+                frameSet = true;
+                require(view->attached(window.get(), kPlatformTypeHWND) == kResultTrue,
+                        "P60 cannot attach real native editor");
+                attached = true;
+                ShowWindow(window.get(), SW_SHOWNA);
+                UpdateWindow(window.get());
+                pump(80);
+                HWND editor = GetWindow(window.get(), GW_CHILD);
+                require(editor && IsWindow(editor),
+                        "P60 no actual plugin editor HWND");
+                RECT dimensions{};
+                require(GetClientRect(editor, &dimensions) &&
+                        x < dimensions.right && y < dimensions.bottom,
+                        "P60 click outside actual editor HWND");
+                const auto before = ownedDialogs(window.get(), editor);
+                require(before.empty(), "P60 unrelated popup existed before click");
+                const LPARAM point = MAKELPARAM(x, y);
+                (void)SendMessageW(editor, WM_MOUSEMOVE, 0, point);
+                (void)SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, point);
+                (void)SendMessageW(editor, WM_LBUTTONUP, 0, point);
+                pump(125);
+                const auto after = ownedDialogs(window.get(), editor);
+                std::ofstream out(reportPath, std::ios::binary | std::ios::trunc);
+                require(out.good(), "P60 cannot write independent native observation");
+                out << "format\t125A-OWNED-DIALOG-v1\n"
+                    << "baseline\t" << before.size() << "\n"
+                    << "after\t" << after.size() << "\n";
+                for (size_t i = 0; i < after.size(); ++i) {
+                    const HWND popup = after[i];
+                    wchar_t clsName[64]{};
+                    require(GetClassNameW(popup, clsName, 64) &&
+                            wcscmp(clsName, L"#32770") == 0,
+                            "P60 observed window is not an OS dialog");
+                    out << "dialog\t" << i << "\t#32770\tvisible\towned\n";
+                }
+                out << "end\tCOMPLETE\n";
+                out.flush();
+                require(out.good(), "P60 incomplete native owned-dialog report");
+                // Only close the popup(s) created by this editor after click.
+                for (auto* popup : after)
+                    if (IsWindow(popup)) (void)SendMessageW(popup, WM_CLOSE, 0, 0);
+                pump(40);
+                require(ownedDialogs(window.get(), editor).empty(),
+                        "P60 dialog did not close during cleanup");
+                require(view->removed() == kResultTrue,
+                        "P60 plugin editor detach failed");
+                attached = false;
+                require(view->setFrame(nullptr) == kResultTrue,
+                        "P60 plugin editor frame reset failed");
+                frameSet = false;
+                frame->release();
+                frame = nullptr;
+            } catch (...) {
+                if (attached) (void)view->removed();
+                if (frameSet) (void)view->setFrame(nullptr);
+                if (frame) frame->release();
+                view->release();
+                throw;
+            }
+            view->release();
+            controller.close();
+        } catch (...) {
+            (void)component->terminate();
+            throw;
+        }
+        require(component->terminate() == kResultOk,
+                "P60 VST3 termination failed");
+        return 0;
+    }
+    throw std::runtime_error("P60 no VST3 audio class");
+}
+
 int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
         int clickX = -1, int clickY = -1, double expectedValue = 1.0,
         const std::filesystem::path& screenshot = {},
@@ -2716,6 +2856,9 @@ int main(int argc, char** argv) {
             return sweepParameters(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "--verify-parameter-text")
             return verifyParameterText(argv[2], argv[3]);
+        if (argc == 6 && std::string(argv[1]) == "--observe-owned-dialog")
+            return observeOwnedDialog(argv[2], std::stoi(argv[3]),
+                                      std::stoi(argv[4]), argv[5]);
         if (argc == 4 && std::string(argv[1]) == "--inventory-hwnd-tree")
             return run(argv[2], false, 0, -1, -1, 1.0, {}, 0.0,
                        std::filesystem::path(argv[3]));
