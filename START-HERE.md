@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P59 hardware run — manual secure opt-in, not yet executed
+
+The new P59 `workflow_dispatch` builds P58 on an isolated, opted-in Windows ASIO workstation, generates the exact P56 plan from local installed driver registry and actual DLL/executor fingerprints, then records redacted callback metrics. For public repository safety it also requires `ASIO_RUNNER_ENABLED=YES_PRIVATE_ISOLATED`, the `125A-ASIO` label and explicit device approval. **The cloud regression tests are NOT a physical ASIO run.** Read `docs/P59-HARDWARE-ONE-CLICK.md` before connecting any self-hosted runner to a publicly accessible repository.
+
+
 ## P58 — native actual ASIO-driver/VST3 host (hardware still NOT RUN)
 
 The new optional Windows executable `125A_Test_Lab_Physical_ASIO.exe` in `src/physical_asio.cpp` drives real ASIO double-buffer callbacks, runs the VST3 processor on the driver callback and outputs nonce/hash-bound hardware metrics to the P56 validator. Requires an independently licensed external ASIO SDK to build and an opt-in physical self-hosted Windows device to run. The CI compile/format tests and absent-driver negative tests **are not actual device tests**. A successful green GitHub cloud check **must never** certify user-hardware ASIO or a DAW session. See `docs/P58-NATIVE-ASIO-HOST.md`.
