@@ -65,6 +65,13 @@ def verify(path, mode):
         assert r["set_success"]==500 and r["sets_during_playback"]>0
         assert r["saves_during_playback"]>0
         assert all(r[x]==0 for x in ("set_failures","save_failures","process_failures","torn_snapshots"))
+    elif mode=="good-replay-none":
+        assert r["scenario"]=="replay-genuine-state"
+        assert r["oracle"]=="none" and r["result"]=="PASS"
+        assert r["domain_correctness"]=="NOT_COVERED"
+        assert r["set_success"]==500 and r["sets_during_playback"]>0
+        assert r["save_success"]==500 and r["saves_during_playback"]>0
+        assert all(r[x]==0 for x in ("set_failures","save_failures","process_failures","torn_snapshots"))
     elif mode=="bad-replay":
         assert r["scenario"]=="replay-genuine-state" and r["result"]=="FAIL"
         assert r["oracle"]=="paired"
@@ -91,7 +98,7 @@ def verify(path, mode):
 if __name__=="__main__":
     parser=argparse.ArgumentParser()
     parser.add_argument("report",type=Path)
-    parser.add_argument("expect",choices=["good-paired","good-ramp","bad-torn","bad-save","bad-rate","good-realtime","bad-realtime","good-replay","bad-replay"])
+    parser.add_argument("expect",choices=["good-paired","good-ramp","bad-torn","bad-save","bad-rate","good-realtime","bad-realtime","good-replay","good-replay-none","bad-replay"])
     args=parser.parse_args()
     try:
         verify(args.report,args.expect)
