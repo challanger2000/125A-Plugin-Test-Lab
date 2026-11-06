@@ -180,3 +180,35 @@ belongs to which VST3 parameter. Musical behavior, parameter automation
 through `process()`, GUI-click relationships and DAW-specific recall
 remain independent product-specific checks. See
 `tests/verify_parameter_inventory.py` for the strict external parser.
+
+
+## Zwei Instanzen in einem Hostprozess (automatisch)
+
+Der Drag-and-drop-Test startet nun auch den mitgelieferten nativen
+`125A_Test_Lab_Instance_Isolation.exe`. Dabei werden aus einem frisch
+aufgenommenen Projektzustand zwei **gleichzeitig lebende VST3-Instanzen
+im selben Windows-Prozess** erzeugt, mit Audioverarbeitung und erneutem
+Speichern beider Instanzen. Eine fehlgeschlagene Instanz, ungültige
+Audioausgaben oder fehlende Zustandsdaten führen zu FAIL. Der Prüfbericht
+zeigt `same_process_dual_instance_lifecycle = PASS`, wenn die
+vollständige native Prüfung bestanden wurde. Fehlt das unterstützte
+Busformat, wird `NOT COVERED` angezeigt.
+
+**Wichtige Grenze:** Die automatische Prüfung verwendet bewusst
+denselben gespeicherten Zustand für beide Instanzen. Dadurch bestätigt
+sie die gemeinsame Lebensdauer und die Verarbeitung, **nicht** eine
+unabhängige Bank- oder Preset-Auswahl. Das Ergebnis
+`distinct_instance_state_isolation` bleibt `NOT COVERED`.
+
+Der separate, ebenfalls mitgelieferte Befehl
+`--dual-state Plugin.vst3 A.bin B.bin Ausgabeordner` lädt zwei
+**unterschiedliche** Zustände in zwei gleichzeitig geöffnete Instanzen.
+Für eine belastbare Produktaussage müssen die erwarteten Zustands- und
+Audioresultate dafür unabhängig vorliegen. Die Windows-CI demonstriert
+das mit einem korrekt isolierten VST3 und einem absichtlich fehlerhaften
+VST3, dessen globale Bank beide Instanzen überschreibt. Der externe
+Prüfer erkennt den Fehler sowohl in den neu gespeicherten Zuständen als
+auch in der PCM-Ausgabe.
+
+Der native Test ist kein Ersatz für eine echte Mehrspur-DAW-Sitzung,
+MIDI-Routing, Songmodus oder plugininterne Preset-Logik.
