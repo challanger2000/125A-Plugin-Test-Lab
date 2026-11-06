@@ -1,0 +1,57 @@
+name: P56 optional physical workstation ASIO qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan_path:
+        description: 'Absolute path on the opted-in Windows self-hosted runner to independently approved ASIO test plan JSON'
+        required: true
+        type: string
+      acknowledge_physical_device:
+        description: 'I have prepared a disposable session and approve using this actual workstation/audio device'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  physical-asio:
+    if: ${{ inputs.acknowledge_physical_device == true }}
+    runs-on: [self-hosted, Windows, X64, 125A-ASIO]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check local ASIO plan and Windows driver
+        shell: pwsh
+        env:
+          ASIO_PLAN: ${{ inputs.plan_path }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path -LiteralPath $env:ASIO_PLAN -PathType Leaf)) {
+            throw 'Independent ASIO plan not found on this physical workstation'
+          }
+          if ($env:RUNNER_OS -ne 'Windows') { throw 'Physical ASIO adapter requires Windows' }
+          Write-Host 'Executing physical ASIO adapter with exact native executor/product hashes'
+      - name: Execute independently approved hardware ASIO scenarios
+        shell: pwsh
+        env:
+          ASIO_PLAN: ${{ inputs.plan_path }}
+        run: |
+          python tests/run_physical_asio.py --plan "$env:ASIO_PLAN" --out artifacts/P56-physical --timeout 300 --acknowledge-physical-asio
+          if ($LASTEXITCODE -ne 0) { throw 'Actual physical ASIO proof unavailable or failed' }
+          $r = Get-Content artifacts/P56-physical/PHYSICAL-ASIO-RESULT.json -Raw | ConvertFrom-Json
+          if ($r.status -ne 'EVIDENCE_ACCEPTED' -or $r.release_approved -ne $false -or $r.commercial_daw_session -ne 'NOT_RUN') {
+            throw 'Physical ASIO evidence did not meet the strict contract'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P56-workstation-physical-ASIO-evidence
+          path: artifacts/P56-physical/
+          if-no-files-found: warn
+          retention-days: 14

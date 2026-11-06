@@ -1,0 +1,40 @@
+name: P56 physical ASIO evidence gate (no cloud hardware claims)
+
+on:
+  pull_request:
+    paths:
+      - 'tests/run_physical_asio.py'
+      - 'tests/test_physical_asio.py'
+      - '.github/workflows/p56-asio-evidence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-negative-tests:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove ASIO gate never fabricates physical device success
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_physical_asio.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P56 ASIO evidence validation failed' }
+          python -m py_compile tests/run_physical_asio.py tests/test_physical_asio.py
+          if ($LASTEXITCODE -ne 0) { throw 'P56 ASIO runner syntax failed' }
+      - name: Persist explicit NOT RUN cloud-host qualification
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/P56 | Out-Null
+          @{schema='125a-physical-asio-result-v1';status='NOT_RUN';hardware_asio='NOT_RUN';commercial_daw_session='NOT_RUN';release_approved=$false;reason='GitHub Windows-2022 cloud worker has no independently verified physical ASIO driver or device'} |
+            ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 artifacts/P56/PHYSICAL-ASIO-RESULT.json
+          $r = Get-Content artifacts/P56/PHYSICAL-ASIO-RESULT.json -Raw | ConvertFrom-Json
+          if ($r.status -ne 'NOT_RUN' -or $r.release_approved -ne $false) { throw 'ASIO evidence incorrectly approved cloud machine' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P56-cloud-no-physical-ASIO-evidence
+          path: artifacts/P56/
+          if-no-files-found: warn
