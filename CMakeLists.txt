@@ -318,6 +318,17 @@ foreach(mode RANGE 0 1)
   target_compile_definitions(QAGuiRecoveryMode${mode} PRIVATE NOMINMAX P30_MODE=${mode})
 endforeach()
 
+# P60: genuinely owned native Win32 dialog opens on mouse input versus
+# a deliberate defect that changes VST3 parameter but omits the popup.
+foreach(kind IN ITEMS Good Bad)
+  smtg_add_vst3plugin(QAGuiDialog${kind}
+      PACKAGE_NAME "125A_QA_GUI_Dialog${kind}"
+      SOURCES_LIST tests/gui_fixture.cpp)
+  target_link_libraries(QAGuiDialog${kind} PRIVATE sdk user32 gdi32)
+endforeach()
+target_compile_definitions(QAGuiDialogGood PRIVATE NOMINMAX QA_GUI_DIALOG_GOOD=1)
+target_compile_definitions(QAGuiDialogBad PRIVATE NOMINMAX QA_GUI_DIALOG_BAD=1)
+
 # P58: optional actual Windows ASIO driver host. The ASIO SDK is NOT shipped
 # in the Test Lab; supply separately under its applicable license.
 set(ASIO_SDK_DIR "" CACHE PATH "Path containing Steinberg ASIO SDK common/asio.h")

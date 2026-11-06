@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""P60 independently verify real owned Win32 dialog activation and cleanup."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+
+SCHEMA = "125a-owned-dialog-result-v1"
+
+
+def digest(path):
+    h = hashlib.sha256()
+    with Path(path).open("rb") as f:
+        for chunk in iter(lambda: f.read(1048576), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def validate_native(raw):
+    lines = raw.splitlines()
+    if len(lines) < 4 or lines[0] != "format\t125A-OWNED-DIALOG-v1" or lines[-1] != "end\tCOMPLETE":
+        raise ValueError("P60 owned-dialog native observation missing or truncated")
+    if lines[1] != "baseline\t0" or not lines[2].startswith("after\t"):
+        raise ValueError("P60 native dialog baseline or count invalid")
+    count = lines[2][6:]
+    if not count.isascii() or not count.isdecimal() or str(int(count)) != count:
+        raise ValueError("P60 dialog count malformed")
+    number = int(count)
+    if not 0 <= number <= 15 or len(lines) != number + 4:
+        raise ValueError("P60 missing, duplicated or excessive native dialogs")
+    for i, line in enumerate(lines[3:-1]):
+        if line != f"dialog\t{i}\t#32770\tvisible\towned":
+            raise ValueError("P60 dialog class, native ownership or order invalid")
+    return number
+
+
+def run(plugin, host, out, *, x=160, y=90, acknowledge=False,
+        timeout=35, runner=subprocess.run):
+    if acknowledge is not True:
+        raise ValueError("P60 requires opt-in to real plugin UI click")
+    if type(x) is not int or type(y) is not int or not 0 <= x <= 8191 or not 0 <= y <= 8191:
+        raise ValueError("P60 invalid approved GUI click coordinate")
+    if type(timeout) is not int or not 5 <= timeout <= 120:
+        raise ValueError("P60 invalid bounded native process timeout")
+    plugin, host, out = Path(plugin).resolve(strict=True), Path(host).resolve(strict=True), Path(out)
+    binary = [v for v in plugin.rglob("*.vst3") if v.is_file()]
+    if plugin.suffix.lower() != ".vst3" or len(binary) != 1 or not host.is_file():
+        raise ValueError("P60 needs one actual native VST3 DLL and GUI host")
+    module_sha, host_sha = digest(binary[0]), digest(host)
+    out.mkdir(parents=True, exist_ok=True)
+    native = out / "native-owned-dialog.tsv"
+    native.unlink(missing_ok=True)
+    report_path = out / "OWNED-DIALOG-RESULT.json"
+    report_path.unlink(missing_ok=True)
+    report = {
+        "schema": SCHEMA, "status": "FAIL", "faults": [],
+        "verified_module_sha256": module_sha, "verified_host_sha256": host_sha,
+        "baseline_owned_dialogs": 0, "observed_owned_dialogs": 0,
+        "popup_cleanup": "NOT VERIFIED",
+        "custom_painted_popups": "NOT COVERED",
+        "blocking_modal_file_dialogs": "NOT COVERED",
+        "complete_gui_controls": "NOT COVERED",
+        "commercial_daw_sessions": "NOT COVERED", "release_approved": False
+    }
+    try:
+        p = runner([str(host), "--observe-owned-dialog", str(plugin),
+                    str(x), str(y), str(native)], capture_output=True,
+                   text=True, errors="replace", check=False, timeout=timeout)
+        (out / "native.log").write_text(
+            (p.stdout or "") + "\n" + (p.stderr or ""), encoding="utf-8")
+        if p.returncode != 0 or not native.is_file():
+            raise ValueError("P60 real native editor click or dialog cleanup failed")
+        if module_sha != digest(binary[0]) or host_sha != digest(host):
+            raise ValueError("P60 native VST3 module or GUI host modified during run")
+        count = validate_native(native.read_text(encoding="utf-8"))
+        report["observed_owned_dialogs"] = count
+        report["popup_cleanup"] = "NATIVE_HOST_VERIFIED"
+        if count != 1:
+            raise ValueError("P60 approved UI click did not open exactly one native owned dialog")
+        report["status"] = "CONTRACT_PASS"
+    except (OSError, ValueError, UnicodeError, subprocess.TimeoutExpired) as exc:
+        report["faults"].append(str(exc))
+    report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    return report
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--plugin", required=True, type=Path)
+    parser.add_argument("--gui-host", required=True, type=Path)
+    parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--x", type=int, default=160)
+    parser.add_argument("--y", type=int, default=90)
+    parser.add_argument("--acknowledge-ui-clicks", action="store_true")
+    args = parser.parse_args()
+    try:
+        result = run(args.plugin, args.gui_host, args.out, x=args.x, y=args.y,
+                     acknowledge=args.acknowledge_ui_clicks)
+    except (OSError, ValueError, TypeError) as exc:
+        args.out.mkdir(parents=True, exist_ok=True)
+        result = {"schema": SCHEMA, "status": "FAIL",
+                  "faults": [str(exc)], "release_approved": False}
+        (args.out / "OWNED-DIALOG-RESULT.json").write_text(
+            json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "CONTRACT_PASS" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
