@@ -9,7 +9,6 @@ ordinary Test Lab VST3 hosts do NOT operate a hardware ASIO driver.
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import secrets
