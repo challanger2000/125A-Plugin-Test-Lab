@@ -96,7 +96,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick QAGuiBadParam QAGuiText QAGuiBadText QAGuiToggle QAGuiInert QAGuiStalePaint TestLabStateStress TestLabInstanceIsolation QAStateMode8 QAStateMode9 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
+          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick QAGuiBadParam QAGuiText QAGuiBadText QAGuiToggle QAGuiHover QAGuiInert QAGuiStalePaint TestLabStateStress TestLabInstanceIsolation QAStateMode8 QAStateMode9 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -780,14 +780,17 @@ jobs:
           $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Toggle.vst3')
           $inert = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Inert.vst3')
           $stale = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_StalePaint.vst3')
-          if ($gui.Count -ne 1 -or $good.Count -ne 1 -or $inert.Count -ne 1 -or $stale.Count -ne 1) {
-            throw 'P41 native real Win32 VST3 GUI fixtures missing'
+          $hover = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Hover.vst3')
+          if ($gui.Count -ne 1 -or $good.Count -ne 1 -or $inert.Count -ne 1 -or
+              $stale.Count -ne 1 -or $hover.Count -ne 1) {
+            throw 'P42 native real Win32 VST3 GUI/sham/hover fixtures missing'
           }
           New-Item -ItemType Directory -Force artifacts/P41 | Out-Null
           foreach ($fixture in @(
-            @{name='interactive';plugin=$good[0].FullName;expected='PARAMETER_AND_VISUAL_CHANGE';candidate=1},
-            @{name='inert';plugin=$inert[0].FullName;expected='NO_OBSERVED_CHANGE';candidate=0},
-            @{name='stale-paint';plugin=$stale[0].FullName;expected='PARAMETER_CHANGE';candidate=1}
+            @{name='interactive';plugin=$good[0].FullName;expected='PARAMETER_AND_VISUAL_CHANGE';candidate=1;attribution='SUPPORTED'},
+            @{name='inert';plugin=$inert[0].FullName;expected='NO_OBSERVED_CHANGE';candidate=0;attribution='SUPPORTED'},
+            @{name='stale-paint';plugin=$stale[0].FullName;expected='PARAMETER_CHANGE';candidate=1;attribution='SUPPORTED'},
+            @{name='hover';plugin=$hover[0].FullName;expected='UNSTABLE_CONTROL';candidate=0;attribution='UNSTABLE'}
           )) {
             python tests/run_gui_exploration.py --plugin $fixture.plugin --gui-host $gui[0].FullName --out "artifacts/P41/$($fixture.name)" --points "160,90" --acknowledge-ui-clicks --timeout 30
             if ($LASTEXITCODE -ne 0) { throw "P41 actual GUI exploration failed: $($fixture.name)" }
@@ -795,7 +798,7 @@ jobs:
             if ($result.status -ne 'OBSERVATIONS_COMPLETE' -or
                 $result.requested_points -ne 1 -or $result.completed_points -ne 1 -or
                 $result.sham_verified_points -ne 1 -or $result.sham_control -ne 'COMPLETE' -or
-                $result.probes[0].sham_control_attribution -ne 'SUPPORTED' -or
+                $result.probes[0].sham_control_attribution -ne $fixture.attribution -or
                 @($result.probes).Count -ne 1 -or
                 $result.probes[0].classification -ne $fixture.expected -or
                 @($result.candidates).Count -ne $fixture.candidate -or
@@ -814,7 +817,12 @@ jobs:
               $grid.sham_control -ne 'COMPLETE' -or @($grid.candidates).Count -ne 3) {
             throw 'P41 default autonomous GUI probing did not observe three genuine actions'
           }
-          Write-Host '[PASS] P42 actual native click/sham matched controls distinguish responsive, inert and stale-paint VST3 GUI observations'
+          $hoverReport = Get-Content artifacts/P41/hover/GUI-EXPLORATION-RESULT.json -Raw | ConvertFrom-Json
+          if ($hoverReport.probes[0].sham_pixels_changed -le 0 -or
+              $hoverReport.probes[0].changed_parameters.Count -ne 0) {
+            throw 'P42 genuine hover-only native GUI was falsely treated as click behavior'
+          }
+          Write-Host '[PASS] P42 genuine click/sham Windows VST3s reject inert, stale and hover-only false-positive controls'
           exit 0
 
       - name: One-command real VST3 quickcheck without handwritten manifests
