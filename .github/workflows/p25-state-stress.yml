@@ -27,6 +27,7 @@ on:
       - 'tests/test_product_acceptance.py'
       - 'tests/run_product_qa.py'
       - 'tests/run_plugin_quickcheck.py'
+      - 'tests/verify_parameter_inventory.py'
       - 'tests/write_user_report.py'
       - 'tests/test_user_report.py'
       - 'tests/Run-VST3-Test.cmd'
@@ -429,6 +430,10 @@ jobs:
           $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
           $click = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Click.vst3')
           if ($gui.Count -ne 1 -or $click.Count -lt 1) { throw 'Portable GUI host or real GUI fixture missing' }
+          & $gui[0].FullName --inventory-parameters $click[0].FullName artifacts/QUICKCHECK/native-gui-parameters.tsv
+          if ($LASTEXITCODE -ne 0) { throw 'Genuine Windows VST3 parameter discovery failed' }
+          python tests/verify_parameter_inventory.py --inventory artifacts/QUICKCHECK/native-gui-parameters.tsv --out artifacts/QUICKCHECK/native-gui-parameters
+          if ($LASTEXITCODE -ne 0) { throw 'Independent native parameter inventory audit failed' }
           & $gui[0].FullName --probe $click[0].FullName
           if ($LASTEXITCODE -ne 0) { throw 'Portable native GUI probe failed to attach/detach real VST3 editor' }
           $deadlineProof = Get-Content artifacts/QUICKCHECK/native/P32/ADAPTER-RESULT.json -Raw | ConvertFrom-Json
@@ -455,13 +460,13 @@ jobs:
             if ($found.Count -ne 1) { throw "Portable Test Lab host missing: $binaryName" }
             Copy-Item -LiteralPath $found[0].FullName -Destination "$dir/$binaryName"
           }
-          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_audio_reference.py')) {
+          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_audio_reference.py','verify_parameter_inventory.py')) {
             if (-not (Test-Path "tests/$script")) { throw "Portable QA script missing: $script" }
             Copy-Item -LiteralPath "tests/$script" -Destination "$dir/$script"
           }
           Copy-Item tests/Run-VST3-Test.cmd "$dir/Run-VST3-Test.cmd"
           Copy-Item docs/ONE-COMMAND-QUICKCHECK.md "$dir/README.md"
-          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_audio_reference.py"
+          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py"
           if ($LASTEXITCODE -ne 0) { throw 'Portable Python scripts syntax check failed' }
           python tests/test_user_report.py
           if ($LASTEXITCODE -ne 0) { throw 'German results/report mutation controls failed' }
