@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -260,6 +261,16 @@ def run(manifest, out, timeout=90, runner=subprocess.run):
             observed = audit_outputs(export_root, expected)
             if digest(binary) != module_hash or digest(host) != host_hash:
                 raise ValueError("tested VST3 host/module changed during file export")
+            # Retain a byte-for-byte inspected copy in the Actions
+            # artifact rather than silently losing exported PCM when
+            # the isolated temporary VST3 test directory closes.
+            saved_folder = Path(tempfile.mkdtemp(prefix="verified-", dir=out))
+            for item in expected:
+                copied = saved_folder / item["filename"]
+                shutil.copyfile(export_root / item["filename"], copied)
+                if digest(copied) != item["sha256"]:
+                    raise ValueError("stored GUI export proof changed during copy")
+            report["saved_evidence_directory"] = saved_folder.name
             report["verified_exports"] = observed
             report["verified_export_count"] = len(observed)
             report["approved_independent_file_oracles"] = "PASS"
