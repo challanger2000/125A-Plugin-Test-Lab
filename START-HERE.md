@@ -1,5 +1,15 @@
 # START HERE — 125A Plugin Test Lab
 
+## Latest P46 — independent real GUI WAV/MIDI functional checks (Windows-verified 6 November 2026)
+
+**Verified and merged:** [PR #71](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/71), [P25 Windows run #42190468048](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42190468048), exact tested source revision `fd6fa402427d748fd0b6a08de2afe27307c48f2b`. **P02/P03 (real Drumator)/P04/P25/P29 all passed**. P25 artifact `125A-Universal-VST3-State-Stress-P25` contains the native host, portable runners and verified output evidence. Production Drumator/AWE repos were not changed.
+
+**P46 closes a functional verification gap:** The generic runner `tests/run_gui_export_contract.py` executes a *preapproved* genuine Win32 VST3 GUI workflow and independently verifies that the actual resulting files match an externally supplied golden SHA-256 and strict WAV PCM frames/rate/channels/width or MIDI SMF format/track/PPQ/note-count metadata. It runs in a clean isolated output directory, rejects absent, extra, stale, malformed or wrong files and retains genuine verified WAV/MIDI copies as evidence.
+
+**Real adverse VST3 proofs:** Source-built native fixtures report the same successful GUI/controller transition but export (a) an exact reference PCM WAV, (b) a structurally valid WAV with one intentionally wrong sample, (c) no file, (d) valid reference SMF MIDI or (e) structurally valid MIDI with wrong musical note. **Only independently correct file exports pass P46**, as Windows CI demonstrates. This validates actual behavior beyond GUI color/parameter changes.
+
+**Still requires product expectations:** A universal test lab cannot derive the *intended* musical result of unknown product controls from screenshots, nor know every hidden button or file-dialog sequence automatically. A preapproved independent contract/reference and plugin-specific export-path setup are required. The fixture-only `QA_TEST_LAB_EXPORT_ROOT` environment hint does not make arbitrary products support it. P46's CONTRACT_PASS covers only declared GUI steps and exports, **never complete commercial plugin release approval**. DAW interaction, complete GUI semantics and other product-specific audio/MIDI features require further approved adapters oracles. GitHub Windows CI requires no Python installation on the user's machine. See `docs/ONE-COMMAND-QUICKCHECK.md`.
+
 ## Latest P45 — real GUI repeatability A/B/A in one VST3 editor (Windows-verified 6 November 2026)
 
 **Merged and independently verified:** [PR #70](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/70), [P25 Windows run #42187789076](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42187789076). Exact tested revision: `465237e390270f4eda7c9129898aae819070b6ee`. **P02, P03, P04 and P25 Windows workflows all SUCCESS**, including native regression against a source-built custom-painted-only control (without a VST3 parameter) and a nested Win32 BUTTON. The P25 artifact `125A-Universal-VST3-State-Stress-P25` contains the portable Windows host and runners. No production plugin source was modified.
