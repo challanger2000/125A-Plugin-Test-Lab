@@ -1,0 +1,73 @@
+name: P54 native HWND GUI control hierarchy
+
+on:
+  pull_request:
+    paths:
+      - 'src/gui_host.cpp'
+      - 'tests/run_gui_hwnd_tree.py'
+      - 'tests/test_gui_hwnd_tree.py'
+      - '.github/workflows/p54-hwnd-tree.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Independent native hierarchy verifier negative tests
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_gui_hwnd_tree.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P54 adversarial validation failed' }
+
+  native:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build native host and both actual GUI test plugins
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P54 configure failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiNested QAGuiPaintedOnly
+          if ($LASTEXITCODE -ne 0) { throw 'P54 native build failed' }
+      - name: Compare actual nested Win32 controls with painted-only plugin
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hosts = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          if ($hosts.Count -ne 1) { throw 'P54 native GUI host missing' }
+          foreach ($variant in @('Nested', 'PaintedOnly')) {
+            $bundle = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_GUI_$variant.vst3")
+            if ($bundle.Count -ne 1) { throw "P54 $variant VST3 missing" }
+            python tests/run_gui_hwnd_tree.py --plugin $bundle[0].FullName --gui-host $hosts[0].FullName --out "build/p54-$variant"
+            if ($LASTEXITCODE -ne 0) { throw "P54 native $variant inventory failed" }
+            $report = Get-Content "build/p54-$variant/HWND-CONTROL-TREE.json" -Raw | ConvertFrom-Json
+            if ($report.status -ne 'OBSERVATIONS_COMPLETE' -or $report.release_approved -ne $false -or $report.complete_product_gui_controls -ne 'NOT COVERED') {
+              throw "P54 $variant claims false control completeness"
+            }
+            if ($variant -eq 'Nested') {
+              $buttons = @($report.nodes | Where-Object { $_.class_name -eq 'Button' -and $_.control_id -eq 43001 -and $_.parent -ge 0 })
+              if ($buttons.Count -ne 1 -or $report.native_hwnd_count -lt 2) {
+                throw 'P54 failed to discover the real nested Win32 BUTTON'
+              }
+            } else {
+              if ($report.native_hwnd_count -ne 1 -or @($report.nodes | Where-Object { $_.class_name -eq 'Button' }).Count -ne 0) {
+                throw 'P54 incorrectly inferred a native button from a custom-painted surface'
+              }
+            }
+          }
+          Write-Host '[PASS] P54 actual real VST3 nested HWND and painted-only negative coverage'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P54-actual-native-Windows-HWND-evidence
+          path: |
+            build/p54-Nested/
+            build/p54-PaintedOnly/
+          if-no-files-found: warn
