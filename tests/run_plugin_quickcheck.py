@@ -52,6 +52,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         if not gui_host.is_file():
             raise ValueError("native GUI host missing")
     workflow_actions = 0
+    visual_workflow_actions = 0
     if gui_workflow is not None:
         gui_workflow = Path(gui_workflow).resolve(strict=True)
         if not gui_workflow.is_file():
@@ -65,6 +66,8 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
                 workflow_profile["product"]["sha256"] != sha):
             raise ValueError("GUI workflow belongs to another VST3 module or native host")
         workflow_actions = len(workflow_steps)
+        visual_workflow_actions = sum(
+            "visual_oracle" in step for step in workflow_steps)
     pinned_states = []
     if dual_state_manifest is not None:
         if dual_host is None:
@@ -176,6 +179,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "native_parameter_inventory": "NOT COVERED",
             "native_parameter_sweep": "NOT COVERED",
             "native_gui_workflow": "NOT COVERED",
+            "native_gui_visual_workflow": "NOT COVERED",
             "midi_wav_export": "NOT COVERED",
             "preset_semantics": "NOT COVERED",
             "commercial_daw_integration": "NOT COVERED"
@@ -461,6 +465,8 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
     # Every transition is independently declared, not inferred from the GUI.
     if gui_workflow is not None:
         summary["coverage"]["native_gui_workflow"] = "NOT EXECUTED"
+        if visual_workflow_actions:
+            summary["coverage"]["native_gui_visual_workflow"] = "NOT EXECUTED"
     if summary["status"] == "TECHNICAL_PASS" and gui_workflow is not None:
         journey_dir = out / "gui-workflow"
         journey_report = journey_dir / "GUI-WORKFLOW-RESULT.json"
@@ -482,14 +488,22 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
                 evidence.get("gui_host_sha256") != digest(gui_host) or
                 evidence.get("declared_actions") != workflow_actions or
                 evidence.get("verified_actions") != workflow_actions or
+                evidence.get("verified_visual_only_actions", 0) != visual_workflow_actions or
+                (visual_workflow_actions > 0 and
+                 evidence.get("visual_only_controls") != "PASS") or
                 evidence.get("controller_action_chain") != "PASS" or
                 evidence.get("product_gui_complete") != "NOT COVERED"):
                 raise ValueError("native ordered GUI workflow incomplete or invalid")
             summary["coverage"]["native_gui_workflow"] = "PASS"
             summary["native_gui_workflow_actions_verified"] = workflow_actions
+            if visual_workflow_actions:
+                summary["coverage"]["native_gui_visual_workflow"] = "PASS"
+                summary["gui_only_painted_controls_verified"] = visual_workflow_actions
         except (OSError, ValueError, TypeError, KeyError) as error:
             summary["status"] = "FAIL"
             summary["coverage"]["native_gui_workflow"] = "FAIL"
+            if visual_workflow_actions:
+                summary["coverage"]["native_gui_visual_workflow"] = "FAIL"
             summary["reason"] = "optional real GUI workflow: " + str(error)
 
     # An explicitly requested high-concurrency test uses the plugin's

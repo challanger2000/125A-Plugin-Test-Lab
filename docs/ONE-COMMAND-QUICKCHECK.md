@@ -35,9 +35,15 @@ python run_plugin_quickcheck.py --plugin "C:\\VST3\\Instrument.vst3" --host ".\\
 The quickcheck runs the normal native audio/save/GUI/parameter checks,
 then the independently asserted GUI journey. It records
 `native_gui_workflow` as PASS only when **every declared step and requested
-painted-pixel oracle** succeeds; on errors it produces FAIL. Without a
-profile the result remains `NOT COVERED`, including controls not exposed
-to the host's controller interface.
+painted-pixel oracle** succeeds; on errors it produces FAIL.
+
+**GUI-only buttons** that are not exposed as VST3 parameters may use
+`visual_oracle` with independent before/after RGB snapshots instead of
+fabricating a ParamID (see P38 in `docs/GUI-CONTROL-MATRIX.md`). Such
+verified visible-only steps are reported separately as
+`native_gui_visual_workflow`. This confirms painted visual transitions,
+**not hidden plugin functionality**. Without an approved profile the
+coverage is `NOT COVERED`.
 
 ## Optional deep checks in the same report
 

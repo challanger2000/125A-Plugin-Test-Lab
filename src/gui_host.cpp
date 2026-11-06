@@ -361,6 +361,7 @@ struct WorkflowStep {
     ParamID parameter{};
     double before{}, expected{};
     bool screenshot{};
+    bool visualOnly{};
 };
 struct WorkflowInput {
     std::vector<std::pair<ParamID, double>> initial;
@@ -452,13 +453,21 @@ WorkflowInput parseWorkflow(const std::filesystem::path& path) {
         step.y2 = workflowInt(parts[6], 8191);
         if (!step.drag) require(step.x1 == step.x2 && step.y1 == step.y2,
                                 "click workflow action has different endpoints");
-        step.parameter = workflowParam(parts[7]);
-        step.before = workflowValue(parts[8]);
-        step.expected = workflowValue(parts[9]);
+        step.visualOnly = parts[7] == "-";
+        if (step.visualOnly) {
+            require(parts[8] == "-" && parts[9] == "-",
+                    "visual-only GUI action cannot invent VST3 controller values");
+        } else {
+            step.parameter = workflowParam(parts[7]);
+            step.before = workflowValue(parts[8]);
+            step.expected = workflowValue(parts[9]);
+            require(std::abs(step.before - step.expected) > 0.00001,
+                    "GUI workflow requires an observable controller transition");
+        }
         step.screenshot = workflowInt(parts[10], 1) == 1;
+        require(!step.visualOnly || step.screenshot,
+                "visual-only GUI action requires before and after native pixels");
         if (step.screenshot) ++screenshots;
-        require(std::abs(step.before - step.expected) > 0.00001,
-                "GUI workflow requires an observable value change");
         workflow.steps.push_back(step);
     }
     require(screenshots <= 16, "too many GUI workflow screenshots");
@@ -532,10 +541,21 @@ int runGuiWorkflow(const std::string& pluginPath,
                     require(step.x1 < client.right && step.x2 < client.right &&
                             step.y1 < client.bottom && step.y2 < client.bottom,
                             "approved GUI workflow coordinates are outside actual HWND");
-                    const auto before = controller.ptr->getParamNormalized(step.parameter);
-                    require(std::isfinite(before) &&
-                            std::abs(before - step.before) <= 0.00001,
-                            "GUI workflow precondition mismatches previous action");
+                    double before = 0.0;
+                    if (step.visualOnly) {
+                        // Without VST3 ParamID, only the independently supplied
+                        // BEFORE and AFTER real painted pixels can assert meaning.
+                        InvalidateRect(child, nullptr, TRUE);
+                        (void)UpdateWindow(child);
+                        pump(20);
+                        captureEditorBmp(child, screenshots /
+                                         (std::to_string(step.index) + ".before.bmp"));
+                    } else {
+                        before = controller.ptr->getParamNormalized(step.parameter);
+                        require(std::isfinite(before) &&
+                                std::abs(before - step.before) <= 0.00001,
+                                "GUI workflow precondition mismatches previous action");
+                    }
                     const LPARAM start = MAKELPARAM(step.x1, step.y1);
                     const LPARAM end = MAKELPARAM(step.x2, step.y2);
                     SendMessageW(child, WM_MOUSEMOVE, 0, start);
@@ -553,12 +573,18 @@ int runGuiWorkflow(const std::string& pluginPath,
                         const auto name = std::to_string(step.index) + ".bmp";
                         captureEditorBmp(child, screenshots / name);
                     }
-                    const auto after = controller.ptr->getParamNormalized(step.parameter);
-                    const bool passed = std::isfinite(after) &&
-                                        std::abs(after - step.expected) <= 0.00001;
-                    out << "step\t" << step.index << "\t" << step.parameter
-                        << "\t" << before << "\t" << after << "\t"
-                        << (passed ? "PASS" : "FAIL") << "\n";
+                    const auto after = step.visualOnly ? 0.0 :
+                                       controller.ptr->getParamNormalized(step.parameter);
+                    const bool passed = step.visualOnly ||
+                                        (std::isfinite(after) &&
+                                         std::abs(after - step.expected) <= 0.00001);
+                    out << "step\t" << step.index << "\t";
+                    if (step.visualOnly) {
+                        out << "-\t-\t-\tPASS\n";
+                    } else {
+                        out << step.parameter << "\t" << before << "\t"
+                            << after << "\t" << (passed ? "PASS" : "FAIL") << "\n";
+                    }
                     out.flush();
                     require(out.good(), "GUI workflow step evidence could not be written");
                     require(passed, "real GUI workflow control produced wrong value");

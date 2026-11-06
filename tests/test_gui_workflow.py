@@ -5,6 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import struct
 import tempfile
 
 spec = importlib.util.spec_from_file_location(
@@ -89,6 +90,91 @@ with tempfile.TemporaryDirectory() as td:
         binary.write_bytes(unchanged)
         assert json.loads((out / "GUI-WORKFLOW-RESULT.json").read_text())["status"] == "FAIL"
     fail_mode["name"] = None
+
+    # A real native VST3 can paint a control that is invisible to the
+    # IEditController parameter inventory.  Independent before/after pixel
+    # colors can still prove the actual action without a fabricated ParamID.
+    visual_profile = dict(manifest)
+    visual_profile["steps"] = [
+        {"id": "visual_on", "action": "click", "x": 160, "y": 90,
+         "screenshot": True, "visual_oracle": {
+             "x": 1, "y": 1, "before_rgb": [30, 36, 48],
+             "after_rgb": [12, 142, 85]}},
+        {"id": "visual_off", "action": "click", "x": 160, "y": 90,
+         "screenshot": True, "visual_oracle": {
+             "x": 1, "y": 1, "before_rgb": [12, 142, 85],
+             "after_rgb": [30, 36, 48]}}]
+    visual_fail = {"mode": None}
+
+    def colored_bmp(path, rgb):
+        # Small 32-bit top-down native Win32 BMP, with a fixed pixel.
+        width = height = 4
+        stride = width * 4
+        raw = bytes([rgb[2], rgb[1], rgb[0], 255]) * width * height
+        file_hdr = struct.pack("<HIHHI", 0x4D42, 54 + len(raw), 0, 0, 54)
+        dib = struct.pack("<IiiHHIIiiII", 40, width, -height, 1, 32,
+                          0, len(raw), 0, 0, 0, 0)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(file_hdr + dib + raw)
+
+    def painted_native(argv, **_):
+        assert argv[1] == "--gui-workflow"
+        native_lines = Path(argv[3]).read_text(encoding="utf-8")
+        assert native_lines.count("\t-\t-\t-\t1") == 2
+        output = Path(argv[4])
+        rows = ["format\t125A-GUI-WORKFLOW-RESULT-v1", "step_count\t2",
+                "step\t0\t-\t-\t-\tPASS", "step\t1\t-\t-\t-\tPASS",
+                "end\tPASS"]
+        if visual_fail["mode"] == "forged_controller":
+            rows[2] = "step\t0\t9001\t0\t1\tPASS"
+        output.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        images = Path(argv[5])
+        samples = [(30, 36, 48), (12, 142, 85), (12, 142, 85), (30, 36, 48)]
+        if visual_fail["mode"] == "stale_paint":
+            samples[1] = samples[0]
+        for target, rgb in zip(("0.before.bmp", "0.bmp", "1.before.bmp", "1.bmp"), samples):
+            if visual_fail["mode"] == "missing_before" and target == "1.before.bmp":
+                continue
+            colored_bmp(images / target, rgb)
+        return subprocess.CompletedProcess(argv, 0, "native painting only", "")
+
+    observed = workflow.run(visual_profile, out, runner=painted_native)
+    assert observed["status"] == "TECHNICAL_PASS", observed
+    assert observed["verified_actions"] == 2
+    assert observed["verified_visual_only_actions"] == 2
+    assert observed["visual_only_controls"] == "PASS"
+    assert observed["product_gui_complete"] == "NOT COVERED"
+
+    for visual_failure in ("stale_paint", "missing_before", "forged_controller"):
+        visual_fail["mode"] = visual_failure
+        rejected = workflow.run(visual_profile, out, runner=painted_native)
+        assert rejected["status"] == "FAIL", (visual_failure, rejected)
+        assert rejected["visual_only_controls"] == "FAIL"
+        assert rejected["verified_visual_only_actions"] == 0
+    visual_fail["mode"] = None
+
+    forbidden = [
+        {"visual_oracle": {"x": 1, "y": 1, "before_rgb": [0, 0, 0],
+                           "after_rgb": [0, 0, 0]}},
+        {"visual_oracle": {"x": 1, "y": 1, "before_rgb": [0, 0, 0],
+                           "after_rgb": [256, 0, 0]}},
+        {"visual_oracle": {"x": 1, "y": 1, "before_rgb": [0, 0, 0],
+                           "after_rgb": [0, 0, 1]},
+         "param_id": 9001},
+        {"visual_oracle": {"x": 1, "y": 1, "before_rgb": [0, 0, 0],
+                           "after_rgb": [0, 0, 1]},
+         "screenshot": False},
+    ]
+    for addition in forbidden:
+        check = dict(visual_profile)
+        check["steps"] = [{**visual_profile["steps"][0], **addition}]
+        try:
+            workflow.validate(check)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("visual-only oracle accepted invalid/faked state: " +
+                                 str(addition))
 
     invalid = [
         {"id": "bad", "action": "click", "x": -1, "y": 90},

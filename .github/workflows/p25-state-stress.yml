@@ -47,6 +47,7 @@ on:
       - 'tests/test_gui_control_matrix.py'
       - 'tests/run_gui_workflow.py'
       - 'tests/test_gui_workflow.py'
+      - 'tests/test_gui_workflow.py'
       - 'docs/GUI-CONTROL-MATRIX.md'
       - 'tests/test_plugin_quickcheck.py'
       - 'tests/test_audio_reference.py'
@@ -635,7 +636,9 @@ jobs:
             @{id='on';action='click';x=160;y=90;param_id=9001;before_normalized=0.0;expected_normalized=1.0;screenshot=$true;expected_pixel=@{x=10;y=10;rgb=@(12,142,85)}},
             @{id='off';action='click';x=160;y=90;param_id=9001;before_normalized=1.0;expected_normalized=0.0;screenshot=$true;expected_pixel=@{x=10;y=10;rgb=@(30,36,48)}},
             @{id='drag_on';action='drag';x=100;y=90;end_x=160;end_y=90;param_id=9001;before_normalized=0.0;expected_normalized=1.0;screenshot=$true;expected_pixel=@{x=10;y=10;rgb=@(12,142,85)}},
-            @{id='drag_off';action='drag';x=100;y=90;end_x=160;end_y=90;param_id=9001;before_normalized=1.0;expected_normalized=0.0;screenshot=$true;expected_pixel=@{x=10;y=10;rgb=@(30,36,48)}}
+            @{id='drag_off';action='drag';x=100;y=90;end_x=160;end_y=90;param_id=9001;before_normalized=1.0;expected_normalized=0.0;screenshot=$true;expected_pixel=@{x=10;y=10;rgb=@(30,36,48)}},
+            @{id='visual_on';action='click';x=160;y=90;screenshot=$true;visual_oracle=@{x=10;y=10;before_rgb=@(30,36,48);after_rgb=@(12,142,85)}},
+            @{id='visual_off';action='click';x=160;y=90;screenshot=$true;visual_oracle=@{x=10;y=10;before_rgb=@(12,142,85);after_rgb=@(30,36,48)}}
           )
           foreach ($entry in @(@{name='positive';bundle=$good[0].FullName},@{name='inert';bundle=$inert[0].FullName},@{name='stale';bundle=$stale[0].FullName})) {
             $modules = @(Get-ChildItem $entry.bundle -Recurse -File -Filter '*.vst3')
@@ -654,14 +657,21 @@ jobs:
             $result = Get-Content "$dest/$($entry.name)/GUI-WORKFLOW-RESULT.json" -Raw | ConvertFrom-Json
             if ($entry.name -eq 'positive') {
               if ($exitCode -ne 0 -or $result.status -ne 'TECHNICAL_PASS' -or
-                  $result.verified_actions -ne 4 -or
+                  $result.verified_actions -ne 6 -or
+                  $result.verified_visual_only_actions -ne 2 -or
+                  $result.visual_only_controls -ne 'PASS' -or
                   $result.controller_action_chain -ne 'PASS' -or
                   $result.product_gui_complete -ne 'NOT COVERED') {
                 throw 'True ordered GUI click/drag and painted pixel proof missing'
               }
-              foreach ($index in 0..3) {
+              foreach ($index in 0..5) {
                 if (-not (Test-Path "$dest/positive/snapshots/$index.bmp")) {
                   throw "Genuine painted HWND snapshot missing: $index"
+                }
+              }
+              foreach ($index in 4..5) {
+                if (-not (Test-Path "$dest/positive/snapshots/$index.before.bmp")) {
+                  throw "Real GUI-only pre-action painted pixels missing: $index"
                 }
               }
             } else {
@@ -669,6 +679,33 @@ jobs:
                   $result.controller_action_chain -ne 'FAIL' -or
                   $result.verified_actions -ne 0) {
                 throw "Deliberately broken GUI $($entry.name) falsely approved"
+              }
+            }
+          }
+          # A GUI-only button deliberately has NO VST3 ParamID. Prove that
+          # a visible LED color transition alone is checked accurately:
+          # good native GUI passes, stale paint and inert VST3s must fail.
+          $visualOnly = @(@{id='gui_only_led';action='click';x=160;y=90;screenshot=$true;visual_oracle=@{x=10;y=10;before_rgb=@(30,36,48);after_rgb=@(12,142,85)}})
+          foreach ($name in @('positive', 'inert', 'stale')) {
+            $json = "$dest/$name.json"
+            $profile = Get-Content $json -Raw | ConvertFrom-Json
+            $profile.steps = $visualOnly
+            $visualFile = "$dest/$name-visual-only.json"
+            $profile | ConvertTo-Json -Depth 12 | Set-Content $visualFile
+            python tests/run_gui_workflow.py --manifest $visualFile --out "$dest/$name-visual-only"
+            $code = $LASTEXITCODE
+            $result = Get-Content "$dest/$name-visual-only/GUI-WORKFLOW-RESULT.json" -Raw | ConvertFrom-Json
+            if ($name -eq 'positive') {
+              if ($code -ne 0 -or $result.status -ne 'TECHNICAL_PASS' -or
+                  $result.visual_only_controls -ne 'PASS' -or
+                  $result.verified_visual_only_actions -ne 1 -or
+                  $result.product_gui_complete -ne 'NOT COVERED') {
+                throw 'Actual native visual-only button failed independent before/after RGB'
+              }
+            } else {
+              if ($code -ne 1 -or $result.status -ne 'FAIL' -or
+                  $result.visual_only_controls -ne 'FAIL') {
+                throw "Broken native GUI-only LED $name escaped the pixel oracle"
               }
             }
           }
