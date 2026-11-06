@@ -30,6 +30,7 @@ on:
       - 'src/instance_isolation.cpp'
       - 'tests/verify_instance_isolation.py'
       - 'tests/test_instance_isolation.py'
+      - 'tests/verify_multi_instance_smoke.py'
       - 'tests/verify_parameter_inventory.py'
       - 'tests/write_user_report.py'
       - 'tests/test_user_report.py'
@@ -445,16 +446,19 @@ jobs:
           $audio = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Host.exe')
           $stress = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
           $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_0.vst3')
-          if ($audio.Count -ne 1 -or $stress.Count -ne 1 -or $good.Count -lt 1) {
+          $dual = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Instance_Isolation.exe')
+          if ($audio.Count -ne 1 -or $stress.Count -ne 1 -or $dual.Count -ne 1 -or $good.Count -lt 1) {
             throw 'Quickcheck native host or VST3 fixture missing'
           }
-          python tests/run_plugin_quickcheck.py --plugin $good[0].FullName --host $audio[0].FullName --stress-host $stress[0].FullName --out artifacts/QUICKCHECK
+          python tests/run_plugin_quickcheck.py --plugin $good[0].FullName --host $audio[0].FullName --stress-host $stress[0].FullName --dual-host $dual[0].FullName --out artifacts/QUICKCHECK
           if ($LASTEXITCODE -ne 0) { throw 'Actual real VST3 one-command test failed' }
           $report = Get-Content artifacts/QUICKCHECK/QUICKCHECK-RESULT.json -Raw | ConvertFrom-Json
           if ($report.status -ne 'TECHNICAL_PASS' -or $report.release_approved -ne $false -or
               $report.coverage.product_gui_controls -ne 'NOT COVERED' -or
               $report.coverage.api_playback_save -ne 'PASS' -or
               $report.coverage.fresh_process_project_recall -ne 'PASS' -or
+              $report.coverage.same_process_dual_instance_lifecycle -ne 'PASS' -or
+              $report.coverage.distinct_instance_state_isolation -ne 'NOT COVERED' -or
               $report.coverage.recall_audio_determinism -ne 'NOT COVERED' -or
               $report.coverage.realtime_deadline_observation -notin @('PASS','FAIL')) {
             throw 'Quickcheck coverage or release classification incorrect'
@@ -492,13 +496,13 @@ jobs:
             if ($found.Count -ne 1) { throw "Portable Test Lab host missing: $binaryName" }
             Copy-Item -LiteralPath $found[0].FullName -Destination "$dir/$binaryName"
           }
-          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_instance_isolation.py','verify_audio_reference.py','verify_parameter_inventory.py')) {
+          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_instance_isolation.py','verify_multi_instance_smoke.py','verify_audio_reference.py','verify_parameter_inventory.py')) {
             if (-not (Test-Path "tests/$script")) { throw "Portable QA script missing: $script" }
             Copy-Item -LiteralPath "tests/$script" -Destination "$dir/$script"
           }
           Copy-Item tests/Run-VST3-Test.cmd "$dir/Run-VST3-Test.cmd"
           Copy-Item docs/ONE-COMMAND-QUICKCHECK.md "$dir/README.md"
-          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_instance_isolation.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py"
+          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_instance_isolation.py" "$dir/verify_multi_instance_smoke.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py"
           if ($LASTEXITCODE -ne 0) { throw 'Portable Python scripts syntax check failed' }
           python tests/test_user_report.py
           if ($LASTEXITCODE -ne 0) { throw 'German results/report mutation controls failed' }

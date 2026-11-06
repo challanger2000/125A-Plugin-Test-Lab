@@ -28,6 +28,18 @@ assert "<script>alert(1)</script>" not in page
 assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
 assert "Freigabe des Plugins" in page
 assert page.count("BESTANDEN") == 4
+enriched = dict(passed)
+enriched["coverage"] = dict(passed["coverage"])
+enriched["coverage"]["same_process_dual_instance_lifecycle"] = "PASS"
+enriched["coverage"]["distinct_instance_state_isolation"] = "NOT COVERED"
+enriched["coverage"]["externally_referenced_audio"] = "REFERENCE_MATCH"
+page = report.report_html(enriched)
+assert "Zwei gleichzeitige Plugininstanzen in einem Host" in page
+assert "Unabhaengige Bank-/Projektzustaende beider Instanzen" in page
+assert "Vergleich mit freigegebener WAV-Referenz" in page
+assert page.count("BESTANDEN") == 6, "independent reference falsely displayed untested"
+assert "KEINE PRODUKTFREIGABE" in page
+
 critical = dict(passed)
 critical["coverage"] = dict(passed["coverage"])
 critical["coverage"]["realtime_deadline_observation"] = "FAIL"

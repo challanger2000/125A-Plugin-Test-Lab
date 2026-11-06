@@ -17,6 +17,8 @@ LABELS = {
     "sample_rate_buffer_matrix": "44,1 / 48 / 96 kHz mit 64 / 512 Samples",
     "native_audio_state_capture": "Native Audio- und Projektzustandsaufzeichnung",
     "fresh_process_project_recall": "Projektzustand in zwei neuen Hostprozessen laden",
+    "same_process_dual_instance_lifecycle": "Zwei gleichzeitige Plugininstanzen in einem Host",
+    "distinct_instance_state_isolation": "Unabhaengige Bank-/Projektzustaende beider Instanzen",
     "recall_audio_determinism": "Samplegenauer Vergleich nach Neuladen",
     "native_gui_lifecycle": "Pluginfenster oeffnen und erneut oeffnen",
     "native_parameter_inventory": "Alle vom VST3-Controller gemeldeten Parameter aufgueltigkeit pruefen",
@@ -62,9 +64,9 @@ def report_html(data):
             passed += 1
         else:
             missing += 1
-        display = ("BESTANDEN" if verdict == "PASS" else
+        display = ("BESTANDEN" if verdict in ("PASS", "REFERENCE_MATCH") else
                    "FEHLER" if verdict == "FAIL" else "NICHT GEPRUEFT")
-        cls = "pass" if verdict == "PASS" else "fail" if verdict == "FAIL" else "unknown"
+        cls = "pass" if verdict in ("PASS", "REFERENCE_MATCH") else "fail" if verdict == "FAIL" else "unknown"
         rows.append("<tr><td>" + html.escape(label) + "</td><td class='" +
                     cls + "'>" + display + "</td></tr>")
     if coverage.get("realtime_deadline_observation") == "FAIL":

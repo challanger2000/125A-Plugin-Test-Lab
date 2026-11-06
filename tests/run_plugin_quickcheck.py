@@ -22,7 +22,8 @@ def digest(path):
 
 
 def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
-        gui_host=None, gui_controls=None, reference_wav=None, reference_tolerance=0):
+        gui_host=None, gui_controls=None, reference_wav=None, reference_tolerance=0,
+        dual_host=None):
     bundle = bundle.resolve(strict=True)
     host = host.resolve(strict=True)
     stress_host = stress_host.resolve(strict=True)
@@ -37,6 +38,10 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         raise ValueError("exactly one VST3 processor module expected in bundle")
     binary = binaries[0].resolve()
     sha = digest(binary)
+    if dual_host is not None:
+        dual_host = Path(dual_host).resolve(strict=True)
+        if not dual_host.is_file():
+            raise ValueError("native same-process dual-instance host missing")
     if gui_controls is not None and gui_host is None:
         raise ValueError("GUI controls require an actual native GUI host")
     if gui_host is not None:
@@ -100,6 +105,8 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "sample_rate_buffer_matrix": "NOT EXECUTED",
             "native_audio_state_capture": "NOT EXECUTED",
             "fresh_process_project_recall": "NOT EXECUTED",
+            "same_process_dual_instance_lifecycle": "NOT COVERED",
+            "distinct_instance_state_isolation": "NOT COVERED",
             "recall_audio_determinism": "NOT COVERED",
             "independent_musical_audio": "NOT COVERED",
             "externally_referenced_audio": "NOT COVERED",
@@ -231,6 +238,38 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             summary["coverage"]["fresh_process_project_recall"] = "NOT COVERED"
             summary["recall_note"] = (
                 "Captured state absent or outside current host 1-byte to 128-MB size range")
+    if summary["status"] == "TECHNICAL_PASS" and dual_host is not None:
+        from verify_multi_instance_smoke import audit as audit_instances
+        saved = out / "native" / "P34" / "captured-state.bin"
+        if not saved.is_file() or not 0 < saved.stat().st_size < 128 * 1024 * 1024:
+            summary["coverage"]["same_process_dual_instance_lifecycle"] = "NOT COVERED"
+        else:
+            dual_dir = out / "same-process"
+            dual_dir.mkdir(parents=True, exist_ok=True)
+            for name in ("MULTI-INSTANCE.tsv", "A-after.bin", "B-after.bin"):
+                (dual_dir / name).unlink(missing_ok=True)
+            dual_proc = runner([str(dual_host), "--dual-identical", str(bundle),
+                                str(saved.resolve()), str(dual_dir.resolve())],
+                               capture_output=True, text=True,
+                               timeout=timeout, check=False, errors="replace")
+            dual_log = (dual_proc.stdout or "") + "\n" + (dual_proc.stderr or "")
+            (out / "same-process.log").write_text(dual_log, encoding="utf-8")
+            if dual_proc.returncode == 10 and "[INCONCLUSIVE]" in dual_log:
+                summary["coverage"]["same_process_dual_instance_lifecycle"] = "NOT COVERED"
+            elif dual_proc.returncode != 0:
+                summary["status"] = "FAIL"
+                summary["reason"] = "two simultaneous VST3 instances failed native lifecycle/process/save"
+            else:
+                try:
+                    evidence = audit_instances(dual_dir)
+                    if (evidence["status"] != "PASS" or
+                            "[PASS] two real VST3 instances processed in same host process"
+                            not in dual_log):
+                        raise ValueError("real native dual-instance proof incomplete")
+                    summary["coverage"]["same_process_dual_instance_lifecycle"] = "PASS"
+                except (ValueError, OSError, OverflowError, KeyError) as exc:
+                    summary["status"] = "FAIL"
+                    summary["reason"] = "actual same-process VST3 instance proof invalid: " + str(exc)
     if summary["status"] == "TECHNICAL_PASS" and gui_host is not None:
         gui_log = out / "gui-lifecycle.log"
         gui_log.unlink(missing_ok=True)
@@ -331,6 +370,7 @@ def main():
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--timeout", type=int, default=120)
     p.add_argument("--gui-host", type=Path)
+    p.add_argument("--dual-host", type=Path)
     p.add_argument("--gui-controls", type=Path)
     p.add_argument("--reference-wav", type=Path)
     p.add_argument("--reference-tolerance-lsb", type=int, default=0)
@@ -339,7 +379,8 @@ def main():
         result = run(a.plugin, a.host, a.stress_host, a.out, a.timeout,
                      gui_host=a.gui_host, gui_controls=a.gui_controls,
                      reference_wav=a.reference_wav,
-                     reference_tolerance=a.reference_tolerance_lsb)
+                     reference_tolerance=a.reference_tolerance_lsb,
+                     dual_host=a.dual_host)
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired,
             json.JSONDecodeError) as error:
         a.out.mkdir(parents=True, exist_ok=True)

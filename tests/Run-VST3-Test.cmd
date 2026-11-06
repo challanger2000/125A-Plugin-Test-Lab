@@ -15,6 +15,7 @@ set "LAB=%~dp0"
 if not exist "%LAB%125A_Test_Lab_Host.exe" goto :missing
 if not exist "%LAB%125A_Test_Lab_State_Stress.exe" goto :missing
 if not exist "%LAB%125A_Test_Lab_GUI.exe" goto :missing
+if not exist "%LAB%125A_Test_Lab_Instance_Isolation.exe" goto :missing
 if not exist "%LAB%run_plugin_quickcheck.py" goto :missing
 if not exist "%LAB%write_user_report.py" goto :missing
 where py >nul 2>&1
@@ -28,7 +29,7 @@ if not errorlevel 1 (
   )
   set "PYTHON=python"
 )
-%PYTHON% "%LAB%run_plugin_quickcheck.py" --plugin "%~1" --host "%LAB%125A_Test_Lab_Host.exe" --stress-host "%LAB%125A_Test_Lab_State_Stress.exe" --gui-host "%LAB%125A_Test_Lab_GUI.exe" --out "%LAB%RESULTS\%~n1"
+%PYTHON% "%LAB%run_plugin_quickcheck.py" --plugin "%~1" --host "%LAB%125A_Test_Lab_Host.exe" --stress-host "%LAB%125A_Test_Lab_State_Stress.exe" --gui-host "%LAB%125A_Test_Lab_GUI.exe" --dual-host "%LAB%125A_Test_Lab_Instance_Isolation.exe" --out "%LAB%RESULTS\%~n1"
 set "CODE=%ERRORLEVEL%"
 %PYTHON% "%LAB%write_user_report.py" --result "%LAB%RESULTS\%~n1\QUICKCHECK-RESULT.json" --out "%LAB%RESULTS\%~n1\TESTERGEBNIS.html"
 if errorlevel 1 (
