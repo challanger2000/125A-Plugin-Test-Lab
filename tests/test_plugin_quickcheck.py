@@ -308,7 +308,7 @@ with tempfile.TemporaryDirectory() as td:
                 "status": "TECHNICAL_PASS",
                 "verified_module_sha256": sha if mode != "wrong_identity" else "f" * 64,
                 "gui_host_sha256": hashlib.sha256(gui.read_bytes()).hexdigest(),
-                "declared_actions": len(workflow_steps),
+                "declared_actions": len(loaded_steps),
                 "verified_actions": len(loaded_steps) if mode != "missing_step" else 1,
                 "verified_visual_only_actions": (visual_count if mode != "wrong_visual_count" else 0),
                 "visual_only_controls": "PASS" if visual_count else "NOT COVERED",
