@@ -42,6 +42,9 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_DIALOG_GOOD
 #define QA_GUI_DIALOG_GOOD 0
 #endif
+#ifndef QA_GUI_DIALOG_NO_BUTTON
+#define QA_GUI_DIALOG_NO_BUTTON 0
+#endif
 #ifndef QA_GUI_DIALOG_BAD
 #define QA_GUI_DIALOG_BAD 0
 #endif
@@ -168,7 +171,11 @@ bool writeFixtureMidi() {
 }
 #endif
 
-#if QA_GUI_DIALOG_GOOD
+#if QA_GUI_DIALOG_NO_BUTTON
+const FUID kProcessorCID(0x125A2026, 0x11060003, 0xA0000B31, 0xB0000B31);
+const FUID kControllerCID(0x125A2026, 0x11060003, 0xA0000B32, 0xB0000B32);
+constexpr const char* kName = "125A Native Dialog Missing Button Fixture";
+#elif QA_GUI_DIALOG_GOOD
 const FUID kProcessorCID(0x125A2026, 0x11060002, 0xA0000B11, 0xB0000B11);
 const FUID kControllerCID(0x125A2026, 0x11060002, 0xA0000B12, 0xB0000B12);
 constexpr const char* kName = "125A Native Owned Dialog Good Fixture";
@@ -384,6 +391,22 @@ public:
     }
 };
 
+#if QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON
+LRESULT CALLBACK fixtureDialogProc(HWND dialog, UINT message, WPARAM w, LPARAM l) {
+#if QA_GUI_DIALOG_GOOD
+    if (message == WM_COMMAND && LOWORD(w) == 43061 && HIWORD(w) == BN_CLICKED) {
+        (void)DestroyWindow(dialog);
+        return 0;
+    }
+#endif
+    if (message == WM_CLOSE) {
+        (void)DestroyWindow(dialog);
+        return 0;
+    }
+    return DefWindowProcW(dialog, message, w, l);
+}
+#endif
+
 LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     auto* self = reinterpret_cast<ClickView*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     if (message == WM_NCCREATE) {
@@ -440,13 +463,24 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
     }
 #endif
     if (message == WM_LBUTTONUP && self && self->owner_) {
-#if QA_GUI_DIALOG_GOOD
+#if QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON
         if (!self->dialogWindow_) {
             self->dialogWindow_ = CreateWindowExW(
                 WS_EX_DLGMODALFRAME, L"#32770", L"P60 Plugin Test Dialog",
                 WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
                 CW_USEDEFAULT, CW_USEDEFAULT, 320, 180, hwnd, nullptr,
                 GetModuleHandleW(nullptr), nullptr);
+            if (self->dialogWindow_) {
+                (void)SetWindowLongPtrW(self->dialogWindow_, GWLP_WNDPROC,
+                                        reinterpret_cast<LONG_PTR>(&fixtureDialogProc));
+#if QA_GUI_DIALOG_GOOD
+                (void)CreateWindowExW(0, L"BUTTON", L"Close",
+                    WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 100, 60, 120, 40,
+                    self->dialogWindow_,
+                    reinterpret_cast<HMENU>(static_cast<INT_PTR>(43061)),
+                    GetModuleHandleW(nullptr), nullptr);
+#endif
+            }
         }
         self->owner_->clicked();
         return 0;
