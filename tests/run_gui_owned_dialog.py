@@ -30,7 +30,7 @@ def validate_native(raw, *, expect_button=False):
     expected_lines = number + 4 + (1 if expect_button else 0)
     if not 0 <= number <= 15 or len(lines) != expected_lines:
         raise ValueError("P60/P61 missing, duplicated or excessive native dialog records")
-    if expect_button and lines[-2] != "button\\t43061\\tButton\\tactioned\\tdialog_closed":
+    if expect_button and lines[-2] != "button\t43061\tButton\tactioned\tdialog_closed":
         raise ValueError("P61 dialog button not independently observed and dismissed")
     dialog_records = lines[3:3 + number]
     for i, line in enumerate(dialog_records):
