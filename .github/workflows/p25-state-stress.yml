@@ -770,7 +770,7 @@ jobs:
           Write-Host '[PASS] Same-editor click/drag history, value transitions, pixels and bad plugins independently verified'
           exit 0
 
-      - name: P41 autonomous GUI interaction candidate discovery on real Windows VST3s
+      - name: P42 sham-controlled automatic GUI exploration with genuine Windows VST3s
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -794,6 +794,8 @@ jobs:
             $result = Get-Content "artifacts/P41/$($fixture.name)/GUI-EXPLORATION-RESULT.json" -Raw | ConvertFrom-Json
             if ($result.status -ne 'OBSERVATIONS_COMPLETE' -or
                 $result.requested_points -ne 1 -or $result.completed_points -ne 1 -or
+                $result.sham_verified_points -ne 1 -or $result.sham_control -ne 'COMPLETE' -or
+                $result.probes[0].sham_control_attribution -ne 'SUPPORTED' -or
                 @($result.probes).Count -ne 1 -or
                 $result.probes[0].classification -ne $fixture.expected -or
                 @($result.candidates).Count -ne $fixture.candidate -or
@@ -808,10 +810,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'P41 automatic UI grid failed on real native VST3' }
           $grid = Get-Content artifacts/P41/automatic-grid/GUI-EXPLORATION-RESULT.json -Raw | ConvertFrom-Json
           if ($grid.status -ne 'OBSERVATIONS_COMPLETE' -or
-              $grid.completed_points -ne 3 -or @($grid.candidates).Count -ne 3) {
+              $grid.completed_points -ne 3 -or $grid.sham_verified_points -ne 3 -or
+              $grid.sham_control -ne 'COMPLETE' -or @($grid.candidates).Count -ne 3) {
             throw 'P41 default autonomous GUI probing did not observe three genuine actions'
           }
-          Write-Host '[PASS] P41 independent real GUI exploration distinguished responsive, inert and stale-paint controls without any product mapping'
+          Write-Host '[PASS] P42 actual native click/sham matched controls distinguish responsive, inert and stale-paint VST3 GUI observations'
           exit 0
 
       - name: One-command real VST3 quickcheck without handwritten manifests
