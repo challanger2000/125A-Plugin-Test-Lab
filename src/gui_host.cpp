@@ -362,6 +362,9 @@ struct WorkflowStep {
     double before{}, expected{};
     bool screenshot{};
     bool visualOnly{};
+    bool keyboard{};
+    int keyCode{};
+    int modifiers{};
 };
 struct WorkflowInput {
     std::vector<std::pair<ParamID, double>> initial;
@@ -444,15 +447,27 @@ WorkflowInput parseWorkflow(const std::filesystem::path& path) {
         WorkflowStep step;
         step.index = workflowInt(parts[1], 63);
         require(step.index == i, "missing, duplicated or out-of-order workflow action");
-        require(parts[2] == "click" || parts[2] == "drag",
+        require(parts[2] == "click" || parts[2] == "drag" || parts[2] == "key",
                 "unsupported GUI workflow action");
         step.drag = parts[2] == "drag";
+        step.keyboard = parts[2] == "key";
         step.x1 = workflowInt(parts[3], 8191);
         step.y1 = workflowInt(parts[4], 8191);
         step.x2 = workflowInt(parts[5], 8191);
         step.y2 = workflowInt(parts[6], 8191);
-        if (!step.drag) require(step.x1 == step.x2 && step.y1 == step.y2,
-                                "click workflow action has different endpoints");
+        if (step.keyboard) {
+            // For key actions, payload columns 5/6 carry the virtual-key
+            // and modifier bitmask rather than pointer destination.
+            step.keyCode = step.x2;
+            step.modifiers = step.y2;
+            require(step.keyCode >= 8 && step.keyCode <= 255 &&
+                    step.modifiers <= 7 &&
+                    step.keyCode != VK_LWIN && step.keyCode != VK_RWIN,
+                    "invalid or system-level GUI workflow key");
+        } else if (!step.drag) {
+            require(step.x1 == step.x2 && step.y1 == step.y2,
+                    "click workflow action has different endpoints");
+        }
         step.visualOnly = parts[7] == "-";
         if (step.visualOnly) {
             require(parts[8] == "-" && parts[9] == "-",
@@ -538,8 +553,9 @@ int runGuiWorkflow(const std::string& pluginPath,
                 out << "format\t125A-GUI-WORKFLOW-RESULT-v1\n"
                     << "step_count\t" << input.steps.size() << "\n";
                 for (const auto& step : input.steps) {
-                    require(step.x1 < client.right && step.x2 < client.right &&
-                            step.y1 < client.bottom && step.y2 < client.bottom,
+                    require(step.x1 < client.right && step.y1 < client.bottom &&
+                            (step.keyboard || (step.x2 < client.right &&
+                                               step.y2 < client.bottom)),
                             "approved GUI workflow coordinates are outside actual HWND");
                     double before = 0.0;
                     if (step.visualOnly) {
@@ -556,15 +572,44 @@ int runGuiWorkflow(const std::string& pluginPath,
                                 std::abs(before - step.before) <= 0.00001,
                                 "GUI workflow precondition mismatches previous action");
                     }
-                    const LPARAM start = MAKELPARAM(step.x1, step.y1);
-                    const LPARAM end = MAKELPARAM(step.x2, step.y2);
-                    SendMessageW(child, WM_MOUSEMOVE, 0, start);
-                    SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, start);
-                    if (step.drag) {
-                        SendMessageW(child, WM_MOUSEMOVE, MK_LBUTTON, end);
-                        pump(10);
+                    if (step.keyboard) {
+                        // Send actual Win32 key down/up messages to the
+                        // attached plugin HWND, not just edit a controller
+                        // value. The test oracle still checks the result.
+                        SetFocus(child);
+                        SendMessageW(child, WM_MOUSEMOVE, 0,
+                                     MAKELPARAM(step.x1, step.y1));
+                        if (step.modifiers & 1)
+                            SendMessageW(child, WM_KEYDOWN, VK_CONTROL, 0);
+                        if (step.modifiers & 2)
+                            SendMessageW(child, WM_KEYDOWN, VK_SHIFT, 0);
+                        if (step.modifiers & 4)
+                            SendMessageW(child, WM_SYSKEYDOWN, VK_MENU, 0);
+                        const UINT down = (step.modifiers & 4) ?
+                                          WM_SYSKEYDOWN : WM_KEYDOWN;
+                        const UINT up = (step.modifiers & 4) ?
+                                        WM_SYSKEYUP : WM_KEYUP;
+                        SendMessageW(child, down,
+                                     static_cast<WPARAM>(step.keyCode), 0);
+                        SendMessageW(child, up,
+                                     static_cast<WPARAM>(step.keyCode), 0);
+                        if (step.modifiers & 4)
+                            SendMessageW(child, WM_SYSKEYUP, VK_MENU, 0);
+                        if (step.modifiers & 2)
+                            SendMessageW(child, WM_KEYUP, VK_SHIFT, 0);
+                        if (step.modifiers & 1)
+                            SendMessageW(child, WM_KEYUP, VK_CONTROL, 0);
+                    } else {
+                        const LPARAM start = MAKELPARAM(step.x1, step.y1);
+                        const LPARAM end = MAKELPARAM(step.x2, step.y2);
+                        SendMessageW(child, WM_MOUSEMOVE, 0, start);
+                        SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, start);
+                        if (step.drag) {
+                            SendMessageW(child, WM_MOUSEMOVE, MK_LBUTTON, end);
+                            pump(10);
+                        }
+                        SendMessageW(child, WM_LBUTTONUP, 0, end);
                     }
-                    SendMessageW(child, WM_LBUTTONUP, 0, end);
                     pump(50);
                     if (step.screenshot) {
                         InvalidateRect(child, nullptr, TRUE);
