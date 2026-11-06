@@ -80,8 +80,12 @@ def run(path: pathlib.Path):
         expected_eot = 3840 if kind == "pattern" else 11520
         assert_good(all(t == expected_eot for t in midi.eot),
                     f"{kind} wrong MIDI EOT: {midi.eot}")
-        assert_good(midi.format in (0,1) and midi.tracks > 0,
-                    "invalid standard MIDI format")
+        # V1.5 release contract: one SMF Type-1 file with a conductor
+        # plus exactly 16 independent instrument tracks. Passing Format 0
+        # or a collapsed single-track file would be a user-visible regression.
+        assert_good(midi.format == 1 and midi.tracks == 17,
+                    f"V1.5 MIDI contract violated: SMF format={midi.format}, "
+                    f"tracks={midi.tracks}; expected Format 1 / 17 tracks")
         print(f"[PASS] P11 actual GUI MIDI {midi_path.name}: "
               f"ticks={target_ticks}, tracks={midi.tracks}")
         expected_audio = [x*25 for x in target_ticks]
