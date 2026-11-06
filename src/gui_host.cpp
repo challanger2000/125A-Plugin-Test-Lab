@@ -256,10 +256,61 @@ void captureEditorBmp(HWND nativeChild, const std::filesystem::path& path) {
               << "x" << height << ": " << path.string() << '\n';
 }
 
+
+// P54: genuine, read-only Win32 child-control hierarchy observation.
+// This is only an HWND inventory; custom-painted subcontrols are NOT
+// automatically detected or assigned semantics by this inventory.
+void writeNativeHwndTree(HWND editor, const std::filesystem::path& path) {
+    require(IsWindow(editor), "P54 no actual native editor HWND");
+    std::vector<HWND> nodes{editor};
+    EnumChildWindows(editor, [](HWND child, LPARAM arg) -> BOOL {
+        auto* list = reinterpret_cast<std::vector<HWND>*>(arg);
+        if (list->size() >= 512) return FALSE;
+        list->push_back(child);
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&nodes));
+    require(nodes.size() <= 512, "P54 HWND tree exceeded 512 controls");
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    require(output.good(), "P54 cannot create native HWND inventory");
+    output << "format\t125A-HWND-TREE-v1\n";
+    output << "count\t" << nodes.size() << "\n";
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        const HWND hwnd = nodes[i];
+        require(IsWindow(hwnd) != FALSE, "P54 child HWND destroyed during scan");
+        int parent = -1;
+        if (i != 0) {
+            const HWND actual = GetParent(hwnd);
+            const auto it = std::find(nodes.begin(), nodes.end(), actual);
+            require(it != nodes.end(), "P54 child HWND parent absent from inventory");
+            parent = static_cast<int>(std::distance(nodes.begin(), it));
+        }
+        char className[256]{};
+        require(GetClassNameA(hwnd, className, 255) > 0, "P54 child HWND lacks native class");
+        std::string cls(className);
+        for (char& c : cls) if (c == '\t' || c == '\n' || c == '\r') c = '_';
+        RECT rect{};
+        require(GetWindowRect(hwnd, &rect) != FALSE, "P54 cannot read child HWND rectangle");
+        POINT corners[2]{{rect.left, rect.top}, {rect.right, rect.bottom}};
+        require(MapWindowPoints(HWND_DESKTOP, editor, corners, 2) != 0 ||
+                GetLastError() == ERROR_SUCCESS,
+                "P54 cannot transform child rectangle to editor coordinates");
+        output << "node\t" << i << "\t" << parent << "\t"
+               << cls << "\t" << (IsWindowVisible(hwnd) ? 1 : 0) << "\t"
+               << (IsWindowEnabled(hwnd) ? 1 : 0) << "\t"
+               << corners[0].x << "\t" << corners[0].y << "\t"
+               << corners[1].x << "\t" << corners[1].y << "\t"
+               << GetDlgCtrlID(hwnd) << "\n";
+    }
+    output << "end\tCOMPLETE\n";
+    output.flush();
+    require(output.good(), "P54 incomplete native HWND control inventory");
+}
+
 void runView(IEditController* controller, int cycle, bool checkClick, ParamID paramID,
              int clickX = -1, int clickY = -1, double expectedValue = 1.0,
              const std::filesystem::path& screenshot = {},
-             double initialNormalized = 0.0) {
+             double initialNormalized = 0.0,
+             const std::filesystem::path& hwndTree = {}) {
     IPlugView* view = controller->createView(ViewType::kEditor);
     if (!view) throw std::runtime_error("plugin supplies no editor view (INCONCLUSIVE)");
     bool frameSet = false;
@@ -281,6 +332,11 @@ void runView(IEditController* controller, int cycle, bool checkClick, ParamID pa
         ShowWindow(window.get(), SW_SHOWNA);
         UpdateWindow(window.get());
         pump(75);
+        if (!hwndTree.empty()) {
+            const HWND editor = GetWindow(window.get(), GW_CHILD);
+            require(editor && IsWindow(editor), "P54 missing real plugin editor child HWND");
+            writeNativeHwndTree(editor, hwndTree);
+        }
 
         if (checkClick) {
             require(std::isfinite(controller->getParamNormalized(paramID)),
@@ -931,7 +987,8 @@ int runGuiWorkflow(const std::string& pluginPath,
 int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
         int clickX = -1, int clickY = -1, double expectedValue = 1.0,
         const std::filesystem::path& screenshot = {},
-        double initialNormalized = 0.0) {
+        double initialNormalized = 0.0,
+        const std::filesystem::path& hwndTree = {}) {
     std::string error;
     auto module = Module::create(pluginPath, error);
     require(static_cast<bool>(module), ("Cannot load VST3: " + error).c_str());
@@ -952,7 +1009,7 @@ int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
             for (int cycle = 1; cycle <= 2; ++cycle)
                 runView(controller.ptr, cycle, checkClick, paramID,
                         clickX, clickY, expectedValue, screenshot,
-                        initialNormalized);
+                        initialNormalized, cycle == 1 ? hwndTree : std::filesystem::path{});
             controller.close();
         }
         require(component->terminate() == kResultOk,
@@ -2659,6 +2716,9 @@ int main(int argc, char** argv) {
             return sweepParameters(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "--verify-parameter-text")
             return verifyParameterText(argv[2], argv[3]);
+        if (argc == 4 && std::string(argv[1]) == "--inventory-hwnd-tree")
+            return run(argv[2], false, 0, -1, -1, 1.0, {}, 0.0,
+                       std::filesystem::path(argv[3]));
         if (argc == 4 && std::string(argv[1]) == "--snapshot-editor")
             return run(argv[2], false, 0, -1, -1, 1.0,
                        std::filesystem::path(argv[3]));
