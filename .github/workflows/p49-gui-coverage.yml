@@ -1,0 +1,29 @@
+name: P49 bounded GUI coverage sampler
+
+on:
+  pull_request:
+    paths:
+      - 'tests/run_gui_coverage_scan.py'
+      - 'tests/test_gui_coverage_scan.py'
+      - '.github/workflows/p49-gui-coverage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run deterministic and adversarial sampler tests
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_gui_coverage_scan.py -v
+          if ($LASTEXITCODE -ne 0) { throw "P49 regression tests failed" }
+      - name: Compile Python runners
+        shell: pwsh
+        run: |
+          python -m py_compile tests/run_gui_coverage_scan.py tests/test_gui_coverage_scan.py
+          if ($LASTEXITCODE -ne 0) { throw "P49 syntax compilation failed" }
