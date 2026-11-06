@@ -177,3 +177,43 @@ verifies **only independently specified and observed visual transitions**.
 The human-readable QA report distinguishes these from controller roundtrips
 and keeps overall `product_gui_controls` as NOT COVERED unless a separate
 product acceptance gate verifies every intended behavior.
+
+
+## Native keyboard shortcuts and focused editor input (P39)
+
+A universal workflow action can also send a bounded Win32 keyboard
+`WM_KEYDOWN` / `WM_KEYUP` sequence to the actual native VST3 editor HWND,
+with optional Ctrl, Shift and Alt modifiers. As with click and drag, every
+keyboard step must supply either an independently approved VST3 parameter
+before/after transition or a visual-only painted-pixel transition. Merely
+dispatching a key is **not** a PASS.
+
+Example in a `125a-gui-workflow-v1` profile:
+
+```json
+{
+  "id": "shortcut_enable", "action": "key", "x": 160, "y": 90,
+  "key_code": 32, "modifiers": ["ctrl", "shift"],
+  "param_id": 9001,
+  "before_normalized": 0.0, "expected_normalized": 1.0,
+  "screenshot": true,
+  "expected_pixel": {"x": 10, "y": 10, "rgb": [12, 142, 85]}
+}
+```
+
+`key_code` is the Win32 virtual-key value 8–255 (e.g. 32 = Space,
+13 = Enter, 27 = Esc); Windows logo keys are excluded. Optional modifiers
+are `ctrl`, `shift`, `alt`, without repeats. The `x`/`y` position is
+an editor pointer position during the keyboard input; if a field must
+receive focus, include a separate validated click action first.
+
+The native test plugin responds to Space/Enter and an inert test plugin
+does not. P25 Windows CI verifies real key input with and without
+modifiers, and proves that an unrelated Escape key **fails** an asserted
+state-change oracle.
+
+These are **HWND-directed Win32 messages**, not system-wide synthesized
+keystrokes. Text-entry, native popup menus, accessibility navigation,
+interacting with a commercial DAW window and arbitrary keyboard shortcuts
+cannot be certified in every plugin without a product-specific observable
+oracle. The full set of undisclosed controls remains NOT COVERED.
