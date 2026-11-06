@@ -123,7 +123,7 @@ jobs:
           }
           Write-Host '[PASS] P25 eleven real VST3 concurrent playback/state and sample-rate cases, including three deliberate defects'
           exit 0
-      - name: Same Windows process, two actual VST3 instances: independent state, PCM and global-state leakage
+      - name: Same-process two-instance VST3 isolation and global-state leakage
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
