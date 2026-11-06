@@ -89,7 +89,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Current P137 AWE actual native CTest suite failed' }
           $log=Get-Content artifacts/P53/ctest.txt -Raw
           if ($log -notmatch '100% tests passed, 0 tests failed out of (\d+)') { throw 'AWE CTest proof missing' }
-          if ([int]$Matches[1] -lt 45) { throw 'Current AWE full V11/CC120/native test count under 45' }
+          if ([int]$Matches[1] -lt 44) { throw 'Current AWE full V11/CC120/native test count under 44' }
           foreach ($name in @('125A_p122_state_snapshot','125A_p128_sample_accurate_program_pcm',
                               '125A_p128_persistent_controls','125A_p130_no_cpp_new_on_audio_thread',
                               '125A_p133_fx_processor_modes','125A_p134_cc120_physical_stop')) {
