@@ -496,7 +496,7 @@ WorkflowInput parseWorkflow(const std::filesystem::path& path) {
 // mapping, never proof that a product's undocumented buttons work correctly.
 // One click per process ensures independent initial controller/UI state.
 int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
-                       const std::filesystem::path& evidence,
+                       bool performClick, const std::filesystem::path& evidence,
                        const std::filesystem::path& baselineFirst,
                        const std::filesystem::path& baselineSecond,
                        const std::filesystem::path& observed) {
@@ -581,10 +581,16 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                 captureEditorBmp(child, baselineFirst);
                 pump(80);
                 captureEditorBmp(child, baselineSecond);
+                // Send the SAME mouse motion to both modes: a hover
+                // highlight must NOT be misattributed to a click. Only
+                // the real-click run receives button down/up. Both modes
+                // keep exactly the same dwell and repaint timing.
                 const LPARAM point = MAKELPARAM(clickX, clickY);
                 SendMessageW(child, WM_MOUSEMOVE, 0, point);
-                SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, point);
-                SendMessageW(child, WM_LBUTTONUP, 0, point);
+                if (performClick) {
+                    SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, point);
+                    SendMessageW(child, WM_LBUTTONUP, 0, point);
+                }
                 pump(100);
                 InvalidateRect(child, nullptr, TRUE);
                 (void)UpdateWindow(child);
@@ -601,7 +607,8 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
                 std::ofstream out(evidence, std::ios::trunc);
                 require(bool(out), "P41 cannot create native UI exploration evidence");
                 out << std::setprecision(17);
-                out << "format\t125A-GUI-EXPLORE-v1\n"
+                out << "format\t125A-GUI-EXPLORE-v2\n"
+                    << "mode\t" << (performClick ? "click" : "sham") << "\n"
                     << "coordinate\t" << clickX << "\t" << clickY << "\n"
                     << "canvas\t" << rect.right << "\t" << rect.bottom << "\n"
                     << "param_count\t" << rows.size() << "\n";
@@ -631,7 +638,8 @@ int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
         }
         require(component->terminate() == kResultOk,
                 "P41 real VST3 processor could not terminate");
-        std::cout << "[OBSERVED] P41 disposable real VST3 GUI click at "
+        std::cout << "[OBSERVED] P42 disposable VST3 GUI "
+                  << (performClick ? "click" : "sham no-click") << " at "
                   << clickX << "," << clickY << ", no product approval\n";
         return 0;
     }
@@ -2474,11 +2482,13 @@ int main(int argc, char** argv) {
             runRealDrumatorGui(argv[2], argv[3], argv[4], argv[5]);
             return 0;
         }
-        if (argc == 9 && std::string(argv[1]) == "--explore-gui-click") {
+        if (argc == 9 && (std::string(argv[1]) == "--explore-gui-click" ||
+                          std::string(argv[1]) == "--explore-gui-sham")) {
             const int x = workflowInt(argv[3], 8191);
             const int y = workflowInt(argv[4], 8191);
-            return exploreOneGuiClick(argv[2], x, y, argv[5], argv[6],
-                                      argv[7], argv[8]);
+            return exploreOneGuiClick(argv[2], x, y,
+                                      std::string(argv[1]) == "--explore-gui-click",
+                                      argv[5], argv[6], argv[7], argv[8]);
         }
         if (argc == 6 && std::string(argv[1]) == "--gui-workflow")
             return runGuiWorkflow(argv[2], argv[3], argv[4], argv[5]);
@@ -2543,6 +2553,7 @@ int main(int argc, char** argv) {
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
         std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"                  << "       125A_Test_Lab_GUI --gui-workflow <plugin.vst3> <approved-actions.tsv> <report.tsv> <screenshots-dir>\n"
                   << "       125A_Test_Lab_GUI --explore-gui-click <plugin.vst3> <x> <y> <native.tsv> <baseline-a.bmp> <baseline-b.bmp> <after.bmp>\n"
+                  << "       125A_Test_Lab_GUI --explore-gui-sham <plugin.vst3> <x> <y> <native.tsv> <baseline-a.bmp> <baseline-b.bmp> <after.bmp>\n"
                   << "       125A_Test_Lab_GUI --sweep-parameters <plugin.vst3> <sweep.tsv>\n"
                   << "       125A_Test_Lab_GUI --verify-parameter-text <plugin.vst3> <text.tsv>\n"
 

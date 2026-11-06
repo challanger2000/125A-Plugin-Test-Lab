@@ -105,6 +105,16 @@ smtg_add_vst3plugin(QAGuiToggle
 target_link_libraries(QAGuiToggle PRIVATE sdk user32 gdi32)
 target_compile_definitions(QAGuiToggle PRIVATE NOMINMAX QA_GUI_TOGGLE=1)
 
+# Hover-only control: sham WM_MOUSEMOVE paints the same feedback as an
+# actual click while no VST3 parameter changes. P42 must reject this
+# source-built real VST3 as a click-interaction candidate.
+smtg_add_vst3plugin(QAGuiHover
+    PACKAGE_NAME "125A_QA_GUI_Hover"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiHover PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiHover PRIVATE NOMINMAX QA_GUI_HOVER=1)
+
+
 
 
 smtg_add_vst3plugin(QAGuiInert

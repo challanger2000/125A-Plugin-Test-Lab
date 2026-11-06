@@ -29,7 +29,7 @@ LABELS = {
     "native_parameter_text_reverse": "Parametertexte wieder in korrekte Werte umwandeln",
     "native_gui_workflow": "Mehrstufige Maus- und Tastaturbedienung im selben Pluginfenster",
     "native_gui_visual_workflow": "Nur visuell belegte Buttons ohne VST3-Parameter",
-    "native_gui_exploration": "Automatische GUI-Erkundung (nur Beobachtungen)",
+    "native_gui_exploration": "GUI-Erkundung mit unabhängigen Klick-/Nichtklick-Kontrollen (nur Beobachtungen)",
     "declared_gui_controls": "Explizit definierte Bedienelemente",
     "product_gui_controls": "Alle Bedienelemente des Produktes",
     "independent_musical_audio": "Musikalisch korrekter Klang",
