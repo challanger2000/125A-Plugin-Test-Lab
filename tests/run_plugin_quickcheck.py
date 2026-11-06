@@ -178,6 +178,8 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "native_gui_lifecycle": "NOT COVERED",
             "native_parameter_inventory": "NOT COVERED",
             "native_parameter_sweep": "NOT COVERED",
+            "native_parameter_text_labels": "NOT COVERED",
+            "native_parameter_text_reverse": "NOT COVERED",
             "native_gui_workflow": "NOT COVERED",
             "native_gui_visual_workflow": "NOT COVERED",
             "midi_wav_export": "NOT COVERED",
@@ -415,6 +417,47 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
                 summary["status"] = "FAIL"
                 summary["coverage"]["native_parameter_sweep"] = "FAIL"
                 summary["reason"] = "native VST3 controller parameter sweep invalid: " + str(error)
+
+    # A normalized VST3 value is not a readable value. Probe every
+    # automatable parameter's displayed string and reverse text conversion.
+    # Reverse text parsing is optional in third-party plugins; no support
+    # is NOT COVERED rather than a silently fabricated PASS.
+    if summary["status"] == "TECHNICAL_PASS" and gui_host is not None:
+        from verify_parameter_text import audit as audit_text
+        text_file = out / "native-parameter-text.tsv"
+        text_file.unlink(missing_ok=True)
+        text_proc = checked_runner([
+            str(gui_host), "--verify-parameter-text", str(bundle), str(text_file)],
+            capture_output=True, text=True, timeout=timeout,
+            check=False, errors="replace")
+        text_log = (text_proc.stdout or "") + "\n" + (text_proc.stderr or "")
+        (out / "native-parameter-text.log").write_text(text_log, encoding="utf-8")
+        if text_proc.returncode == 10 and "[INCONCLUSIVE]" in text_log:
+            summary["coverage"]["native_parameter_text_labels"] = "NOT COVERED"
+            summary["coverage"]["native_parameter_text_reverse"] = "NOT COVERED"
+        elif not text_file.is_file():
+            summary["status"] = "FAIL"
+            summary["coverage"]["native_parameter_text_labels"] = "FAIL"
+            summary["coverage"]["native_parameter_text_reverse"] = "FAIL"
+            summary["reason"] = "native value text probe produced no fresh evidence"
+        else:
+            try:
+                observed = audit_text(text_file)
+                if (text_proc.returncode != 0 or
+                    observed["status"] != "PASS" or
+                    "[PASS] VST3 parameter text mapping:" not in text_log or
+                    (summary["coverage"]["native_parameter_inventory"] == "PASS" and
+                     observed["advertised_parameters"] != summary["advertised_vst3_parameters"])):
+                    raise ValueError("VST3 value-to-text mapping failed or parameter count changed")
+                summary["coverage"]["native_parameter_text_labels"] = observed["text_label_api"]
+                summary["coverage"]["native_parameter_text_reverse"] = observed["reverse_text_api"]
+                summary["parameter_labels_verified"] = observed["parameter_label_probes"]
+                summary["reverse_text_values_verified"] = observed["parameter_reverse_probes"]
+            except (ValueError, OSError, TypeError, OverflowError, UnicodeError) as error:
+                summary["status"] = "FAIL"
+                summary["coverage"]["native_parameter_text_labels"] = "FAIL"
+                summary["coverage"]["native_parameter_text_reverse"] = "FAIL"
+                summary["reason"] = "independent VST3 parameter text check failed: " + str(error)
 
     if summary["status"] == "TECHNICAL_PASS" and gui_controls is not None:
         control_spec = json.loads(Path(gui_controls).read_text(encoding="utf-8"))
