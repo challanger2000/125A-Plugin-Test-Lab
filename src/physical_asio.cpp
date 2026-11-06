@@ -27,6 +27,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -229,6 +230,36 @@ void writeAsioSamples(void* target, ASIOSampleType type, const Sample32* source,
             default: ok = false; return;
         }
     }
+}
+
+// CI-only sample-format conversion check; cannot produce hardware evidence.
+int formatSelfTest() {
+    const std::array<float, 3> values{0.0f, 0.5f, -1.0f};
+    for (const auto type : {ASIOSTFloat32LSB, ASIOSTInt32LSB,
+                            ASIOSTInt32LSB24, ASIOSTInt24LSB, ASIOSTInt16LSB}) {
+        std::array<unsigned char, 64> bytes{};
+        bytes.fill(0x5a);
+        bool ok = true;
+        writeAsioSamples(bytes.data(), type, values.data(), 3, ok);
+        ensure(ok && bytes[3 * asioBytesPerSample(type)] == 0x5a,
+               "ASIO output format conversion overran sample buffer");
+        if (type == ASIOSTInt24LSB)
+            ensure(bytes[3] == 255 && bytes[4] == 255 && bytes[5] == 63,
+                   "ASIO little-endian 24-bit midpoint conversion wrong");
+        if (type == ASIOSTInt16LSB)
+            ensure(bytes[2] == 255 && bytes[3] == 63,
+                   "ASIO little-endian 16-bit midpoint conversion wrong");
+        if (type == ASIOSTFloat32LSB)
+            ensure(reinterpret_cast<const float*>(bytes.data())[1] == .5f,
+                   "ASIO float32 sample conversion wrong");
+    }
+    std::array<unsigned char, 32> buffer{};
+    const std::array<float, 1> invalid{std::numeric_limits<float>::quiet_NaN()};
+    bool good = true;
+    writeAsioSamples(buffer.data(), ASIOSTFloat32LSB, invalid.data(), 1, good);
+    ensure(!good, "ASIO converter did not reject non-finite PCM");
+    std::cout << "[PASS] P58 independent sample-format conversions; ASIO hardware NOT RUN\n";
+    return 0;
 }
 
 struct Engine {
@@ -557,6 +588,8 @@ int run(const Arguments& a) {
 
 int main(int argc, char** argv) {
     try {
+        if (argc == 2 && std::strcmp(argv[1], "--sample-format-selftest") == 0)
+            return formatSelfTest();
         return run(parse(argc, argv));
     } catch (const std::exception& ex) {
         std::cerr << "[P58 HARDWARE NO-GO] " << ex.what() << "\n";
