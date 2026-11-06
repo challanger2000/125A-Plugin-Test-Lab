@@ -217,3 +217,50 @@ keystrokes. Text-entry, native popup menus, accessibility navigation,
 interacting with a commercial DAW window and arbitrary keyboard shortcuts
 cannot be certified in every plugin without a product-specific observable
 oracle. The full set of undisclosed controls remains NOT COVERED.
+
+## P41 — Optional automatic GUI exploration (no manually mapped controls)
+
+The shared Windows tester can now **automatically probe unknown native
+GUI regions**, taking a real initial editor snapshot and choosing
+deterministic interior coordinates on a 3×3/4×4 grid. Every click takes
+place in a **fresh, disposable plugin instance and process**. At each
+point it records:
+
+- All advertised VST3 controller parameter values before/after clicking.
+- Two pre-click **real HWND captures** to detect independently changing UI
+  pixels, and a third capture after the click.
+- Distinctions between `PARAMETER_AND_VISUAL_CHANGE`,
+  `PARAMETER_CHANGE`, `VISUAL_CHANGE`, `UNSTABLE_BASELINE` and
+  `NO_OBSERVED_CHANGE`.
+
+Candidates are **observations**, not discovered button names or proof of
+correct functionality. A change in a painted LED does not establish
+correct audio, MIDI, export or recall behavior. A no-change result does
+not mean a control is broken: the click may be outside a control or may
+have a nonobservable side effect. Animated interfaces can be marked
+`UNSTABLE`; their visuals are not certified.
+
+**Explicit opt-in is required** because clicking unknown buttons can
+launch dialogs, exports or other plugin actions. Run only with trusted
+test bundles and disposable project state. This uses a real Windows
+GUI process and never silently runs on new plugins.
+
+Standalone Windows Actions execution:
+
+```powershell
+python tests/run_gui_exploration.py --plugin "C:\VST3\MyPlugin.vst3" --gui-host "build\Release\125A_Test_Lab_GUI.exe" --out artifacts/GUI-SURVEY --acknowledge-ui-clicks --max-points 9
+```
+
+Within the same ordinary technical quickcheck add `--gui-host`,
+`--gui-explore` and `--acknowledge-gui-explore`. Results are saved to
+`gui-exploration/GUI-EXPLORATION-RESULT.json` with native TSV, two
+baseline screenshots and one post-click screenshot per probe.
+A successful scan is `OBSERVATIONS_COMPLETE`, while the human report
+shows `OBSERVATIONS_ONLY`, **not** a button-coverage PASS. Missing,
+stale or tampered native evidence and timeouts fail closed.
+
+Limit: at most 16 candidate coordinates per scan, up to 4096×4096 HWND
+with maximum 4,194,304 analyzed pixels per capture. Native user-action
+automation in GitHub Actions uses the runner's Python; no Python
+installation is needed on the end user's computer.
+

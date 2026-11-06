@@ -491,6 +491,153 @@ WorkflowInput parseWorkflow(const std::filesystem::path& path) {
     return workflow;
 }
 
+// P41: Blind, bounded observation of ONE actual native UI click in a
+// disposable plugin instance.  The result is evidence for later control
+// mapping, never proof that a product's undocumented buttons work correctly.
+// One click per process ensures independent initial controller/UI state.
+int exploreOneGuiClick(const std::string& pluginPath, int clickX, int clickY,
+                       const std::filesystem::path& evidence,
+                       const std::filesystem::path& baselineFirst,
+                       const std::filesystem::path& baselineSecond,
+                       const std::filesystem::path& observed) {
+    require(clickX >= 0 && clickX <= 8191 && clickY >= 0 && clickY <= 8191,
+            "P41 unsafe click coordinates");
+    std::string error;
+    auto module = Module::create(pluginPath, error);
+    require(bool(module), "P41 could not load real VST3 module");
+    HostApplication app;
+    auto factory = module->getFactory();
+    factory.setHostContext(&app);
+    int classes = 0;
+    for (const auto& cls : factory.classInfos()) {
+        if (cls.category() != kVstAudioEffectClass) continue;
+        ++classes;
+        require(classes == 1,
+                "P41 multiple audio classes require explicit selection (INCONCLUSIVE)");
+        auto component = factory.createInstance<IComponent>(cls.ID());
+        require(bool(component) && component->initialize(&app) == kResultOk,
+                "P41 cannot initialize real VST3 processor");
+        {
+            Controller controller;
+            acquireController(component.get(), factory, &app, controller);
+            const int32 count = controller.ptr->getParameterCount();
+            require(count >= 0 && count <= 8192,
+                    "P41 invalid controller parameter count");
+            struct ValueRow {
+                int32 index;
+                ParamID id;
+                double initial;
+                double observed;
+            };
+            std::vector<ValueRow> rows;
+            rows.reserve(static_cast<std::size_t>(count));
+            std::vector<ParamID> seen;
+            seen.reserve(static_cast<std::size_t>(count));
+            for (int32 i = 0; i < count; ++i) {
+                ParameterInfo info{};
+                require(controller.ptr->getParameterInfo(i, info) == kResultTrue,
+                        "P41 cannot enumerate all VST3 controller metadata");
+                require(std::find(seen.begin(), seen.end(), info.id) == seen.end(),
+                        "P41 controller returned duplicate parameter ID");
+                seen.push_back(info.id);
+                const auto value = controller.ptr->getParamNormalized(info.id);
+                require(std::isfinite(value) && value >= 0.0 && value <= 1.0,
+                        "P41 initial parameter value invalid");
+                rows.push_back({i, info.id, value, -1.0});
+            }
+            IPlugView* view = controller.ptr->createView(ViewType::kEditor);
+            require(view != nullptr, "P41 VST3 supplies no GUI editor (INCONCLUSIVE)");
+            HostFrame* frame = nullptr;
+            bool frameSet = false, attached = false;
+            try {
+                ViewRect size{};
+                require(view->getSize(&size) == kResultTrue,
+                        "P41 editor cannot report dimensions");
+                require(view->isPlatformTypeSupported(kPlatformTypeHWND) == kResultTrue,
+                        "P41 editor does not support Windows HWND (INCONCLUSIVE)");
+                Window window(size);
+                frame = new HostFrame(window.get());
+                require(view->setFrame(frame) == kResultTrue,
+                        "P41 cannot set real editor frame");
+                frameSet = true;
+                require(view->attached(window.get(), kPlatformTypeHWND) == kResultTrue,
+                        "P41 cannot attach real VST3 editor");
+                attached = true;
+                ShowWindow(window.get(), SW_SHOWNA);
+                UpdateWindow(window.get());
+                pump(100);
+                const HWND child = GetWindow(window.get(), GW_CHILD);
+                require(child && IsWindow(child),
+                        "P41 real plugin editor child HWND missing");
+                RECT rect{};
+                require(GetClientRect(child, &rect) && rect.right > 0 &&
+                        rect.bottom > 0 && rect.right <= 4096 &&
+                        rect.bottom <= 4096, "P41 invalid real editor geometry");
+                require(clickX < rect.right && clickY < rect.bottom,
+                        "P41 click would fall outside real editor");
+                InvalidateRect(child, nullptr, TRUE);
+                (void)UpdateWindow(child);
+                pump(40);
+                captureEditorBmp(child, baselineFirst);
+                pump(80);
+                captureEditorBmp(child, baselineSecond);
+                const LPARAM point = MAKELPARAM(clickX, clickY);
+                SendMessageW(child, WM_MOUSEMOVE, 0, point);
+                SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, point);
+                SendMessageW(child, WM_LBUTTONUP, 0, point);
+                pump(100);
+                InvalidateRect(child, nullptr, TRUE);
+                (void)UpdateWindow(child);
+                pump(50);
+                captureEditorBmp(child, observed);
+                for (auto& row : rows) {
+                    row.observed = controller.ptr->getParamNormalized(row.id);
+                    require(std::isfinite(row.observed) && row.observed >= 0.0 &&
+                            row.observed <= 1.0,
+                            "P41 observed invalid VST3 parameter after GUI click");
+                }
+                if (!evidence.parent_path().empty())
+                    std::filesystem::create_directories(evidence.parent_path());
+                std::ofstream out(evidence, std::ios::trunc);
+                require(bool(out), "P41 cannot create native UI exploration evidence");
+                out << std::setprecision(17);
+                out << "format\t125A-GUI-EXPLORE-v1\n"
+                    << "coordinate\t" << clickX << "\t" << clickY << "\n"
+                    << "canvas\t" << rect.right << "\t" << rect.bottom << "\n"
+                    << "param_count\t" << rows.size() << "\n";
+                for (const auto& row : rows)
+                    out << "param\t" << row.index << "\t" << row.id << "\t"
+                        << row.initial << "\t" << row.observed << "\n";
+                out << "end\tCOMPLETE\n";
+                out.flush();
+                require(out.good(), "P41 incomplete real native exploration evidence");
+                require(view->removed() == kResultTrue, "P41 editor remove failed");
+                attached = false;
+                require(view->setFrame(nullptr) == kResultTrue,
+                        "P41 clear editor frame failed");
+                frameSet = false;
+                frame->release();
+                frame = nullptr;
+                pump(10);
+            } catch (...) {
+                if (attached) (void)view->removed();
+                if (frameSet) (void)view->setFrame(nullptr);
+                if (frame) frame->release();
+                view->release();
+                throw;
+            }
+            view->release();
+            controller.close();
+        }
+        require(component->terminate() == kResultOk,
+                "P41 real VST3 processor could not terminate");
+        std::cout << "[OBSERVED] P41 disposable real VST3 GUI click at "
+                  << clickX << "," << clickY << ", no product approval\n";
+        return 0;
+    }
+    throw std::runtime_error("P41 no VST3 audio class (INCONCLUSIVE)");
+}
+
 int runGuiWorkflow(const std::string& pluginPath,
                    const std::filesystem::path& approvedActions,
                    const std::filesystem::path& report,
@@ -2327,6 +2474,12 @@ int main(int argc, char** argv) {
             runRealDrumatorGui(argv[2], argv[3], argv[4], argv[5]);
             return 0;
         }
+        if (argc == 9 && std::string(argv[1]) == "--explore-gui-click") {
+            const int x = workflowInt(argv[3], 8191);
+            const int y = workflowInt(argv[4], 8191);
+            return exploreOneGuiClick(argv[2], x, y, argv[5], argv[6],
+                                      argv[7], argv[8]);
+        }
         if (argc == 6 && std::string(argv[1]) == "--gui-workflow")
             return runGuiWorkflow(argv[2], argv[3], argv[4], argv[5]);
         if (argc == 8 && std::string(argv[1]) == "--prove-click-at-from") {
@@ -2389,6 +2542,7 @@ int main(int argc, char** argv) {
         if (argc == 4 && std::string(argv[1]) == "--prove-click")
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
         std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"                  << "       125A_Test_Lab_GUI --gui-workflow <plugin.vst3> <approved-actions.tsv> <report.tsv> <screenshots-dir>\n"
+                  << "       125A_Test_Lab_GUI --explore-gui-click <plugin.vst3> <x> <y> <native.tsv> <baseline-a.bmp> <baseline-b.bmp> <after.bmp>\n"
                   << "       125A_Test_Lab_GUI --sweep-parameters <plugin.vst3> <sweep.tsv>\n"
                   << "       125A_Test_Lab_GUI --verify-parameter-text <plugin.vst3> <text.tsv>\n"
 

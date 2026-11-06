@@ -48,6 +48,8 @@ on:
       - 'tests/run_gui_control_matrix.py'
       - 'tests/test_gui_control_matrix.py'
       - 'tests/run_gui_workflow.py'
+      - 'tests/run_gui_exploration.py'
+      - 'tests/test_gui_exploration.py'
       - 'tests/test_gui_workflow.py'
       - 'tests/test_gui_workflow.py'
       - 'docs/GUI-CONTROL-MATRIX.md'
@@ -768,6 +770,50 @@ jobs:
           Write-Host '[PASS] Same-editor click/drag history, value transitions, pixels and bad plugins independently verified'
           exit 0
 
+      - name: P41 autonomous GUI interaction candidate discovery on real Windows VST3s
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/test_gui_exploration.py
+          if ($LASTEXITCODE -ne 0) { throw 'P41 adversarial GUI discovery and forged-evidence checks failed' }
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Toggle.vst3')
+          $inert = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Inert.vst3')
+          $stale = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_StalePaint.vst3')
+          if ($gui.Count -ne 1 -or $good.Count -ne 1 -or $inert.Count -ne 1 -or $stale.Count -ne 1) {
+            throw 'P41 native real Win32 VST3 GUI fixtures missing'
+          }
+          New-Item -ItemType Directory -Force artifacts/P41 | Out-Null
+          foreach ($fixture in @(
+            @{name='interactive';plugin=$good[0].FullName;expected='PARAMETER_AND_VISUAL_CHANGE';candidate=1},
+            @{name='inert';plugin=$inert[0].FullName;expected='NO_OBSERVED_CHANGE';candidate=0},
+            @{name='stale-paint';plugin=$stale[0].FullName;expected='PARAMETER_CHANGE';candidate=1}
+          )) {
+            python tests/run_gui_exploration.py --plugin $fixture.plugin --gui-host $gui[0].FullName --out "artifacts/P41/$($fixture.name)" --points "160,90" --acknowledge-ui-clicks --timeout 30
+            if ($LASTEXITCODE -ne 0) { throw "P41 actual GUI exploration failed: $($fixture.name)" }
+            $result = Get-Content "artifacts/P41/$($fixture.name)/GUI-EXPLORATION-RESULT.json" -Raw | ConvertFrom-Json
+            if ($result.status -ne 'OBSERVATIONS_COMPLETE' -or
+                $result.requested_points -ne 1 -or $result.completed_points -ne 1 -or
+                @($result.probes).Count -ne 1 -or
+                $result.probes[0].classification -ne $fixture.expected -or
+                @($result.candidates).Count -ne $fixture.candidate -or
+                $result.gui_control_discovery -ne 'OBSERVATIONS_ONLY' -or
+                $result.product_gui_controls -ne 'NOT COVERED' -or
+                $result.release_approved -ne $false) {
+              throw "P41 misclassified real GUI observation: $($fixture.name)"
+            }
+          }
+          # Also verify autonomous selection of a grid with no product profile.
+          python tests/run_gui_exploration.py --plugin $good[0].FullName --gui-host $gui[0].FullName --out artifacts/P41/automatic-grid --max-points 3 --acknowledge-ui-clicks --timeout 30
+          if ($LASTEXITCODE -ne 0) { throw 'P41 automatic UI grid failed on real native VST3' }
+          $grid = Get-Content artifacts/P41/automatic-grid/GUI-EXPLORATION-RESULT.json -Raw | ConvertFrom-Json
+          if ($grid.status -ne 'OBSERVATIONS_COMPLETE' -or
+              $grid.completed_points -ne 3 -or @($grid.candidates).Count -ne 3) {
+            throw 'P41 default autonomous GUI probing did not observe three genuine actions'
+          }
+          Write-Host '[PASS] P41 independent real GUI exploration distinguished responsive, inert and stale-paint controls without any product mapping'
+          exit 0
+
       - name: One-command real VST3 quickcheck without handwritten manifests
         shell: pwsh
         run: |
@@ -853,13 +899,13 @@ jobs:
             if ($found.Count -ne 1) { throw "Portable Test Lab host missing: $binaryName" }
             Copy-Item -LiteralPath $found[0].FullName -Destination "$dir/$binaryName"
           }
-          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','run_gui_workflow.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_instance_isolation.py','verify_multi_instance_smoke.py','run_product_dual_state.py','run_live_state_replay.py','verify_state_stress.py','verify_audio_reference.py','verify_parameter_inventory.py','verify_parameter_sweep.py','verify_parameter_text.py')) {
+          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','run_gui_workflow.py','run_gui_exploration.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_instance_isolation.py','verify_multi_instance_smoke.py','run_product_dual_state.py','run_live_state_replay.py','verify_state_stress.py','verify_audio_reference.py','verify_parameter_inventory.py','verify_parameter_sweep.py','verify_parameter_text.py')) {
             if (-not (Test-Path "tests/$script")) { throw "Portable QA script missing: $script" }
             Copy-Item -LiteralPath "tests/$script" -Destination "$dir/$script"
           }
           Copy-Item tests/Run-VST3-Test.cmd "$dir/Run-VST3-Test.cmd"
           Copy-Item docs/ONE-COMMAND-QUICKCHECK.md "$dir/README.md"
-          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/run_gui_workflow.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_instance_isolation.py" "$dir/verify_multi_instance_smoke.py" "$dir/run_product_dual_state.py" "$dir/run_live_state_replay.py" "$dir/verify_state_stress.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py" "$dir/verify_parameter_sweep.py" "$dir/verify_parameter_text.py"
+          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/run_gui_workflow.py" "$dir/run_gui_exploration.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_instance_isolation.py" "$dir/verify_multi_instance_smoke.py" "$dir/run_product_dual_state.py" "$dir/run_live_state_replay.py" "$dir/verify_state_stress.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py" "$dir/verify_parameter_sweep.py" "$dir/verify_parameter_text.py"
           if ($LASTEXITCODE -ne 0) { throw 'Portable Python scripts syntax check failed' }
           python tests/test_user_report.py
           if ($LASTEXITCODE -ne 0) { throw 'German results/report mutation controls failed' }
@@ -907,6 +953,7 @@ jobs:
             artifacts/QUICKCHECK/
             artifacts/P35/
             artifacts/P40/
+            artifacts/P41/
             artifacts/P36/
             artifacts/P37/
             artifacts/QUICKCHECK-DEEP/

@@ -24,7 +24,7 @@ def digest(path):
 def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         gui_host=None, gui_controls=None, reference_wav=None, reference_tolerance=0,
         dual_host=None, dual_state_manifest=None, active_replay=False,
-        gui_workflow=None):
+        gui_workflow=None, gui_explore=False, acknowledge_gui_explore=False):
     bundle = bundle.resolve(strict=True)
     host = host.resolve(strict=True)
     stress_host = stress_host.resolve(strict=True)
@@ -36,6 +36,10 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         raise ValueError("invalid timeout")
     if type(active_replay) is not bool:
         raise ValueError("active replay option must be a boolean")
+    if type(gui_explore) is not bool or type(acknowledge_gui_explore) is not bool:
+        raise ValueError("invalid GUI exploration options")
+    if gui_explore and not acknowledge_gui_explore:
+        raise ValueError("GUI exploration requires explicit acknowledgement of arbitrary UI clicks")
     binaries = [p for p in bundle.rglob("*.vst3") if p.is_file()]
     if len(binaries) != 1:
         raise ValueError("exactly one VST3 processor module expected in bundle")
@@ -45,8 +49,8 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         dual_host = Path(dual_host).resolve(strict=True)
         if not dual_host.is_file():
             raise ValueError("native same-process dual-instance host missing")
-    if (gui_controls is not None or gui_workflow is not None) and gui_host is None:
-        raise ValueError("GUI controls and workflows require an actual native GUI host")
+    if (gui_controls is not None or gui_workflow is not None or gui_explore) and gui_host is None:
+        raise ValueError("GUI controls, workflows and exploration require an actual native GUI host")
     if gui_host is not None:
         gui_host = Path(gui_host).resolve(strict=True)
         if not gui_host.is_file():
@@ -182,6 +186,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "native_parameter_text_reverse": "NOT COVERED",
             "native_gui_workflow": "NOT COVERED",
             "native_gui_visual_workflow": "NOT COVERED",
+            "native_gui_exploration": "NOT COVERED",
             "midi_wav_export": "NOT COVERED",
             "preset_semantics": "NOT COVERED",
             "commercial_daw_integration": "NOT COVERED"
@@ -549,6 +554,45 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
                 summary["coverage"]["native_gui_visual_workflow"] = "FAIL"
             summary["reason"] = "optional real GUI workflow: " + str(error)
 
+    # P41 opt-in. This deliberately never certifies arbitrary controls.
+    # 9 fresh instances probe a deterministic grid. Real native Win32
+    # clicks may activate dialogs or plugin actions: caller consent required.
+    if gui_explore:
+        summary["coverage"]["native_gui_exploration"] = "NOT EXECUTED"
+    if gui_explore and summary["status"] == "TECHNICAL_PASS":
+        survey_dir = out / "gui-exploration"
+        survey_report = survey_dir / "GUI-EXPLORATION-RESULT.json"
+        survey_report.unlink(missing_ok=True)
+        survey_proc = checked_runner([
+            sys.executable, str(Path(__file__).with_name("run_gui_exploration.py")),
+            "--plugin", str(bundle), "--gui-host", str(gui_host),
+            "--out", str(survey_dir), "--acknowledge-ui-clicks", "--max-points", "9",
+            "--timeout", str(min(timeout, 90))
+        ], capture_output=True, text=True, timeout=timeout * 10 + 90,
+            check=False, errors="replace")
+        (out / "gui-exploration.log").write_text(
+            (survey_proc.stdout or "") + "\n" + (survey_proc.stderr or ""),
+            encoding="utf-8")
+        try:
+            outcome = json.loads(survey_report.read_text(encoding="utf-8"))
+            if (survey_proc.returncode != 0 or
+                outcome.get("status") != "OBSERVATIONS_COMPLETE" or
+                outcome.get("verified_module_sha256") != sha or
+                outcome.get("verified_gui_host_sha256") != digest(gui_host) or
+                outcome.get("requested_points") != 9 or
+                outcome.get("completed_points") != 9 or
+                len(outcome.get("probes", [])) != 9 or
+                outcome.get("product_gui_controls") != "NOT COVERED" or
+                outcome.get("release_approved") is not False):
+                raise ValueError("bounded GUI exploration omitted or forged actual probe evidence")
+            summary["coverage"]["native_gui_exploration"] = "OBSERVATIONS_ONLY"
+            summary["observed_gui_probe_points"] = 9
+            summary["gui_interaction_candidates"] = len(outcome["candidates"])
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            summary["status"] = "FAIL"
+            summary["coverage"]["native_gui_exploration"] = "FAIL"
+            summary["reason"] = "native opt-in GUI exploration failed: " + str(error)
+
     # An explicitly requested high-concurrency test uses the plugin's
     # genuine getState() bytes. It is not safe to require for every VST3:
     # some plugins only allow setState() with processing inactive.
@@ -648,6 +692,8 @@ def main():
     p.add_argument("--dual-host", type=Path)
     p.add_argument("--gui-controls", type=Path)
     p.add_argument("--gui-workflow", type=Path)
+    p.add_argument("--gui-explore", action="store_true")
+    p.add_argument("--acknowledge-gui-explore", action="store_true")
     p.add_argument("--reference-wav", type=Path)
     p.add_argument("--dual-state-manifest", type=Path)
     p.add_argument("--active-replay", action="store_true")
@@ -661,7 +707,9 @@ def main():
                      dual_host=a.dual_host,
                      dual_state_manifest=a.dual_state_manifest,
                      active_replay=a.active_replay,
-                     gui_workflow=a.gui_workflow)
+                     gui_workflow=a.gui_workflow,
+                     gui_explore=a.gui_explore,
+                     acknowledge_gui_explore=a.acknowledge_gui_explore)
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired,
             json.JSONDecodeError) as error:
         a.out.mkdir(parents=True, exist_ok=True)

@@ -29,6 +29,7 @@ LABELS = {
     "native_parameter_text_reverse": "Parametertexte wieder in korrekte Werte umwandeln",
     "native_gui_workflow": "Mehrstufige Maus- und Tastaturbedienung im selben Pluginfenster",
     "native_gui_visual_workflow": "Nur visuell belegte Buttons ohne VST3-Parameter",
+    "native_gui_exploration": "Automatische GUI-Erkundung (nur Beobachtungen)",
     "declared_gui_controls": "Explizit definierte Bedienelemente",
     "product_gui_controls": "Alle Bedienelemente des Produktes",
     "independent_musical_audio": "Musikalisch korrekter Klang",
@@ -37,7 +38,7 @@ LABELS = {
     "preset_semantics": "Preset-Auswahl und klangrichtiger Recall",
     "commercial_daw_integration": "Echte DAW-Sitzung, Routing und Drag-and-drop",
 }
-ALLOWED = {"PASS", "FAIL", "NOT COVERED", "NOT EXECUTED", "TECHNICAL_PASS", "REFERENCE_MATCH"}
+ALLOWED = {"PASS", "FAIL", "NOT COVERED", "NOT EXECUTED", "TECHNICAL_PASS", "REFERENCE_MATCH", "OBSERVATIONS_ONLY"}
 
 
 def report_html(data):
@@ -81,7 +82,9 @@ def report_html(data):
         else:
             missing += 1
         display = ("BESTANDEN" if verdict in ("PASS", "REFERENCE_MATCH") else
-                   "FEHLER" if verdict == "FAIL" else "NICHT GEPRUEFT")
+                   "FEHLER" if verdict == "FAIL" else
+                   "BEOBACHTET (NICHT VERIFIZIERT)" if verdict == "OBSERVATIONS_ONLY"
+                   else "NICHT GEPRUEFT")
         cls = "pass" if verdict in ("PASS", "REFERENCE_MATCH") else "fail" if verdict == "FAIL" else "unknown"
         rows.append("<tr><td>" + html.escape(label) + "</td><td class='" +
                     cls + "'>" + display + "</td></tr>")
