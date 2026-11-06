@@ -324,6 +324,60 @@ with tempfile.TemporaryDirectory() as td:
     assert stale_text["coverage"]["native_parameter_text_labels"] == "FAIL"
     assert not (out / "native-parameter-text.tsv").exists()
 
+    # P41 bounded automatic GUI exploration is explicitly opt-in. It
+    # records candidates without claiming a complete product GUI audit.
+    try:
+        quick.run(bundle, host, stress, out, runner=all_native_gui,
+                  gui_host=gui, gui_explore=True)
+    except ValueError as error:
+        assert "acknowledgement" in str(error)
+    else:
+        raise AssertionError("unconsented blind plugin GUI click was permitted")
+
+    exploratory_failure = {"mode": None}
+    def explorer_native(cmd, **kwargs):
+        if cmd[1].endswith("run_gui_exploration.py"):
+            dest = Path(cmd[cmd.index("--out") + 1])
+            dest.mkdir(parents=True, exist_ok=True)
+            if exploratory_failure["mode"] == "missing":
+                return subprocess.CompletedProcess(cmd, 0, "fake green", "")
+            overview = {
+                "schema": "125a-gui-exploration-result-v1",
+                "status": "OBSERVATIONS_COMPLETE",
+                "verified_module_sha256": (
+                    sha if exploratory_failure["mode"] != "wrong_module" else "f" * 64),
+                "verified_gui_host_sha256": hashlib.sha256(gui.read_bytes()).hexdigest(),
+                "requested_points": 9, "completed_points": (
+                    8 if exploratory_failure["mode"] == "incomplete" else 9),
+                "probes": [{"x": 160, "y": 90}] * 9,
+                "candidates": [{"x": 160, "y": 90}] * 2,
+                "product_gui_controls": "NOT COVERED",
+                "release_approved": False
+            }
+            (dest / "GUI-EXPLORATION-RESULT.json").write_text(
+                json.dumps(overview), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0,
+                "[OBSERVATIONS_COMPLETE] real VST3 GUI exploration", "")
+        return all_native_gui(cmd, **kwargs)
+
+    explored = quick.run(bundle, host, stress, out, runner=explorer_native,
+                         gui_host=gui, gui_explore=True,
+                         acknowledge_gui_explore=True)
+    assert explored["status"] == "TECHNICAL_PASS"
+    assert explored["coverage"]["native_gui_exploration"] == "OBSERVATIONS_ONLY"
+    assert explored["gui_interaction_candidates"] == 2
+    assert explored["observed_gui_probe_points"] == 9
+    assert explored["coverage"]["product_gui_controls"] == "NOT COVERED"
+    assert explored["release_approved"] is False
+    for bad_mode in ("missing", "wrong_module", "incomplete"):
+        exploratory_failure["mode"] = bad_mode
+        broken = quick.run(bundle, host, stress, out,
+                           runner=explorer_native, gui_host=gui,
+                           gui_explore=True, acknowledge_gui_explore=True)
+        assert broken["status"] == "FAIL", (bad_mode, broken)
+        assert broken["coverage"]["native_gui_exploration"] == "FAIL"
+    exploratory_failure["mode"] = None
+
     # Product-independent click/drag sequences require a declared oracle;
     # a successful native host alone must never imply every button was tested.
     workflow_file = root / "approved-gui-workflow.json"
