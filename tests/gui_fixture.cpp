@@ -27,10 +27,24 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_TOGGLE
 #define QA_GUI_TOGGLE 0
 #endif
+#ifndef QA_GUI_TEXT
+#define QA_GUI_TEXT 0
+#endif
+#ifndef QA_GUI_BAD_TEXT
+#define QA_GUI_BAD_TEXT 0
+#endif
 
 namespace {
 constexpr ParamID kClickParam = 9001;
-#if QA_GUI_TOGGLE
+#if QA_GUI_BAD_TEXT
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000061, 0xB0000061);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000062, 0xB0000062);
+constexpr const char* kName = "125A Bad VST3 Parameter Text Fixture";
+#elif QA_GUI_TEXT
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000051, 0xB0000051);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000052, 0xB0000052);
+constexpr const char* kName = "125A Good VST3 Parameter Text Fixture";
+#elif QA_GUI_TOGGLE
 const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000041, 0xB0000041);
 const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000042, 0xB0000042);
 constexpr const char* kName = "125A GUI Bidirectional Toggle Fixture";
@@ -110,6 +124,42 @@ public:
             return kResultTrue;
 #endif
         return EditController::setParamNormalized(id, value);
+    }
+    tresult PLUGIN_API getParamStringByValue(
+            ParamID id, ParamValue value, String128 buffer) override {
+#if QA_GUI_TEXT || QA_GUI_BAD_TEXT
+        if (id == kClickParam) {
+            const bool on = value >= 0.5;
+            buffer[0] = on ? u'O' : u'O';
+            buffer[1] = on ? u'N' : u'F';
+            buffer[2] = on ? 0 : u'F';
+            buffer[3] = 0;
+            return kResultTrue;
+        }
+#endif
+        return EditController::getParamStringByValue(id, value, buffer);
+    }
+    tresult PLUGIN_API getParamValueByString(
+            ParamID id, TChar* buffer, ParamValue& value) override {
+#if QA_GUI_TEXT || QA_GUI_BAD_TEXT
+        if (id == kClickParam) {
+            const bool on = buffer && buffer[0] == u'O' &&
+                            buffer[1] == u'N' && buffer[2] == 0;
+            const bool off = buffer && buffer[0] == u'O' &&
+                             buffer[1] == u'F' && buffer[2] == u'F' &&
+                             buffer[3] == 0;
+            if (!on && !off) return kResultFalse;
+#if QA_GUI_BAD_TEXT
+            // Deliberately maps both visible labels to the wrong state.
+            // Native normalized parameter sweeps alone cannot detect this.
+            value = on ? 0.0 : 1.0;
+#else
+            value = on ? 1.0 : 0.0;
+#endif
+            return kResultTrue;
+        }
+#endif
+        return EditController::getParamValueByString(id, buffer, value);
     }
     IPlugView* PLUGIN_API createView(FIDString type) override {
         if (!type || std::strcmp(type, ViewType::kEditor) != 0) return nullptr;
