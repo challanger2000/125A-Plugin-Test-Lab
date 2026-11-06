@@ -114,6 +114,15 @@ smtg_add_vst3plugin(QAGuiHover
 target_link_libraries(QAGuiHover PRIVATE sdk user32 gdi32)
 target_compile_definitions(QAGuiHover PRIVATE NOMINMAX QA_GUI_HOVER=1)
 
+# P43 real nested standard HWND BUTTON inside a VST3 custom editor.
+# Only its BN_CLICKED notification changes the controller parameter.
+smtg_add_vst3plugin(QAGuiNested
+    PACKAGE_NAME "125A_QA_GUI_Nested"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiNested PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiNested PRIVATE NOMINMAX QA_GUI_NESTED=1)
+
+
 
 
 
