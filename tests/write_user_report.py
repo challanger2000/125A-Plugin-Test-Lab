@@ -45,10 +45,19 @@ def report_html(data):
     product = html.escape(str(data.get("product", "Unbekannt")))
     module = str(data.get("verified_module_sha256", "nicht verifiziert"))
     sha = html.escape(module) if len(module) == 64 else "nicht verifiziert"
-    if status == "TECHNICAL_PASS":
+    # The technical host can finish successfully while its independent
+    # real-time timing oracle (or another checked domain) reports FAIL.
+    # Do not display a green overall headline above a red failure row.
+    failed_checks = [key for key in LABELS if coverage.get(key) == "FAIL"]
+    if status == "TECHNICAL_PASS" and not failed_checks:
         headline = "Technische Pruefungen bestanden"
         summary = ("Die ausgefuehrten technischen Tests waren erfolgreich. "
                    "Das ist keine Freigabe des Plugins.")
+    elif status == "TECHNICAL_PASS":
+        headline = "Technische Pruefung mit Fehlern"
+        summary = ("Die technischen Basispruefungen wurden abgeschlossen, "
+                   "aber mindestens ein gepruefter Bereich meldet FEHLER. "
+                   "Das ist kein vollstaendig bestandener Test.")
     else:
         headline = "Technische Pruefung fehlgeschlagen"
         summary = ("Mindestens ein Test ist fehlgeschlagen oder konnte nicht "
