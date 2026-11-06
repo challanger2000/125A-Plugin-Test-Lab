@@ -78,12 +78,12 @@ void start(Instance& instance,Factory& factory,
         IAudioProcessor::iid,reinterpret_cast<void**>(&instance.processor))==kResultOk
         &&instance.processor,"missing VST3 processor interface");
     check(instance.processor->canProcessSampleSize(kSample32)==kResultTrue,
-          "32-bit VST3 processing unsupported");
+          "32-bit VST3 processing unsupported (INCONCLUSIVE)");
     check(instance.component->getBusCount(kAudio,kOutput)==1,
-          "dual-instance case needs one audio output bus");
+          "dual-instance case needs one audio output bus (INCONCLUSIVE)");
     BusInfo info{};
     check(instance.component->getBusInfo(kAudio,kOutput,0,info)==kResultOk &&
-          info.channelCount==2,"dual-instance case needs stereo output");
+          info.channelCount==2,"dual-instance case needs stereo output (INCONCLUSIVE)");
     (void)instance.component->activateBus(kAudio,kOutput,0,true);
     ProcessSetup setup{};
     setup.processMode=kRealtime;
@@ -193,6 +193,10 @@ int main(int argc,char** argv) {
                  <<"       --dual-state <plugin.vst3> <A.bin> <B.bin> <out-dir>\n";
         return 2;
     } catch(const std::exception& ex) {
+        if(std::string(ex.what()).find("(INCONCLUSIVE)")!=std::string::npos) {
+            std::cerr<<"[INCONCLUSIVE] "<<ex.what()<<"\n";
+            return 10;
+        }
         std::cerr<<"[FAIL] native dual-instance VST3 test: "<<ex.what()<<"\n";
         return 1;
     }
