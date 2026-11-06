@@ -21,11 +21,12 @@ LABELS = {
     "declared_gui_controls": "Explizit definierte Bedienelemente",
     "product_gui_controls": "Alle Bedienelemente des Produktes",
     "independent_musical_audio": "Musikalisch korrekter Klang",
+    "externally_referenced_audio": "Vergleich mit freigegebener WAV-Referenz",
     "midi_wav_export": "MIDI- und WAV-Export / Drag-and-drop",
     "preset_semantics": "Preset-Auswahl und klangrichtiger Recall",
     "commercial_daw_integration": "Echte DAW-Sitzung, Routing und Drag-and-drop",
 }
-ALLOWED = {"PASS", "FAIL", "NOT COVERED", "NOT EXECUTED", "TECHNICAL_PASS"}
+ALLOWED = {"PASS", "FAIL", "NOT COVERED", "NOT EXECUTED", "TECHNICAL_PASS", "REFERENCE_MATCH"}
 
 
 def report_html(data):
@@ -55,7 +56,7 @@ def report_html(data):
         verdict = coverage.get(key, "NOT COVERED")
         if verdict not in ALLOWED:
             verdict = "NOT COVERED"
-        if verdict == "PASS":
+        if verdict in ("PASS", "REFERENCE_MATCH"):
             passed += 1
         else:
             missing += 1
