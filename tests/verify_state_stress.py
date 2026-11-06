@@ -17,7 +17,7 @@ def parse(path):
         rows[k]=v
     assert rows.get("format")=="125A-P25-v1"
     for k in ("iterations","sample_rate","block_size","callbacks","process_failures",
-              "set_failures","save_failures","save_success","saves_during_playback","torn_snapshots",
+              "set_failures","set_success","sets_during_playback","save_failures","save_success","saves_during_playback","torn_snapshots",
               "callback_max_ns","callback_overruns","callback_p95_ns",
               "callback_p99_ns","callback_deadline_ns","strict_realtime"):
         rows[k]=int(rows[k])
@@ -27,6 +27,11 @@ def parse(path):
     assert 0 <= rows["saves_during_playback"] <= rows["save_success"], "impossible playback save count"
     if rows["result"] == "PASS":
         assert rows["saves_during_playback"] > 0, "no real saves during active playback"
+    assert 0 <= rows["sets_during_playback"] <= rows["set_success"], "impossible active setState count"
+    if rows.get("scenario") == "replay-genuine-state":
+        assert rows["set_success"]+rows["set_failures"]==500, "incomplete 500-state-replay suite"
+        if rows["result"] == "PASS":
+            assert rows["sets_during_playback"]>0, "no real state reload during playback"
     assert rows["callback_max_ns"]>0, "invalid maximum callback runtime"
     assert 0 <= rows["callback_p95_ns"] <= rows["callback_p99_ns"] <= rows["callback_max_ns"], "invalid callback timing order"
     assert rows["callback_deadline_ns"]>0
@@ -53,6 +58,26 @@ def verify(path, mode):
     elif mode=="bad-rate":
         assert r["sample_rate"]==96000 and r["oracle"]=="ramp"
         assert r["result"]=="FAIL" and abs(r["rate_sample"]-0.125)>=0.002
+    elif mode=="good-replay":
+        assert r["scenario"]=="replay-genuine-state"
+        assert r["oracle"]=="paired" and r["result"]=="PASS"
+        assert r["domain_correctness"]=="PASS"
+        assert r["set_success"]==500 and r["sets_during_playback"]>0
+        assert r["saves_during_playback"]>0
+        assert all(r[x]==0 for x in ("set_failures","save_failures","process_failures","torn_snapshots"))
+    elif mode=="good-replay-none":
+        assert r["scenario"]=="replay-genuine-state"
+        assert r["oracle"]=="none" and r["result"]=="PASS"
+        assert r["domain_correctness"]=="NOT_COVERED"
+        assert r["set_success"]==500 and r["sets_during_playback"]>0
+        assert r["save_success"]==500 and r["saves_during_playback"]>0
+        assert all(r[x]==0 for x in ("set_failures","save_failures","process_failures","torn_snapshots"))
+    elif mode=="bad-replay":
+        assert r["scenario"]=="replay-genuine-state" and r["result"]=="FAIL"
+        assert r["oracle"]=="paired"
+        assert r["set_success"]==0 and r["set_failures"]==500
+        assert r["save_success"]==500
+        assert r["process_failures"]==0 and r["torn_snapshots"]==0
     elif mode=="good-realtime":
         assert r["strict_realtime"]==1 and r["block_size"]==1024
         assert r["result"]=="PASS" and r["callback_overruns"]==0
@@ -73,7 +98,7 @@ def verify(path, mode):
 if __name__=="__main__":
     parser=argparse.ArgumentParser()
     parser.add_argument("report",type=Path)
-    parser.add_argument("expect",choices=["good-paired","good-ramp","bad-torn","bad-save","bad-rate","good-realtime","bad-realtime"])
+    parser.add_argument("expect",choices=["good-paired","good-ramp","bad-torn","bad-save","bad-rate","good-realtime","bad-realtime","good-replay","good-replay-none","bad-replay"])
     args=parser.parse_args()
     try:
         verify(args.report,args.expect)

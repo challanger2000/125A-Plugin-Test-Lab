@@ -256,3 +256,41 @@ Plugins müssen neue Referenzen ausdrücklich genehmigt werden.
 Bei fehlenden Referenzen bleibt Produkt-Bank-Isolation `NOT COVERED`
 und die Produktfreigabe `false`; vier einzelne PCM-Messpunkte
 können nicht die vollständige musikalische Korrektheit beweisen.
+
+
+## Echte Projektzustände während aktiver Wiedergabe wiederherstellen
+
+Für den zuständigen Plugin-Chat steht zusätzlich die **optionale**
+Prüfung `run_live_state_replay.py` bereit. Anders als das normale
+`--save-only` wird damit getestet, ob der konkrete VST3-Prozessor
+während laufender Audio-Callbacks wiederholt seinen eigenen zuvor
+gespeicherten Zustand annimmt.
+
+```powershell
+python run_live_state_replay.py --plugin "C:\VST3\Instrument.vst3" --host ".\125A_Test_Lab_State_Stress.exe" --out ".\REPLAY-ERGEBNISSE"
+```
+
+Die Native Engine ruft zuerst **ein echtes `getState()` am Plugin** auf,
+verwendet ausschließlich diese vom Plugin selbst erzeugten Zustandsbytes
+und ruft danach **500 `setState()` und 500 `getState()` während 2500
+Audio-Callbacks** auf. Für sechs Kombinationen aus 44,1/48/96 kHz und
+64/512 Samples ergeben sich 3.000 Wiederherstellungen, 3.000 Saves und
+15.000 Audioaufrufe. Positive Ergebnisse müssen eine gemessene
+Überlappung sowohl der Loads als auch der Saves mit laufender Wiedergabe
+belegen. Fehlende, unvollständige, alte oder falsch zugeordnete
+Berichte gelten als FAIL; die Fingerabdrücke von Plugin und Host werden
+mitgeschrieben.
+
+Die Prüfung ist bewusst ein **zusätzlicher Stresstest, kein universell
+verlangter VST3-Host-Lebenszyklus**. Manche Plugins unterstützen
+`setState()` ausdrücklich nur bei pausierter Verarbeitung. Ein
+negatives Ergebnis erfordert daher eine Bewertung des jeweiligen
+Plugin-Vertrags, nicht automatisch eine Produktfreigabe-Absage.
+Die Prüfung garantiert auch keine musikalische Bank-Richtigkeit:
+`bank_program_correctness = NOT COVERED`, sofern keine eigene
+unabhängige Klang- und Presetreferenz vorliegt.
+
+Die Windows-CI führt diese Funktion an einem echten korrekt
+implementierten VST3 sowie einem absichtlich fehlerhaften VST3 aus,
+der gültige Zustands-Restores während der Wiedergabe zurückweist.
+Bei beiden werden 500 echte State-Replays pro Testfall versucht.

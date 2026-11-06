@@ -21,6 +21,8 @@ on:
       - 'tests/run_product_adapter.py'
       - 'tests/test_p32_stale_evidence.py'
       - 'tests/test_playback_save_overlap.py'
+      - 'tests/run_live_state_replay.py'
+      - 'tests/test_live_state_replay.py'
       - 'tests/verify_p33_artifacts.py'
       - 'tests/test_p33_artifacts.py'
       - 'tests/verify_product_acceptance.py'
@@ -82,7 +84,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick TestLabStateStress TestLabInstanceIsolation QAStateMode8 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
+          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick TestLabStateStress TestLabInstanceIsolation QAStateMode8 QAStateMode9 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -127,6 +129,63 @@ jobs:
           }
           Write-Host '[PASS] P25 eleven real VST3 concurrent playback/state and sample-rate cases, including three deliberate defects'
           exit 0
+      - name: Genuine saved-state replay during live VST3 audio processing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_0.vst3')
+          $bad = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_9.vst3')
+          if ($hostExe.Count -ne 1 -or $good.Count -ne 1 -or $bad.Count -ne 1) {
+            throw 'Genuine saved-state replay native host or source-built VST3 fixtures missing'
+          }
+          foreach ($rate in @(44100,48000,96000)) {
+            foreach ($block in @(64,512)) {
+              $out = "artifacts/REPLAY/good-$rate-$block.tsv"
+              & $hostExe[0].FullName --stress $good[0].FullName $out $rate $block 2500 paired --replay-valid-state
+              if ($LASTEXITCODE -ne 0) { throw "Real live replay failed on valid VST3 $rate/$block" }
+              python tests/verify_state_stress.py $out good-replay
+              if ($LASTEXITCODE -ne 0) { throw "Independent saved-state replay evidence insufficient $rate/$block" }
+            }
+          }
+          & $hostExe[0].FullName --stress $bad[0].FullName artifacts/REPLAY/broken.tsv 44100 64 2500 paired --replay-valid-state
+          if ($LASTEXITCODE -ne 1) {
+            throw 'Deliberately broken real VST3 did not reject 500 live state reloads'
+          }
+          python tests/verify_state_stress.py artifacts/REPLAY/broken.tsv bad-replay
+          if ($LASTEXITCODE -ne 0) { throw 'External oracle missed deliberately rejected genuine VST3 state replays' }
+          Write-Host '[PASS] 6 real live 500-replay/500-save/2500-callback combinations plus deliberately broken VST3'
+          exit 0
+
+      - name: Genuine replay third-party runner and negative-evidence adversarial tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/test_live_state_replay.py
+          if ($LASTEXITCODE -ne 0) { throw 'Replay manifest and stale/wrong evidence negative controls failed' }
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_0.vst3')
+          $broken = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_9.vst3')
+          if ($exe.Count -ne 1 -or $good.Count -ne 1 -or $broken.Count -ne 1) {
+            throw 'Real replay native host or source-built QA VST3 absent'
+          }
+          python tests/run_live_state_replay.py --plugin $good[0].FullName --host $exe[0].FullName --out artifacts/REPLAY/product-good
+          if ($LASTEXITCODE -ne 0) { throw 'Genuine live replay of valid QA VST3 failed six-case automation' }
+          $positive = Get-Content artifacts/REPLAY/product-good/LIVE-STATE-REPLAY-RESULT.json -Raw | ConvertFrom-Json
+          if ($positive.status -ne 'TECHNICAL_PASS' -or $positive.cases.Count -ne 6 -or
+              $positive.bank_program_correctness -ne 'NOT COVERED' -or
+              $positive.release_approved -ne $false) {
+            throw 'Real general replay QA incorrectly certifies musical/domain behavior'
+          }
+          python tests/run_live_state_replay.py --plugin $broken[0].FullName --host $exe[0].FullName --out artifacts/REPLAY/product-broken
+          if ($LASTEXITCODE -ne 1) { throw 'Deliberately refusing plugin incorrectly passed general state replay' }
+          $negative = Get-Content artifacts/REPLAY/product-broken/LIVE-STATE-REPLAY-RESULT.json -Raw | ConvertFrom-Json
+          if ($negative.status -ne 'FAIL' -or @($negative.cases | Where-Object { $_.status -eq 'PASS' }).Count -ne 0) {
+            throw 'Real broken VST3 was not detected in every state replay combination'
+          }
+          Write-Host '[PASS] Source-built real VST3 genuine-state replay six-case product runner and broken fixture'
+          exit 0
+
       - name: Same-process two-instance VST3 isolation and global-state leakage
         shell: pwsh
         run: |
@@ -532,13 +591,13 @@ jobs:
             if ($found.Count -ne 1) { throw "Portable Test Lab host missing: $binaryName" }
             Copy-Item -LiteralPath $found[0].FullName -Destination "$dir/$binaryName"
           }
-          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_instance_isolation.py','verify_multi_instance_smoke.py','run_product_dual_state.py','verify_audio_reference.py','verify_parameter_inventory.py')) {
+          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_instance_isolation.py','verify_multi_instance_smoke.py','run_product_dual_state.py','run_live_state_replay.py','verify_state_stress.py','verify_audio_reference.py','verify_parameter_inventory.py')) {
             if (-not (Test-Path "tests/$script")) { throw "Portable QA script missing: $script" }
             Copy-Item -LiteralPath "tests/$script" -Destination "$dir/$script"
           }
           Copy-Item tests/Run-VST3-Test.cmd "$dir/Run-VST3-Test.cmd"
           Copy-Item docs/ONE-COMMAND-QUICKCHECK.md "$dir/README.md"
-          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_instance_isolation.py" "$dir/verify_multi_instance_smoke.py" "$dir/run_product_dual_state.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py"
+          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_instance_isolation.py" "$dir/verify_multi_instance_smoke.py" "$dir/run_product_dual_state.py" "$dir/run_live_state_replay.py" "$dir/verify_state_stress.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py"
           if ($LASTEXITCODE -ne 0) { throw 'Portable Python scripts syntax check failed' }
           python tests/test_user_report.py
           if ($LASTEXITCODE -ne 0) { throw 'German results/report mutation controls failed' }
@@ -574,6 +633,7 @@ jobs:
           path: |
             artifacts/P25/
             artifacts/INSTANCE/
+            artifacts/REPLAY/
             artifacts/P26/
             artifacts/P27/
             artifacts/P30/

@@ -107,6 +107,14 @@ foreach(mode RANGE 0 3)
   target_compile_definitions(QAStateMode${mode} PRIVATE NOMINMAX QA_STATE_MODE=${mode})
 endforeach()
 
+# A deliberately incorrect real VST3 rejects valid saved-state reloads
+# during active playback; the independent native replay stress must detect it.
+smtg_add_vst3plugin(QAStateMode9
+    PACKAGE_NAME "125A_QA_State_9"
+    SOURCES_LIST tests/state_race_fixture.cpp)
+target_link_libraries(QAStateMode9 PRIVATE sdk)
+target_compile_definitions(QAStateMode9 PRIVATE NOMINMAX QA_STATE_MODE=9)
+
 # P26: real native VST3 failed-state rollback and successful recovery, with
 # expected state and PCM outcomes supplied by an external Python adapter.
 add_executable(TestLabRecovery src/state_recovery.cpp)

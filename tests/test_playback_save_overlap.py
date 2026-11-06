@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory() as td:
     evidence = {
         "format": "125A-P25-v1", "sample_rate": 44100, "block_size": 64,
         "iterations": 2500, "callbacks": 2500, "process_failures": 0,
-        "set_failures": 0, "save_failures": 0, "save_success": 500,
+        "set_failures": 0, "set_success": 0, "sets_during_playback": 0, "save_failures": 0, "save_success": 500,
         "saves_during_playback": 400, "torn_snapshots": 0,
         "callback_max_ns": 20000, "callback_p95_ns": 10000,
         "callback_p99_ns": 15000, "callback_deadline_ns": 1451247,

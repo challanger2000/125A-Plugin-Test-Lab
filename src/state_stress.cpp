@@ -43,7 +43,7 @@ void hostPaceMicroseconds(int us) {
 }
 
 struct Metrics {
-    std::atomic<uint32> callbacks{0},processFailures{0},late{0},torn{0},saveFailures{0},saveOK{0},setFailures{0},savesDuringPlayback{0};
+    std::atomic<uint32> callbacks{0},processFailures{0},late{0},torn{0},saveFailures{0},saveOK{0},setFailures{0},savesDuringPlayback{0},setsDuringPlayback{0},setOK{0};
     std::atomic<int64> maximumNanoseconds{0};
     std::atomic<bool> running{true};
     std::atomic<float> rampSample{-1.f};
@@ -53,7 +53,8 @@ void updateMax(std::atomic<int64>& value,int64 candidate) {
     while(candidate>old && !value.compare_exchange_weak(old,candidate,std::memory_order_relaxed)){}
 }
 int stress(const std::string& pluginPath,const std::filesystem::path& report,
-           int sampleRate,int block,int iterations,const std::string& oracle,bool saveOnly,bool strictRealtime) {
+           int sampleRate,int block,int iterations,const std::string& oracle,bool saveOnly,bool strictRealtime,bool replayValid) {
+    demand(!(saveOnly && replayValid),"state replay and save-only are mutually exclusive");
     demand(sampleRate==44100||sampleRate==48000||sampleRate==96000,"unsupported test sample rate");
     demand(block==0||block==17||block==64||block==127||block==512||block==1024,
            "unsupported test block");
@@ -99,6 +100,17 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             setup.symbolicSampleSize=kSample32;
             setup.processMode=kRealtime;
             demand(processor->setupProcessing(setup)==kResultOk,"setupProcessing failed");
+            // Capture REAL plugin-owned state; arbitrary binary layouts are
+            // never injected into third-party VST3s in replay mode.
+            std::vector<char> validState;
+            if(replayValid) {
+                ResizableMemoryIBStream initial;
+                demand(component->getState(&initial)==kResultOk &&
+                       initial.getCursor()>0 && initial.getCursor()<128*1024*1024,
+                       "cannot capture valid pre-playback plugin state for replay");
+                const auto* bytes=static_cast<const char*>(initial.getData());
+                validState.assign(bytes,bytes+initial.getCursor());
+            }
             demand(component->setActive(true)==kResultOk,"setActive failed");
             active=true;
             demand(processor->setProcessing(true)==kResultOk,"setProcessing failed");
@@ -184,6 +196,34 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                     saveSnapshot();
                     hostPaceMicroseconds(75);
                 }
+            } else if(replayValid) {
+                // 500 setState and 500 getState attempts interleaved with live
+                // processing; actual pre-playback state is replayed unchanged.
+                // Control writes are serialized on this thread.
+                for(int i=0;i<500;++i) {
+                    ResizableMemoryIBStream stream(validState.size());
+                    int32 written=0;
+                    if(stream.write(validState.data(),
+                        static_cast<int32>(validState.size()),&written)!=kResultOk ||
+                        written!=static_cast<int32>(validState.size())) {
+                        metrics.setFailures++;
+                    } else {
+                        stream.rewind();
+                        const uint32 before=metrics.callbacks.load(std::memory_order_acquire);
+                        const bool ok=component->setState(&stream)==kResultOk;
+                        const uint32 after=metrics.callbacks.load(std::memory_order_acquire);
+                        if(ok) {
+                            metrics.setOK++;
+                            if(before>0 && after<static_cast<uint32>(iterations) &&
+                               metrics.running.load(std::memory_order_acquire))
+                                metrics.setsDuringPlayback++;
+                        } else {
+                            metrics.setFailures++;
+                        }
+                    }
+                    saveSnapshot();
+                    hostPaceMicroseconds(75);
+                }
             } else {
                 for(int i=0;i<iterations*2;++i) {
                     if(i%20==0) saveSnapshot();
@@ -217,7 +257,9 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             active=false;
             // Distinguish technical success from independent domain correctness.
             if(metrics.processFailures||metrics.setFailures||metrics.saveFailures||
-                metrics.saveOK!=500||metrics.torn||metrics.savesDuringPlayback.load()==0) {pass=false;reason="failed process/setState/getState or torn independent state"; }
+                metrics.saveOK!=500||metrics.torn||metrics.savesDuringPlayback.load()==0||
+                (replayValid && (metrics.setOK.load()!=500 ||
+                                  metrics.setsDuringPlayback.load()==0))) {pass=false;reason="failed process/setState/getState or torn independent state"; }
             if(oracle=="ramp") {
                 const auto actual=metrics.rampSample.load();
                 if(actual<0||std::abs(actual-0.125f)>0.002f) {
@@ -248,10 +290,11 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     out<<"format\t125A-P25-v1\n";
     out<<"plugin\t"<<pluginPath<<"\n";
     out<<"sample_rate\t"<<sampleRate<<"\nblock_size\t"<<block<<"\niterations\t"<<iterations<<"\n";
-    out<<"oracle\t"<<oracle<<"\nscenario\t"<<(saveOnly?"playback-save-no-writes":"concurrent-writers")<<"\nclasses\t"<<audioClasses<<"\n";
+    out<<"oracle\t"<<oracle<<"\nscenario\t"<<(replayValid?"replay-genuine-state":saveOnly?"playback-save-no-writes":"concurrent-writers")<<"\nclasses\t"<<audioClasses<<"\n";
     out<<"callbacks\t"<<metrics.callbacks.load()<<"\nprocess_failures\t"<<metrics.processFailures.load();
     out<<"\nset_failures\t"<<metrics.setFailures.load()<<"\nsave_failures\t"<<metrics.saveFailures.load();
     out<<"\nsaves_during_playback\t"<<metrics.savesDuringPlayback.load();
+    out<<"\nset_success\t"<<metrics.setOK.load()<<"\nsets_during_playback\t"<<metrics.setsDuringPlayback.load();
     out<<"\nsave_success\t"<<metrics.saveOK.load()<<"\ntorn_snapshots\t"<<metrics.torn.load();
     out<<"\ncallback_max_ns\t"<<metrics.maximumNanoseconds.load();
     out<<"\ncallback_overruns\t"<<metrics.late.load();
@@ -272,18 +315,19 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
 }
 int main(int argc,char** argv) {
     try {
-        if(argc<8||argc>10||std::string(argv[1])!="--stress") {
-            std::cerr<<"Usage: --stress <VST3> <report.tsv> <rate> <block> <iterations> <paired|ramp|none> [--save-only] [--rt-deadline]\n";
+        if(argc<8||argc>11||std::string(argv[1])!="--stress") {
+            std::cerr<<"Usage: --stress <VST3> <report.tsv> <rate> <block> <iterations> <paired|ramp|none> [--save-only] [--rt-deadline] [--replay-valid-state]\n";
             return 2;
         }
-        bool saveOnly=false,strictRt=false;
+        bool saveOnly=false,strictRt=false,replayValid=false;
         for(int i=8;i<argc;++i) {
             const std::string flag=argv[i];
             if(flag=="--save-only" && !saveOnly) saveOnly=true;
             else if(flag=="--rt-deadline" && !strictRt) strictRt=true;
+            else if(flag=="--replay-valid-state" && !replayValid) replayValid=true;
             else {std::cerr<<"Unknown or duplicate stress flag: "<<flag<<"\n";return 2;}
         }
-        return stress(argv[2],argv[3],std::stoi(argv[4]),std::stoi(argv[5]),std::stoi(argv[6]),argv[7],saveOnly,strictRt);
+        return stress(argv[2],argv[3],std::stoi(argv[4]),std::stoi(argv[5]),std::stoi(argv[6]),argv[7],saveOnly,strictRt,replayValid);
     } catch(const std::exception& e) {
         std::cerr<<"[FAIL] P25 host: "<<e.what()<<"\n";
         return 3;

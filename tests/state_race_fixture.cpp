@@ -63,6 +63,11 @@ public:
     tresult PLUGIN_API setProcessing(TBool) override {return kResultOk;}
     tresult PLUGIN_API setState(IBStream* stream) override {
         if (!stream) return kInvalidArgument;
+#if QA_STATE_MODE==9
+        // Deliberate real state-replay defect: valid project-state loads
+        // are rejected once playback has started.
+        if(active_.load(std::memory_order_acquire)) return kResultFalse;
+#endif
         State s{}; int32 n=0;
         if (stream->read(&s,sizeof(s),&n)!=kResultOk||n!=sizeof(s)||!valid(s)) {
 #if QA_STATE_MODE==5
@@ -193,6 +198,8 @@ constexpr const char* name="125A QA Wrong Host Block Partition";
 constexpr const char* name="125A QA Blocking Audio Callback";
 #elif QA_STATE_MODE==8
 constexpr const char* name="125A QA Broken Multi Instance Global State";
+#elif QA_STATE_MODE==9
+constexpr const char* name="125A QA Broken Live State Replay Rejection";
 #endif
 }
 BEGIN_FACTORY_DEF("125A Universal QA","https://github.com/challanger2000","qa@125a.invalid")
