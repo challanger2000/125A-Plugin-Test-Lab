@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P56 physical ASIO qualification adapter — currently hardware NOT RUN
+
+The portable Windows ASIO evidence gate and optional opt-in `125A-ASIO` self-hosted Actions workflow are in `tests/run_physical_asio.py` and `.github/workflows/p56-physical-workstation.yml`. The independent Windows CI checks rejected fake/replayed/hardware-absent evidence and publishes `NOT_RUN`. **There is no implemented ASIO-driver callback executor inside this repo yet. Actual Audient/other physical ASIO tests, DAW sessions and final release approval are `NOT_RUN`.** See `docs/P56-PHYSICAL-ASIO-GATE.md` before claiming coverage.
+
+
 ## Latest P53 — independently verified current P137 AWE V11 / 8×8 FX / CC120 (6 November 2026)
 
 **[P53 PR #80 merged](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/80)** into `main`, [exact-source full Windows #42242609568 SUCCESS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42242609568), [universal P02 Windows #42242609478 SUCCESS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42242609478), P53 tested Lab head `e81081fd29384311e474d02cd4ecb602aedec3d8`, integrated Lab merge `47e4b752d4039d4c9cf95ea269ab614b0563bb83`. **Current real AWE product source pinned exactly to `d7f534a5eb44f56942706019a6973ad3c0d5ce40`** on `fix/p122-bank-dirty-audit`. P53 only READS the AWE repository; its product DSP/GUI source remains unchanged. Older P48 still verifies a historical AWE revision and must NOT be reused for a current P137 release claim.
