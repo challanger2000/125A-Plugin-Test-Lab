@@ -39,6 +39,8 @@ on:
       - 'tests/verify_parameter_inventory.py'
       - 'tests/verify_parameter_sweep.py'
       - 'tests/test_parameter_sweep.py'
+      - 'tests/verify_parameter_text.py'
+      - 'tests/test_parameter_text.py'
       - 'tests/gui_fixture.cpp'
       - 'tests/write_user_report.py'
       - 'tests/test_user_report.py'
@@ -92,7 +94,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick QAGuiBadParam QAGuiToggle QAGuiInert QAGuiStalePaint TestLabStateStress TestLabInstanceIsolation QAStateMode8 QAStateMode9 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
+          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick QAGuiBadParam QAGuiText QAGuiBadText QAGuiToggle QAGuiInert QAGuiStalePaint TestLabStateStress TestLabInstanceIsolation QAStateMode8 QAStateMode9 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -575,6 +577,43 @@ jobs:
           Write-Host '[PASS] Universal parameter sweep detects real missing writes; no fabricated GUI coverage'
           exit 0
 
+      - name: P40 all VST3 parameter display-text and reverse-value conversions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/test_parameter_text.py
+          if ($LASTEXITCODE -ne 0) { throw 'Independent parameter label/reverse oracle accepted forged test data' }
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Text.vst3')
+          $bad = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_BadText.vst3')
+          if ($hostExe.Count -ne 1 -or $good.Count -ne 1 -or $bad.Count -ne 1) {
+            throw 'P40 genuine native VST3 text fixtures or GUI host missing'
+          }
+          New-Item -ItemType Directory -Force artifacts/P40 | Out-Null
+          & $hostExe[0].FullName --verify-parameter-text $good[0].FullName artifacts/P40/good.tsv
+          if ($LASTEXITCODE -ne 0) { throw 'Real correct VST3 controller text roundtrip failed' }
+          python tests/verify_parameter_text.py --native artifacts/P40/good.tsv --out artifacts/P40/positive
+          if ($LASTEXITCODE -ne 0) { throw 'Independent label oracle rejected genuine working VST3' }
+          $ok = Get-Content artifacts/P40/positive/PARAMETER-TEXT-RESULT.json -Raw | ConvertFrom-Json
+          if ($ok.status -ne 'PASS' -or $ok.parameter_label_probes -ne 2 -or
+              $ok.parameter_reverse_probes -ne 2 -or
+              $ok.parameters_with_reversible_labels -ne 1 -or
+              $ok.actual_editor_painted_values -ne 'NOT COVERED' -or
+              $ok.release_approved -ne $false) {
+            throw 'P40 source-built VST3 label and reverse conversion evidence incomplete'
+          }
+          & $hostExe[0].FullName --verify-parameter-text $bad[0].FullName artifacts/P40/broken.tsv
+          if ($LASTEXITCODE -ne 1) { throw 'VST3 incorrectly maps display text back to parameter, but host passed' }
+          python tests/verify_parameter_text.py --native artifacts/P40/broken.tsv --out artifacts/P40/negative
+          if ($LASTEXITCODE -ne 1) { throw 'Independent text oracle certified deliberately wrong native parameter value' }
+          $notOk = Get-Content artifacts/P40/negative/PARAMETER-TEXT-RESULT.json -Raw | ConvertFrom-Json
+          if ($notOk.status -ne 'FAIL' -or $notOk.failed_parameter_text_mappings -ne 1 -or
+              $notOk.actual_editor_painted_values -ne 'NOT COVERED') {
+            throw 'P40 deliberately malformed real plugin not rejected'
+          }
+          Write-Host '[PASS] P40 independently checked all native parameter text values and caught incorrect reverse conversion'
+          exit 0
+
       - name: Real bidirectional Win32 VST3 GUI clicks and independent profile oracle
         shell: pwsh
         run: |
@@ -814,13 +853,13 @@ jobs:
             if ($found.Count -ne 1) { throw "Portable Test Lab host missing: $binaryName" }
             Copy-Item -LiteralPath $found[0].FullName -Destination "$dir/$binaryName"
           }
-          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','run_gui_workflow.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_instance_isolation.py','verify_multi_instance_smoke.py','run_product_dual_state.py','run_live_state_replay.py','verify_state_stress.py','verify_audio_reference.py','verify_parameter_inventory.py','verify_parameter_sweep.py')) {
+          foreach ($script in @('run_plugin_quickcheck.py','run_product_qa.py','run_product_adapter.py','run_p34_capture.py','run_gui_control_matrix.py','run_gui_workflow.py','verify_p33_artifacts.py','run_state_reload.py','write_user_report.py','verify_instance_isolation.py','verify_multi_instance_smoke.py','run_product_dual_state.py','run_live_state_replay.py','verify_state_stress.py','verify_audio_reference.py','verify_parameter_inventory.py','verify_parameter_sweep.py','verify_parameter_text.py')) {
             if (-not (Test-Path "tests/$script")) { throw "Portable QA script missing: $script" }
             Copy-Item -LiteralPath "tests/$script" -Destination "$dir/$script"
           }
           Copy-Item tests/Run-VST3-Test.cmd "$dir/Run-VST3-Test.cmd"
           Copy-Item docs/ONE-COMMAND-QUICKCHECK.md "$dir/README.md"
-          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/run_gui_workflow.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_instance_isolation.py" "$dir/verify_multi_instance_smoke.py" "$dir/run_product_dual_state.py" "$dir/run_live_state_replay.py" "$dir/verify_state_stress.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py" "$dir/verify_parameter_sweep.py"
+          python -m py_compile "$dir/run_plugin_quickcheck.py" "$dir/run_product_qa.py" "$dir/run_product_adapter.py" "$dir/run_p34_capture.py" "$dir/run_gui_control_matrix.py" "$dir/run_gui_workflow.py" "$dir/verify_p33_artifacts.py" "$dir/run_state_reload.py" "$dir/write_user_report.py" "$dir/verify_instance_isolation.py" "$dir/verify_multi_instance_smoke.py" "$dir/run_product_dual_state.py" "$dir/run_live_state_replay.py" "$dir/verify_state_stress.py" "$dir/verify_audio_reference.py" "$dir/verify_parameter_inventory.py" "$dir/verify_parameter_sweep.py" "$dir/verify_parameter_text.py"
           if ($LASTEXITCODE -ne 0) { throw 'Portable Python scripts syntax check failed' }
           python tests/test_user_report.py
           if ($LASTEXITCODE -ne 0) { throw 'German results/report mutation controls failed' }
@@ -867,6 +906,7 @@ jobs:
             artifacts/PRODUCT-QA/
             artifacts/QUICKCHECK/
             artifacts/P35/
+            artifacts/P40/
             artifacts/P36/
             artifacts/P37/
             artifacts/QUICKCHECK-DEEP/
