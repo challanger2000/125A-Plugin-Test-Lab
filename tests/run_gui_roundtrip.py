@@ -173,6 +173,32 @@ def run(bundle, gui_host, exploration, out, *, acknowledge=False,
                     source_n != observed.get("parameters_inspected") or
                     source_changes != observed.get("changed_parameters")):
                 raise ValueError("original GUI click evidence contradicts candidate")
+            # Never trust merely the JSON claim that a candidate had real
+            # painted change. Reopen the original sham/click physical
+            # captures and independently prove the alleged difference.
+            old_before = read_bmp(source_dir / "click-before-b.bmp")
+            old_after = read_bmp(source_dir / "click-after.bmp")
+            old_sham = read_bmp(source_dir / "sham-before-b.bmp")
+            old_sham_after = read_bmp(source_dir / "sham-after.bmp")
+            if any(frame[:2] != (width, height)
+                   for frame in (old_before, old_after, old_sham, old_sham_after)):
+                raise ValueError("original candidate native BMP dimensions corrupted")
+            original_pixels = changed_pixels(old_before, old_after)
+            if (original_pixels != observed.get("painted_pixels_changed") or
+                    changed_pixels(old_sham, old_sham_after) !=
+                        observed.get("sham_pixels_changed") or
+                    observed.get("sham_pixels_changed") != 0):
+                raise ValueError("original candidate GUI pixels or sham evidence falsified")
+            localized = observed.get("pixel_localization", {})
+            if original_pixels > 0 and localized.get("painted_pixels_changed") != original_pixels:
+                raise ValueError("P44 physical localization count contradicts native screenshots")
+            for region in localized.get("regions", []):
+                pixel = region.get("sample", {})
+                sx, sy = pixel.get("x"), pixel.get("y")
+                if (type(sx) is not int or type(sy) is not int or
+                    read_rgb(old_before, sx, sy) != pixel.get("before_rgb") or
+                    read_rgb(old_after, sx, sy) != pixel.get("after_rgb")):
+                    raise ValueError("P44 original sample RGB data was forged")
             case_dir = out / f"candidate-{case_index:02d}"
             case_dir.mkdir(parents=True, exist_ok=True)
             raw = case_dir / "native.tsv"
