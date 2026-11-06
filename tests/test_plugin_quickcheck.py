@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+import wave
 
 spec = importlib.util.spec_from_file_location("quickcheck", Path(__file__).with_name("run_plugin_quickcheck.py"))
 quick = importlib.util.module_from_spec(spec)
@@ -50,6 +51,14 @@ with tempfile.TemporaryDirectory() as td:
             captured = target / "P34" / "captured-state.bin"
             captured.parent.mkdir(parents=True, exist_ok=True)
             captured.write_bytes(b"stored project state fixture")
+            # Independent known PCM with audible content for the optional
+            # per-product reference comparison. This only simulates the wrapper.
+            audio = target / "P34" / "captured.wav"
+            with wave.open(str(audio), "wb") as wav:
+                wav.setnchannels(2)
+                wav.setsampwidth(3)
+                wav.setframerate(44100)
+                wav.writeframes(b"\x00\x00\x20" * (352800 * 2))
             return subprocess.CompletedProcess(cmd, 0, "native smoke passed", "")
         if cmd[1].endswith("run_state_reload.py"):
             (target / "RECALL-RESULT.json").write_text(
@@ -71,6 +80,21 @@ with tempfile.TemporaryDirectory() as td:
     assert report["coverage"]["recall_audio_determinism"] == "NOT COVERED"
     assert report["coverage"]["product_gui_controls"] == "NOT COVERED"
     assert report["coverage"]["commercial_daw_integration"] == "NOT COVERED"
+
+    reference = out / "native" / "P34" / "captured.wav"
+    assert quick.run(bundle, host, stress, out, runner=synthetic_native,
+                     reference_wav=reference)["coverage"][
+                         "externally_referenced_audio"] == "REFERENCE_MATCH"
+    altered = root / "wrong-golden.wav"
+    corrupted = bytearray(reference.read_bytes())
+    corrupted[-300] ^= 0x1f
+    altered.write_bytes(corrupted)
+    rejected = quick.run(bundle, host, stress, out, runner=synthetic_native,
+                         reference_wav=altered)
+    assert rejected["status"] == "FAIL", "incorrect golden PCM accepted"
+    assert rejected["release_approved"] is False
+    assert rejected["reason"] == (
+        "real VST3 PCM differs from independently supplied reference")
 
     def absent(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 0, "", "")
