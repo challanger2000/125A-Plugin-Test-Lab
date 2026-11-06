@@ -167,8 +167,13 @@ def audit(path):
         "parameters_with_readable_labels": readable_params,
         "parameters_with_reversible_labels": reverse_params,
         "failed_parameter_text_mappings": failed,
-        "text_label_api": "FAIL" if failed else ("PASS" if readable_seen else "NOT COVERED"),
-        "reverse_text_api": "FAIL" if failed else ("PASS" if reverse_seen else "NOT COVERED"),
+        # A single supported label does not make every parameter readable.
+        # Partial coverage remains NOT COVERED until every requested point
+        # has been proven, never a misleading global PASS.
+        "text_label_api": "FAIL" if failed else (
+            "PASS" if observed > 0 and readable_seen == observed else "NOT COVERED"),
+        "reverse_text_api": "FAIL" if failed else (
+            "PASS" if observed > 0 and reverse_seen == observed else "NOT COVERED"),
         "actual_editor_painted_values": "NOT COVERED",
         "product_specific_value_meaning": "NOT COVERED",
         "release_approved": False,
