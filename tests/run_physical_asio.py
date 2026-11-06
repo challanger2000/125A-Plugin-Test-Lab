@@ -46,6 +46,7 @@ def validate(plan):
     if not isinstance(driver, dict) or set(driver) != {"name", "clsid"}:
         raise ValueError("physical driver identity required")
     if (not isinstance(driver["name"], str) or not 1 <= len(driver["name"]) <= 128
+            or any(c in driver["name"] for c in ("\\\\", "/", "\\x00", "\\n", "\\r"))
             or not isinstance(driver["clsid"], str) or not CLSID.fullmatch(driver["clsid"])):
         raise ValueError("invalid ASIO driver registry identity")
     if not isinstance(scenarios, list) or not 1 <= len(scenarios) <= 12:
