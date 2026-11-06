@@ -581,12 +581,15 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
                 outcome.get("verified_gui_host_sha256") != digest(gui_host) or
                 outcome.get("requested_points") != 9 or
                 outcome.get("completed_points") != 9 or
+                outcome.get("sham_verified_points") != 9 or
+                outcome.get("sham_control") != "COMPLETE" or
                 len(outcome.get("probes", [])) != 9 or
                 outcome.get("product_gui_controls") != "NOT COVERED" or
                 outcome.get("release_approved") is not False):
                 raise ValueError("bounded GUI exploration omitted or forged actual probe evidence")
             summary["coverage"]["native_gui_exploration"] = "OBSERVATIONS_ONLY"
             summary["observed_gui_probe_points"] = 9
+            summary["sham_controlled_gui_probe_points"] = 9
             summary["gui_interaction_candidates"] = len(outcome["candidates"])
         except (OSError, ValueError, KeyError, TypeError) as error:
             summary["status"] = "FAIL"
