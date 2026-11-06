@@ -76,7 +76,9 @@ def main():
                                "product_audio_semantics": "NOT COVERED",
                                "user_gui_controls": "NOT COVERED",
                                "midi_wav_export_semantics": "NOT COVERED",
-                               "commercial_daw_integration": "NOT COVERED"}
+                               "commercial_daw_integration": "NOT COVERED",
+                               "physical_asio_hardware": "NOT RUN",
+                               "real_commercial_daw_session": "NOT RUN"}
     except (ValueError, KeyError, TypeError, OSError, json.JSONDecodeError,
             subprocess.TimeoutExpired) as exc:
         summary["error"] = str(exc)

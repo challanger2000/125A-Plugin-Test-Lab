@@ -73,6 +73,12 @@ with tempfile.TemporaryDirectory() as td:
         raise AssertionError("unexpected synthetic stage: " + repr(cmd))
 
     report = quick.run(bundle, host, stress, out, runner=synthetic_native)
+    # P57: even a green simulated/native VST3 quickcheck must never
+    # silently inherit real hardware ASIO or commercial DAW certification.
+    for field in ("physical_asio_driver_callbacks", "physical_asio_xruns_deadlines",
+                  "physical_asio_hardware", "real_commercial_daw_session"):
+        assert report["coverage"][field] == "NOT RUN", field
+    assert report["release_approved"] is False
     assert report["status"] == "TECHNICAL_PASS"
     assert report["release_approved"] is False
     assert report["verified_module_sha256"] == sha
@@ -738,6 +744,8 @@ with tempfile.TemporaryDirectory() as td:
     assert deep["coverage"]["reference_pcm_isolation"] == "PASS"
     assert deep["coverage"]["independent_musical_audio"] == "NOT COVERED"
     assert deep["coverage"]["commercial_daw_integration"] == "NOT COVERED"
+    assert deep["coverage"]["physical_asio_hardware"] == "NOT RUN"
+    assert deep["coverage"]["real_commercial_daw_session"] == "NOT RUN"
 
     for broken in ("missing_replay_case", "wrong_replay_plugin", "wrong_bank"):
         deep_mode["broken"] = broken
