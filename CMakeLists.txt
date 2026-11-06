@@ -85,6 +85,19 @@ smtg_add_vst3plugin(QAGuiBadParam
     SOURCES_LIST tests/gui_fixture.cpp)
 target_link_libraries(QAGuiBadParam PRIVATE sdk user32 gdi32)
 target_compile_definitions(QAGuiBadParam PRIVATE NOMINMAX QA_GUI_BAD_PARAM=1)
+# Native VST3 parameter text conversion oracles for every future plugin.
+smtg_add_vst3plugin(QAGuiText
+    PACKAGE_NAME "125A_QA_GUI_Text"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiText PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiText PRIVATE NOMINMAX QA_GUI_TEXT=1)
+
+smtg_add_vst3plugin(QAGuiBadText
+    PACKAGE_NAME "125A_QA_GUI_BadText"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiBadText PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiBadText PRIVATE NOMINMAX QA_GUI_BAD_TEXT=1)
+
 # Real Win32 GUI click fixture that toggles both 0->1 and 1->0.
 smtg_add_vst3plugin(QAGuiToggle
     PACKAGE_NAME "125A_QA_GUI_Toggle"

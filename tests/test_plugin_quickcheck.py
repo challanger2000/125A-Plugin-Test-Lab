@@ -237,6 +237,17 @@ with tempfile.TemporaryDirectory() as td:
          "expected_normalized": 1.0}]}), encoding="utf-8")
 
     def all_native_gui(cmd, **kwargs):
+        if cmd[1] == "--verify-parameter-text":
+            Path(cmd[3]).write_text(
+                "format\t125A-GUI-TEXT-v1\n"
+                "param_count\t1\ntested\t1\nskipped\t0\nfailed\t0\n"
+                "observations\t2\nreadable\t2\nreversible\t2\n"
+                "param\t0\t9001\t1\t1\tPASS\n"
+                "text\t0\t9001\t0\t004f00460046\tR\t0\t004f00460046\tPASS\n"
+                "text\t0\t9001\t1\t004f004e\tR\t1\t004f004e\tPASS\n",
+                encoding="utf-8")
+            return subprocess.CompletedProcess(
+                cmd, 0, "[PASS] VST3 parameter text mapping: 2 labels, 2 reverse values, 0 invalid controls", "")
         if cmd[1] == "--sweep-parameters":
             Path(cmd[3]).write_text(
                 "format\t125A-GUI-SWEEP-v1\n"
@@ -272,11 +283,46 @@ with tempfile.TemporaryDirectory() as td:
     assert report["coverage"]["native_gui_lifecycle"] == "PASS"
     assert report["coverage"]["native_parameter_inventory"] == "PASS"
     assert report["coverage"]["native_parameter_sweep"] == "PASS"
+    assert report["coverage"]["native_parameter_text_labels"] == "PASS"
+    assert report["coverage"]["native_parameter_text_reverse"] == "PASS"
+    assert report["parameter_labels_verified"] == 2
+    assert report["reverse_text_values_verified"] == 2
     assert report["writable_vst3_parameters_tested"] == 1
     assert report["parameter_values_verified"] == 2
     assert report["advertised_vst3_parameters"] == 1
     assert report["coverage"]["declared_gui_controls"] == "PASS"
     assert report["coverage"]["product_gui_controls"] == "NOT COVERED"
+
+    # The native process must not be able to forge a green text mapping
+    # when one parser silently returns a value for another displayed label.
+    def falsified_text(cmd, **kwargs):
+        if cmd[1] == "--verify-parameter-text":
+            result = all_native_gui(cmd, **kwargs)
+            path = Path(cmd[3])
+            forged = path.read_text(encoding="utf-8").replace(
+                "text\t0\t9001\t0\t004f00460046\tR\t0\t004f00460046\tPASS",
+                "text\t0\t9001\t0\t004f00460046\tR\t1\t004f004e\tPASS")
+            path.write_text(forged, encoding="utf-8")
+            return result
+        return all_native_gui(cmd, **kwargs)
+
+    invalid_text = quick.run(bundle, host, stress, out,
+                             runner=falsified_text, gui_host=gui)
+    assert invalid_text["status"] == "FAIL"
+    assert invalid_text["coverage"]["native_parameter_text_labels"] == "FAIL"
+    assert invalid_text["release_approved"] is False
+
+    def missing_text_evidence(cmd, **kwargs):
+        if cmd[1] == "--verify-parameter-text":
+            return subprocess.CompletedProcess(
+                cmd, 0, "[PASS] VST3 parameter text mapping:", "")
+        return all_native_gui(cmd, **kwargs)
+
+    stale_text = quick.run(bundle, host, stress, out,
+                           runner=missing_text_evidence, gui_host=gui)
+    assert stale_text["status"] == "FAIL"
+    assert stale_text["coverage"]["native_parameter_text_labels"] == "FAIL"
+    assert not (out / "native-parameter-text.tsv").exists()
 
     # Product-independent click/drag sequences require a declared oracle;
     # a successful native host alone must never imply every button was tested.
@@ -376,6 +422,8 @@ with tempfile.TemporaryDirectory() as td:
     workflow_file.write_text(json.dumps(workflow_spec), encoding="utf-8")
 
     def gui_not_available(cmd, **kwargs):
+        if cmd[1] == "--verify-parameter-text":
+            return subprocess.CompletedProcess(cmd, 10, "", "[INCONCLUSIVE] no controller")
         if cmd[1] == "--sweep-parameters":
             return subprocess.CompletedProcess(cmd, 10, "", "[INCONCLUSIVE] no controller")
         if cmd[1] == "--inventory-parameters":
