@@ -37,7 +37,8 @@ def fixture_files(root):
     b.write_bytes(oracle.approved(33,44))
     manifest = {
         "schema": "125a-product-dual-state-oracle-v1",
-        "product": {"binary": str(plugin), "sha256": dual.hash_file(plugin)},
+        "product": {"bundle": str(plugin.parents[2]), "binary": str(plugin),
+                    "sha256": dual.hash_file(plugin)},
         "host": str(host),
         "initial_states": {
             "A": {"path": str(a), "sha256": dual.hash_file(a)},
