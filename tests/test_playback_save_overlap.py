@@ -81,4 +81,22 @@ with tempfile.TemporaryDirectory() as td:
         assert "saves during" in str(exc), str(exc)
     else:
         raise AssertionError("independent oracle accepted post-playback-only saves")
+    # A very fast real process() can take less than one steady_clock tick:
+    # 0 ns at p95 is valid if p99 and maximum are ordered correctly.
+    evidence["saves_during_playback"] = 300
+    evidence["callback_p95_ns"] = 0
+    evidence["callback_p99_ns"] = 100
+    evidence["callback_max_ns"] = 400
+    tsv.write_text("".join(f"{k}\t{v}\n" for k, v in evidence.items()),
+                   encoding="utf-8")
+    assert oracle.parse(tsv)["callback_p95_ns"] == 0
+    evidence["callback_p95_ns"] = 200
+    tsv.write_text("".join(f"{k}\t{v}\n" for k, v in evidence.items()),
+                   encoding="utf-8")
+    try:
+        oracle.parse(tsv)
+    except AssertionError as exc:
+        assert "timing order" in str(exc), str(exc)
+    else:
+        raise AssertionError("inconsistent callback p95/p99 order accepted")
 print("[PASS] 500 saves cannot appear green if none overlapped active VST3 playback")
