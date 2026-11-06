@@ -4,12 +4,25 @@
 
 ## Current test acceptance and latest proof
 
-**Latest verified Windows quickcheck:** pull requests #45 and #46,
-validated in [the actual Windows P25 pipeline](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42131347744).
+**Latest verified Windows quickcheck:** pull requests #47 and #48,
+validated in [Windows P25 pipeline](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42135595956).
 The real Drumator product regression remains independently verified in P03.
 The complete relevant Windows CI for the latest changes has passed,
 including the real production VST3 GUI/exports regression and all 13
 independent product-domain evidence gates.
+
+The standalone test can now compare real captured PCM24 against an
+**independently supplied golden WAV reference** via `--reference-wav`.
+Native Windows CI also independently calculated an expected waveform for a
+source-built VST3 and required deliberate wrong/silent recordings to fail.
+See [audio reference oracle](docs/AUDIO-REFERENCE-ORACLE.md).
+
+The six-rate/buffer stress measurements now preserve actual audio callback
+deadlines, 99th-percentile processing times and overruns. Timing violations
+appear explicitly as **FAIL** in the German results report, even when basic
+VST3 processing and save APIs succeed. Native Windows runner timing is
+observational (OS scheduling can affect results), not a guarantee of
+hard-realtime behavior on every workstation.
 
 The one-click Windows test now opens the captured project state in **two
 separate newly launched native VST3 host processes** and re-saves the
@@ -51,7 +64,7 @@ An external per-product control map can additionally automate click/pixel
 checks (see `docs/ONE-COMMAND-QUICKCHECK.md`).
 
 **Use without compiling the test host yourself:** download the latest
-successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42131347744),
+successful [P25 Windows Actions artifact](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42135595956),
 open its `PORTABLE` folder, and follow `README.md`. The artifact
 contains all three native x64 audio/state/GUI hosts, the drag-and-drop launcher, supporting Python scripts
 and SHA-256 checksums. Python 3 on Windows is required.
