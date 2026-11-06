@@ -54,10 +54,13 @@ with tempfile.TemporaryDirectory() as td:
         params = [(9001, 0.0, 1.0)] if (
             actual_click and mode not in ("inert", "visual_only", "spontaneous", "hover_only")
             or mode == "sham_parameter") else [(9001, 0.0, 0.0)]
-        text = ["format\t125A-GUI-EXPLORE-v2",
+        text = ["format\t125A-GUI-EXPLORE-v3",
                 "mode\t" + ("click" if actual_click else "sham"),
                 f"coordinate\t{x}\t{y}",
-                "canvas\t320\t180", "param_count\t1"]
+                "canvas\t320\t180",
+                "target_depth\t" + ("1" if mode in ("nested", "wrong_hit") and
+                                     (actual_click or mode == "nested") else "0"),
+                "param_count\t1"]
         text.extend(f"param\t{i}\t{pid}\t{a}\t{b}"
                     for i, (pid, a, b) in enumerate(params))
         text.append("end\tCOMPLETE")
@@ -67,6 +70,8 @@ with tempfile.TemporaryDirectory() as td:
                                     f"coordinate\t{x+1}\t{y}")
         if mode == "wrong_control_mode" and not actual_click:
             report = report.replace("mode\tsham", "mode\tclick")
+        if mode == "bad_target_depth":
+            report = report.replace("target_depth\t0", "target_depth\t19")
         if mode == "duplicate_param":
             report = report.replace("param_count\t1", "param_count\t2").replace(
                 "end\tCOMPLETE", "param\t1\t9001\t0\t1\nend\tCOMPLETE")
@@ -115,11 +120,24 @@ with tempfile.TemporaryDirectory() as td:
     assert good["sham_control"] == "COMPLETE"
     assert good["probes"][0]["sham_control_attribution"] == "SUPPORTED"
     assert good["probes"][0]["sham_pixels_changed"] == 0
+    assert good["probes"][0]["native_child_depth"] == 0
+    assert good["probes"][0]["routed_to_descendant_hwnd"] is False
     assert good["candidates"][0]["parameter_ids_changed"] == [9001]
     assert good["probes"][0]["classification"] == "PARAMETER_AND_VISUAL_CHANGE"
     assert good["gui_control_discovery"] == "OBSERVATIONS_ONLY"
     assert good["product_gui_controls"] == "NOT COVERED"
     assert good["release_approved"] is False
+
+    # Source-agnostic test: a real nested native HWND has depth >= 1,
+    # while sham and click must identify the SAME descendant window depth.
+    nested = inspect("nested")
+    assert nested["status"] == "OBSERVATIONS_COMPLETE"
+    assert nested["probes"][0]["native_child_depth"] == 1
+    assert nested["probes"][0]["routed_to_descendant_hwnd"] is True
+    assert nested["candidates"][0]["native_child_depth"] == 1
+    wrong_hit = inspect("wrong_hit")
+    assert wrong_hit["status"] == "FAIL"
+    assert wrong_hit["gui_control_discovery"] == "NOT COVERED"
 
     stale = inspect("stale_paint")
     assert stale["status"] == "OBSERVATIONS_COMPLETE"
@@ -171,7 +189,7 @@ with tempfile.TemporaryDirectory() as td:
 
     for mode in ("crash", "timeout", "missing_evidence", "wrong_coordinate",
                  "duplicate_param", "missing_end", "bad_bmp", "tamper_binary",
-                 "wrong_control_mode"):
+                 "wrong_control_mode", "bad_target_depth"):
         broken = inspect(mode)
         assert broken["status"] == "FAIL", (mode, broken)
         assert broken["gui_control_discovery"] == "NOT COVERED"
