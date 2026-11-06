@@ -102,7 +102,7 @@ def run(plugin, host, out, *, timeout=90, runner=subprocess.run):
             result["cases"].append(case)
     if len(result["cases"]) == 6 and all(case["status"] == "PASS" for case in result["cases"]):
         result["status"] = "TECHNICAL_PASS"
-    result_file.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    report_file.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
 
 
