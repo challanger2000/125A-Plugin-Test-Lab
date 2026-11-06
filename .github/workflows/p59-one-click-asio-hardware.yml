@@ -1,0 +1,124 @@
+name: P59 manual one-click ASIO VST3 hardware qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin_dll:
+        description: 'Exact Windows .vst3 DLL path already present on the isolated workstation'
+        required: true
+        type: string
+      asio_driver_name:
+        description: 'Exact registered ASIO driver name under HKLM SOFTWARE ASIO on the workstation'
+        required: true
+        type: string
+      sample_rate:
+        description: 'Target ASIO hardware sample rate'
+        required: true
+        type: choice
+        options: ['44100', '48000', '96000']
+        default: '44100'
+      buffer_frames:
+        description: 'Target device buffer frames'
+        required: true
+        type: choice
+        options: ['64', '128', '256', '512', '1024']
+        default: '128'
+      callbacks:
+        description: 'Required actual driver callbacks'
+        required: true
+        type: choice
+        options: ['12000', '24000']
+        default: '12000'
+      acknowledge_hardware:
+        description: 'I approve exclusive ASIO device access and low-volume audio on a disposable isolated workstation'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: physical-asio-hardware
+  cancel-in-progress: false
+
+jobs:
+  physical-asio-one-click:
+    if: ${{ github.ref == 'refs/heads/main' && github.repository == 'challanger2000/125A-Plugin-Test-Lab' && inputs.acknowledge_hardware == true }}
+    runs-on: [self-hosted, Windows, X64, 125A-ASIO]
+    environment: 125A-Physical-ASIO
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare default nonapproval result
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/P59-public | Out-Null
+          @{schema='125a-asio-hardware-summary-v1';status='NOT_RUN';hardware_asio='NOT_RUN';commercial_daw_session='NOT_RUN';release_approved=$false} |
+            ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 artifacts/P59-public/SUMMARY.json
+      - name: Pin external GPLv3 reference ASIO SDK for local private build only
+        shell: pwsh
+        run: |
+          git clone --no-checkout https://github.com/audiosdk/asio.git asio-sdk
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO SDK unavailable' }
+          git -C asio-sdk checkout --detach 496a0765b8bb9c26f764f22f9a9712a937177db2
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO SDK cannot be pinned' }
+          if ((git -C asio-sdk rev-parse HEAD).Trim() -cne '496a0765b8bb9c26f764f22f9a9712a937177db2') {
+            throw 'Unapproved ASIO SDK identity'
+          }
+      - name: Build current native VST3 ASIO host on the Windows workstation
+        shell: pwsh
+        run: |
+          cmake -S . -B build-p59 -G "Visual Studio 17 2022" -A x64 "-DASIO_SDK_DIR=$env:GITHUB_WORKSPACE/asio-sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'Native ASIO host configure failed' }
+          cmake --build build-p59 --config Release --parallel 4 --target TestLabPhysicalASIO
+          if ($LASTEXITCODE -ne 0) { throw 'Native ASIO host build failed' }
+      - name: Generate approved local driver and binary plan, execute actual callbacks
+        shell: pwsh
+        env:
+          LOCAL_PLUGIN: ${{ inputs.plugin_dll }}
+          LOCAL_ASIO_DRIVER: ${{ inputs.asio_driver_name }}
+          RATE: ${{ inputs.sample_rate }}
+          FRAMES: ${{ inputs.buffer_frames }}
+          CALLBACKS: ${{ inputs.callbacks }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build-p59 -Recurse -File -Filter '125A_Test_Lab_Physical_ASIO.exe')
+          if ($exe.Count -ne 1) { throw 'Physical ASIO executable missing' }
+          if (-not (Test-Path -LiteralPath $env:LOCAL_PLUGIN -PathType Leaf)) {
+            throw 'Exact approved local VST3 DLL missing'
+          }
+          New-Item -ItemType Directory -Force artifacts/P59-private | Out-Null
+          python tests/generate_physical_asio_plan.py --plugin "$env:LOCAL_PLUGIN" --executor "$($exe[0].FullName)" --driver-name "$env:LOCAL_ASIO_DRIVER" --rate $env:RATE --frames $env:FRAMES --callbacks $env:CALLBACKS --out artifacts/P59-private/plan.json --acknowledge-hardware
+          if ($LASTEXITCODE -ne 0) { throw 'P59 local ASIO driver or VST3 plan failed' }
+          python tests/run_physical_asio.py --plan artifacts/P59-private/plan.json --out artifacts/P59-private/evidence --timeout 300 --acknowledge-physical-asio
+          if ($LASTEXITCODE -ne 0) { throw 'Actual ASIO device callback qualification FAIL or NOT RUN' }
+          $report = Get-Content artifacts/P59-private/evidence/PHYSICAL-ASIO-RESULT.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'EVIDENCE_ACCEPTED' -or $report.release_approved -ne $false -or $report.commercial_daw_session -ne 'NOT_RUN') {
+            throw 'P59 hardware evidence lacks strict P56 approval contract'
+          }
+          $safe = @()
+          foreach ($case in $report.scenarios) {
+            $raw = Get-Content $case.native_evidence -Raw | ConvertFrom-Json
+            $safe += @{
+              sample_rate = $raw.sample_rate
+              buffer_frames = $raw.buffer_frames
+              asio_callbacks = $raw.asio_callbacks
+              completed_callbacks = $raw.completed_callbacks
+              deadline_misses = $raw.deadline_misses
+              xruns = $raw.xruns
+              process_failures = $raw.process_failures
+            }
+          }
+          @{schema='125a-asio-hardware-summary-v1';status='EXTERNAL_EXECUTOR_EVIDENCE_ACCEPTED';hardware_asio='DRIVER_CALLBACKS_OBSERVED';commercial_daw_session='NOT_RUN';release_approved=$false;scenarios=$safe} |
+            ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 artifacts/P59-public/SUMMARY.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P59-redacted-ASIO-device-summary-no-sensitive-local-paths
+          path: artifacts/P59-public/SUMMARY.json
+          if-no-files-found: error
+          retention-days: 14
