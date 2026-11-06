@@ -37,8 +37,8 @@ def validated_manifest(path):
         raise ValueError("dual-state reference manifest has missing/unknown fields")
     if raw["schema"] != "125a-product-dual-state-oracle-v1":
         raise ValueError("wrong dual-state oracle manifest schema")
-    if not isinstance(raw["product"], dict) or set(raw["product"]) != {"binary", "sha256"}:
-        raise ValueError("module identity must contain binary and sha256 only")
+    if not isinstance(raw["product"], dict) or set(raw["product"]) != {"bundle", "binary", "sha256"}:
+        raise ValueError("module identity must contain bundle, binary and sha256")
     if not isinstance(raw["initial_states"], dict) or set(raw["initial_states"]) != {"A", "B"}:
         raise ValueError("exactly two distinct pinned input states required")
     for label in ("A", "B"):
@@ -56,12 +56,20 @@ def validated_manifest(path):
             raise ValueError("initial state bytes have changed since approval")
     if raw["initial_states"]["A"]["sha256"] == raw["initial_states"]["B"]["sha256"]:
         raise ValueError("reference A and B must be different")
+    bundle = Path(raw["product"]["bundle"]).resolve(strict=True)
+    if not bundle.is_dir() or bundle.suffix.lower() != ".vst3":
+        raise ValueError("VST3 native bundle directory missing")
     p = Path(raw["product"]["binary"]).resolve(strict=True)
+    if not p.is_relative_to(bundle):
+        raise ValueError("binary module lies outside approved VST3 bundle")
+    if len([q for q in bundle.rglob("*.vst3") if q.is_file()]) != 1:
+        raise ValueError("ambiguous binary modules inside VST3 bundle")
     if not p.is_file() or not SHA.fullmatch(str(raw["product"]["sha256"])):
         raise ValueError("invalid VST3 product identity")
     if hash_file(p) != raw["product"]["sha256"]:
         raise ValueError("plugin module fingerprint differs from approved product")
     raw["product"]["binary"] = str(p)
+    raw["product"]["bundle"] = str(bundle)
     h = Path(raw["host"]).resolve(strict=True)
     if not h.is_file():
         raise ValueError("native same-process VST3 host missing")
@@ -108,7 +116,7 @@ def run(manifest, out, timeout=60, runner=subprocess.run):
         report["verified_module_sha256"] = m["product"]["sha256"]
         states = m["initial_states"]
         proc = runner([
-            m["host"], "--dual-state", m["product"]["binary"],
+            m["host"], "--dual-state", m["product"]["bundle"],
             states["A"]["path"], states["B"]["path"], str(out.resolve())
         ], capture_output=True, text=True, timeout=timeout, check=False, errors="replace")
         (out / "native-run.log").write_text(
