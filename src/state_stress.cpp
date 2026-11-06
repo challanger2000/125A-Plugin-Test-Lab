@@ -43,7 +43,7 @@ void hostPaceMicroseconds(int us) {
 }
 
 struct Metrics {
-    std::atomic<uint32> callbacks{0},processFailures{0},late{0},torn{0},saveFailures{0},saveOK{0},setFailures{0};
+    std::atomic<uint32> callbacks{0},processFailures{0},late{0},torn{0},saveFailures{0},saveOK{0},setFailures{0},savesDuringPlayback{0};
     std::atomic<int64> maximumNanoseconds{0};
     std::atomic<bool> running{true};
     std::atomic<float> rampSample{-1.f};
@@ -159,8 +159,16 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             // control/UI thread; process() runs concurrently on audio thread.
             // Alternate save-before-write and save-after-write ordering.
             auto saveSnapshot = [&] {
+                // Confirm saved state was captured while the audio thread
+                // was genuinely processing, not only after playback stopped.
+                const uint32 before=metrics.callbacks.load(std::memory_order_acquire);
                 ResizableMemoryIBStream saved;
-                if(component->getState(&saved)!=kResultOk || saved.getCursor()==0) {
+                const bool ok=component->getState(&saved)==kResultOk && saved.getCursor()>0;
+                const uint32 after=metrics.callbacks.load(std::memory_order_acquire);
+                if(ok && before>0 && after<static_cast<uint32>(iterations) &&
+                   metrics.running.load(std::memory_order_acquire))
+                    metrics.savesDuringPlayback.fetch_add(1,std::memory_order_relaxed);
+                if(!ok) {
                     metrics.saveFailures++;
                 } else {
                     metrics.saveOK++;
@@ -209,7 +217,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             active=false;
             // Distinguish technical success from independent domain correctness.
             if(metrics.processFailures||metrics.setFailures||metrics.saveFailures||
-                metrics.saveOK!=500||metrics.torn) {pass=false;reason="failed process/setState/getState or torn independent state"; }
+                metrics.saveOK!=500||metrics.torn||metrics.savesDuringPlayback.load()==0) {pass=false;reason="failed process/setState/getState or torn independent state"; }
             if(oracle=="ramp") {
                 const auto actual=metrics.rampSample.load();
                 if(actual<0||std::abs(actual-0.125f)>0.002f) {
@@ -243,6 +251,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     out<<"oracle\t"<<oracle<<"\nscenario\t"<<(saveOnly?"playback-save-no-writes":"concurrent-writers")<<"\nclasses\t"<<audioClasses<<"\n";
     out<<"callbacks\t"<<metrics.callbacks.load()<<"\nprocess_failures\t"<<metrics.processFailures.load();
     out<<"\nset_failures\t"<<metrics.setFailures.load()<<"\nsave_failures\t"<<metrics.saveFailures.load();
+    out<<"\nsaves_during_playback\t"<<metrics.savesDuringPlayback.load();
     out<<"\nsave_success\t"<<metrics.saveOK.load()<<"\ntorn_snapshots\t"<<metrics.torn.load();
     out<<"\ncallback_max_ns\t"<<metrics.maximumNanoseconds.load();
     out<<"\ncallback_overruns\t"<<metrics.late.load();
