@@ -47,7 +47,7 @@ def sha_file(path):
 
 
 def audit(ctest_path, quickcheck_path, module_path, source_sha):
-    if source_sha != AWE_STABLE_SOURCE:
+    if source_sha != AWE_P137_FINAL_SOURCE:
         raise ValueError("AWE source drift: not the independently pinned current P137/P139/P140 integrated AWE development revision")
     native = Path(ctest_path).read_text(encoding="utf-8-sig", errors="replace")
     if (re.search(r"100% tests passed,\s*0 tests failed out of (\d+)", native)
