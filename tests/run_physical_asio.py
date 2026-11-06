@@ -19,7 +19,7 @@ SCHEMA = "125a-physical-asio-plan-v1"
 EVIDENCE = "125a-physical-asio-native-evidence-v1"
 RESULT = "125a-physical-asio-result-v1"
 HEX = re.compile(r"^[a-f0-9]{64}$")
-CLSID = re.compile(r"^\\{[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\\}$")
+CLSID = re.compile(r"^\{[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\}$")
 ALLOWED_RATE = (44100, 48000, 96000)
 ALLOWED_BLOCK = (64, 128, 256, 512, 1024)
 
