@@ -54,8 +54,11 @@ def validate(manifest):
             if type(control.get(axis)) is not int or not 0 <= control[axis] <= 8191:
                 raise ValueError("invalid GUI coordinate")
         val = control.get("expected_normalized")
-        if type(val) not in (float, int) or not 0.0 < val <= 1.0:
-            raise ValueError("invalid independent GUI expected value")
+        initial = control.get("initial_normalized", 0.0)
+        if (type(initial) not in (float, int) or not 0.0 <= initial <= 1.0 or
+                type(val) not in (float, int) or not 0.0 <= val <= 1.0 or
+                abs(initial - val) <= 1e-5):
+            raise ValueError("initial and final GUI values must be distinct normalized numbers")
         pixel = control.get("expected_pixel")
         if pixel is not None:
             if not isinstance(pixel, dict) or set(pixel) != {"x", "y", "rgb"}:
@@ -86,10 +89,16 @@ def run(manifest, out, timeout=90, runner=subprocess.run):
     for control in controls:
         screenshot = out / (control["id"] + ".bmp")
         screenshot.unlink(missing_ok=True)
-        cmd = [str(host), "--prove-click-and-snapshot" if "expected_pixel" in control
-               else "--prove-click-at", str(bundle),
-               str(control["param_id"]), str(control["x"]), str(control["y"]),
-               str(control["expected_normalized"])]
+        has_initial = "initial_normalized" in control
+        cmd = [str(host), ("--prove-click-and-snapshot-from" if has_initial
+                          else "--prove-click-and-snapshot")
+               if "expected_pixel" in control else
+               ("--prove-click-at-from" if has_initial else "--prove-click-at"),
+               str(bundle), str(control["param_id"]), str(control["x"]),
+               str(control["y"])]
+        if has_initial:
+            cmd.append(str(control["initial_normalized"]))
+        cmd.append(str(control["expected_normalized"]))
         if "expected_pixel" in control:
             cmd.append(str(screenshot))
         log = out / (control["id"] + ".log")
