@@ -1,5 +1,13 @@
 # START HERE — 125A Plugin Test Lab
 
+## Latest P42 — independently controlled GUI exploration (Windows-verified 6 November 2026)
+
+**Tested and merged:** [PR #67](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/67) and [P25 Windows run #42178099352](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42178099352). Exact tested revision: `8d7a7d4d5a5574d91eba9bdae3f9686d2842dc12`; **P02, P03, P04, P25, P29 all SUCCESS** on that revision. The P25 artifact `125A-Universal-VST3-State-Stress-P25` includes the reusable test scripts and native hosts.
+
+**Improvement over P41:** Each unknown GUI coordinate is now tested twice, in **separate, disposable real VST3 instances**: a sham test receives the same native WM_MOUSEMOVE (hover) but no mouse-button input, and a real click test receives the mouse motion plus down/up. Both take two baseline screenshots, a post-action screenshot and complete controller snapshots. The independent auditor checks all evidence, matching initial parameter and painted values, sham background movement and click-versus-sham results. Hover-only highlights, spontaneous animation and background parameter changes are `UNSTABLE_CONTROL` and never mistaken for confirmed click candidates. Negative tests include a **real source-built VST3 that reacts to mouse hover without changing any controller parameter**.
+
+**Status is observational, not certification:** a correctly paired scan is still `OBSERVATIONS_ONLY`. It cannot discover all hidden controls, infer their intended semantics, or prove sound, MIDI, exports, recall or DAW integration. Exploration **requires explicit opt-in** (`--gui-explore --acknowledge-gui-explore`) because arbitrary clicks may trigger actions. It is a shared testing capability for all 125A Windows VST3s, not a change to Drumator or AWE. GitHub Actions uses runner-provided Python; the user's PC does not need Python.
+
 ## Latest universal P41 automatic GUI exploration — 6 November 2026
 
 **Verified source and Windows evidence:** [merged PR #66](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/66), [P25 Windows run 42176006331](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42176006331). The exact PR commit `506cd9118f18b79d32ae122697eac83f8f7357b8` passed **P02, P03, P04 and P25 Windows CI**; the P25 artifact `125A-Universal-VST3-State-Stress-P25` includes the portable GUI explorer runner.
