@@ -29,7 +29,7 @@ assert "<script>alert(1)</script>" not in page
 assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
 assert "Freigabe des Plugins" in page
 assert "Alle automationsfaehigen VST3-Parameter" in page
-assert "Mehrstufige echte Mausbedienung" in page
+assert "Mehrstufige Maus- und Tastaturbedienung" in page
 assert "Nur visuell belegte Buttons" in page
 assert page.count("BESTANDEN") == 5
 enriched = dict(passed)
@@ -59,7 +59,7 @@ journey = dict(passed)
 journey["coverage"] = dict(passed["coverage"])
 journey["coverage"]["native_gui_workflow"] = "PASS"
 page = report.report_html(journey)
-assert "Mehrstufige echte Mausbedienung" in page
+assert "Mehrstufige Maus- und Tastaturbedienung" in page
 assert page.count("BESTANDEN") == 6
 assert "Alle Bedienelemente des Produktes" in page
 assert "KEINE PRODUKTFREIGABE" in page
