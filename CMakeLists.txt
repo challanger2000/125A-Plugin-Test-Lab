@@ -131,6 +131,37 @@ smtg_add_vst3plugin(QAGuiPaintedOnly
 target_link_libraries(QAGuiPaintedOnly PRIVATE sdk user32 gdi32)
 target_compile_definitions(QAGuiPaintedOnly PRIVATE NOMINMAX QA_GUI_PAINTED_ONLY=1)
 
+# P46: Real native VST3 editor exports valid/WAV-but-wrong PCM on click.
+# Both plugins expose the SAME passing GUI parameter, so only independent
+# file/PCM verification can distinguish the semantic defect.
+smtg_add_vst3plugin(QAGuiExportGood
+    PACKAGE_NAME "125A_QA_GUI_ExportGood"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiExportGood PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiExportGood PRIVATE NOMINMAX QA_GUI_EXPORT_GOOD=1)
+
+smtg_add_vst3plugin(QAGuiExportBad
+    PACKAGE_NAME "125A_QA_GUI_ExportBad"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiExportBad PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiExportBad PRIVATE NOMINMAX QA_GUI_EXPORT_BAD=1)
+
+# P46 independent SMF note content oracle: the GUI reports identical
+# successful state changes for good and wrong-note MIDI file variants.
+smtg_add_vst3plugin(QAGuiExportMidiGood
+    PACKAGE_NAME "125A_QA_GUI_ExportMidiGood"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiExportMidiGood PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiExportMidiGood PRIVATE NOMINMAX QA_GUI_EXPORT_MIDI_GOOD=1)
+
+smtg_add_vst3plugin(QAGuiExportMidiBad
+    PACKAGE_NAME "125A_QA_GUI_ExportMidiBad"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiExportMidiBad PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiExportMidiBad PRIVATE NOMINMAX QA_GUI_EXPORT_MIDI_BAD=1)
+
+
+
 
 
 
