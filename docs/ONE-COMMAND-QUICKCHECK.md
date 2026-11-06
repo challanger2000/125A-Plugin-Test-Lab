@@ -1,5 +1,26 @@
 # One-command real VST3 technical quickcheck
 
+## Automatic universal controller value sweeps
+
+The native GUI host now probes **every VST3 parameter marked automatable
+and not read-only**, at normalized 0%, 25%, 50%, 75% and 100% points
+(or the corresponding discrete steps), then restores its original value
+in a disposable plugin instance. Duplicate step positions are tested once.
+Each requested/returned value is independently verified from the native
+TSV evidence; missing cases, silent parameter write failures and
+incorrect restorations make the quickcheck **FAIL**. Parameters which
+cannot legally be edited are explicitly **NOT COVERED** rather than
+guessing their behavior.
+
+This feature is part of the normal `Run-VST3-Test.cmd` flow whenever a
+native VST3 controller is available. The report distinguishes
+`native_parameter_sweep` from `product_gui_controls`: controller
+automation does not simulate the location or mouse behavior of an
+undocumented plugin button. An additional product-specific GUI click
+profile is still needed to test controls not exposed as VST3 parameters.
+No DAW installation or end-user Python installation is needed when
+running these checks in GitHub Actions.
+
 ## Optional deep checks in the same report
 
 The default drag-and-drop runner is safe for arbitrary Windows VST3 plugins.

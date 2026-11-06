@@ -237,6 +237,16 @@ with tempfile.TemporaryDirectory() as td:
          "expected_normalized": 1.0}]}), encoding="utf-8")
 
     def all_native_gui(cmd, **kwargs):
+        if cmd[1] == "--sweep-parameters":
+            Path(cmd[3]).write_text(
+                "format\t125A-GUI-SWEEP-v1\n"
+                "param_count\t1\ntested\t1\nskipped\t0\nfailed\t0\n"
+                "observations\t2\n"
+                "param\t0\t9001\t1\t1\t0\tPASS\t1\n"
+                "probe\t0\t9001\t0\t0\t1\n"
+                "probe\t0\t9001\t1\t1\t1\n", encoding="utf-8")
+            return subprocess.CompletedProcess(
+                cmd, 0, "[PASS] VST3 controller boundary sweep: 1 writable parameters, 2 checked values, 0 failed", "")
         if cmd[1] == "--inventory-parameters":
             Path(cmd[3]).write_text(
                 "format\t125A-GUI-PARAMS-v1\nparam_count\t1\n"
@@ -261,11 +271,16 @@ with tempfile.TemporaryDirectory() as td:
     assert report["status"] == "TECHNICAL_PASS"
     assert report["coverage"]["native_gui_lifecycle"] == "PASS"
     assert report["coverage"]["native_parameter_inventory"] == "PASS"
+    assert report["coverage"]["native_parameter_sweep"] == "PASS"
+    assert report["writable_vst3_parameters_tested"] == 1
+    assert report["parameter_values_verified"] == 2
     assert report["advertised_vst3_parameters"] == 1
     assert report["coverage"]["declared_gui_controls"] == "PASS"
     assert report["coverage"]["product_gui_controls"] == "NOT COVERED"
 
     def gui_not_available(cmd, **kwargs):
+        if cmd[1] == "--sweep-parameters":
+            return subprocess.CompletedProcess(cmd, 10, "", "[INCONCLUSIVE] no controller")
         if cmd[1] == "--inventory-parameters":
             return subprocess.CompletedProcess(cmd, 10, "", "[INCONCLUSIVE] no controller")
         if cmd[1] == "--probe":
@@ -303,6 +318,38 @@ with tempfile.TemporaryDirectory() as td:
     stale_inventory = quick.run(bundle, host, stress, out,
                                 runner=missing_inventory, gui_host=gui)
     assert stale_inventory["status"] == "FAIL", "stale parameter inventory reused"
+
+    def wrong_controller_value(cmd, **kwargs):
+        if cmd[1] == "--sweep-parameters":
+            result = all_native_gui(cmd, **kwargs)
+            path = Path(cmd[3])
+            body = path.read_text(encoding="utf-8")
+            body = body.replace("failed\t0\n", "failed\t1\n").replace(
+                "param\t0\t9001\t1\t1\t0\tPASS\t1",
+                "param\t0\t9001\t1\t1\t0\tFAIL\t1").replace(
+                "probe\t0\t9001\t1\t1\t1",
+                "probe\t0\t9001\t1\t0\t0")
+            path.write_text(body, encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 1,
+                "[FAIL] VST3 controller boundary sweep", "")
+        return all_native_gui(cmd, **kwargs)
+
+    bad_sweep = quick.run(bundle, host, stress, out,
+                          runner=wrong_controller_value, gui_host=gui)
+    assert bad_sweep["status"] == "FAIL", "controller silently ignored automation"
+    assert bad_sweep["coverage"]["native_parameter_sweep"] == "FAIL"
+
+    def missing_parameter_sweep(cmd, **kwargs):
+        if cmd[1] == "--sweep-parameters":
+            return subprocess.CompletedProcess(
+                cmd, 0, "[PASS] VST3 controller boundary sweep:", "")
+        return all_native_gui(cmd, **kwargs)
+
+    stale_sweep = quick.run(bundle, host, stress, out,
+                            runner=missing_parameter_sweep, gui_host=gui)
+    assert stale_sweep["status"] == "FAIL", "stale green controller sweep accepted"
+    assert stale_sweep["coverage"]["native_parameter_sweep"] == "FAIL"
+    assert not (out / "native-parameter-sweep.tsv").exists()
 
     def absent_matrix(cmd, **kwargs):
         if cmd[1].endswith("run_gui_control_matrix.py"):

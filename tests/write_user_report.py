@@ -24,6 +24,7 @@ LABELS = {
     "recall_audio_determinism": "Samplegenauer Vergleich nach Neuladen",
     "native_gui_lifecycle": "Pluginfenster oeffnen und erneut oeffnen",
     "native_parameter_inventory": "Alle vom VST3-Controller gemeldeten Parameter aufgueltigkeit pruefen",
+    "native_parameter_sweep": "Alle automationsfaehigen VST3-Parameter an Grenzwerten durchtesten",
     "declared_gui_controls": "Explizit definierte Bedienelemente",
     "product_gui_controls": "Alle Bedienelemente des Produktes",
     "independent_musical_audio": "Musikalisch korrekter Klang",

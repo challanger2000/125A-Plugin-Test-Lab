@@ -78,6 +78,14 @@ smtg_add_vst3plugin(QAGuiClick
     SOURCES_LIST tests/gui_fixture.cpp)
 target_link_libraries(QAGuiClick PRIVATE sdk user32 gdi32)
 target_compile_definitions(QAGuiClick PRIVATE NOMINMAX QA_GUI_INERT=0)
+# VST3 negative control for universal controller boundary writes: this
+# plugin advertises an automatable parameter but silently ignores value=1.
+smtg_add_vst3plugin(QAGuiBadParam
+    PACKAGE_NAME "125A_QA_GUI_BadParam"
+    SOURCES_LIST tests/gui_fixture.cpp)
+target_link_libraries(QAGuiBadParam PRIVATE sdk user32 gdi32)
+target_compile_definitions(QAGuiBadParam PRIVATE NOMINMAX QA_GUI_BAD_PARAM=1)
+
 
 smtg_add_vst3plugin(QAGuiInert
     PACKAGE_NAME "125A_QA_GUI_Inert"

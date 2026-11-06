@@ -21,10 +21,17 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_STALE_PAINT
 #define QA_GUI_STALE_PAINT 0
 #endif
+#ifndef QA_GUI_BAD_PARAM
+#define QA_GUI_BAD_PARAM 0
+#endif
 
 namespace {
 constexpr ParamID kClickParam = 9001;
-#if QA_GUI_STALE_PAINT
+#if QA_GUI_BAD_PARAM
+const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000031, 0xB0000031);
+const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000032, 0xB0000032);
+constexpr const char* kName = "125A GUI Bad Parameter API Fixture";
+#elif QA_GUI_STALE_PAINT
 const FUID kProcessorCID(0x125A2026, 0x11040004, 0xA0000011, 0xB0000011);
 const FUID kControllerCID(0x125A2026, 0x11040004, 0xA0000012, 0xB0000012);
 constexpr const char* kName = "125A GUI Stale Paint Fixture";
@@ -87,6 +94,15 @@ public:
         parameters.addParameter(STR16("Clicked"), nullptr, 1, 0.,
                                 ParameterInfo::kCanAutomate, kClickParam);
         return kResultOk;
+    }
+    tresult PLUGIN_API setParamNormalized(ParamID id, ParamValue value) override {
+#if QA_GUI_BAD_PARAM
+        // Deliberately return success without updating an advertised
+        // automatable parameter.  A simple inventory sees no fault.
+        if (id == kClickParam && value > 0.5)
+            return kResultTrue;
+#endif
+        return EditController::setParamNormalized(id, value);
     }
     IPlugView* PLUGIN_API createView(FIDString type) override {
         if (!type || std::strcmp(type, ViewType::kEditor) != 0) return nullptr;

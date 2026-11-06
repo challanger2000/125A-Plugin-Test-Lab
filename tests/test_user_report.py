@@ -16,6 +16,7 @@ passed = {
         "sample_rate_buffer_matrix": "PASS",
         "fresh_process_project_recall": "PASS",
         "native_gui_lifecycle": "PASS",
+        "native_parameter_sweep": "PASS",
         "product_gui_controls": "NOT COVERED",
         "commercial_daw_integration": "NOT COVERED",
     }
@@ -27,7 +28,8 @@ assert "NICHT GEPRUEFT" in page
 assert "<script>alert(1)</script>" not in page
 assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
 assert "Freigabe des Plugins" in page
-assert page.count("BESTANDEN") == 4
+assert "Alle automationsfaehigen VST3-Parameter" in page
+assert page.count("BESTANDEN") == 5
 enriched = dict(passed)
 enriched["coverage"] = dict(passed["coverage"])
 enriched["coverage"]["same_process_dual_instance_lifecycle"] = "PASS"
@@ -37,7 +39,7 @@ page = report.report_html(enriched)
 assert "Zwei gleichzeitige Plugininstanzen in einem Host" in page
 assert "Unabhaengige Bank-/Projektzustaende beider Instanzen" in page
 assert "Vergleich mit freigegebener WAV-Referenz" in page
-assert page.count("BESTANDEN") == 6, "independent reference falsely displayed untested"
+assert page.count("BESTANDEN") == 7, "independent reference falsely displayed untested"
 assert "KEINE PRODUKTFREIGABE" in page
 
 deep = dict(enriched)
@@ -48,7 +50,7 @@ deep["coverage"]["active_playback_state_replay"] = "PASS"
 page = report.report_html(deep)
 assert "Unabhaengige A/B-Referenzpruefung" in page
 assert "500 echte Zustand-Reloads" in page
-assert page.count("BESTANDEN") == 9
+assert page.count("BESTANDEN") == 10
 assert "KEINE PRODUKTFREIGABE" in page
 
 critical = dict(passed)

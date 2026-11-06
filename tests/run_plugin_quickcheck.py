@@ -159,6 +159,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "product_gui_controls": "NOT COVERED",
             "native_gui_lifecycle": "NOT COVERED",
             "native_parameter_inventory": "NOT COVERED",
+            "native_parameter_sweep": "NOT COVERED",
             "midi_wav_export": "NOT COVERED",
             "preset_semantics": "NOT COVERED",
             "commercial_daw_integration": "NOT COVERED"
@@ -359,6 +360,42 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             except (ValueError, OSError, OverflowError) as error:
                 summary["status"] = "FAIL"
                 summary["reason"] = "invalid native VST3 parameter inventory: " + str(error)
+    # Exercise all VST3-controller-advertised writable parameters at
+    # normalized boundary and quartile values. Unlike a scripted native
+    # mouse click, this does NOT certify hidden product-only GUI controls.
+    if summary["status"] == "TECHNICAL_PASS" and gui_host is not None:
+        from verify_parameter_sweep import audit as audit_sweep
+        sweep_file = out / "native-parameter-sweep.tsv"
+        sweep_file.unlink(missing_ok=True)  # never accept old green evidence
+        sweep_proc = checked_runner([str(gui_host), "--sweep-parameters",
+                                     str(bundle), str(sweep_file)],
+                                    capture_output=True, text=True, timeout=timeout,
+                                    check=False, errors="replace")
+        sweep_log = (sweep_proc.stdout or "") + "\n" + (sweep_proc.stderr or "")
+        (out / "native-parameter-sweep.log").write_text(sweep_log, encoding="utf-8")
+        if sweep_proc.returncode == 10 and "[INCONCLUSIVE]" in sweep_log:
+            summary["coverage"]["native_parameter_sweep"] = "NOT COVERED"
+        elif not sweep_file.is_file():
+            summary["status"] = "FAIL"
+            summary["coverage"]["native_parameter_sweep"] = "FAIL"
+            summary["reason"] = "native controller sweep produced no fresh evidence"
+        else:
+            try:
+                checked = audit_sweep(sweep_file)
+                summary["writable_vst3_parameters_tested"] = checked["writable_parameters"]
+                summary["parameter_values_verified"] = checked["independent_points_verified"]
+                if (summary["coverage"]["native_parameter_inventory"] == "PASS" and
+                    checked["advertised_parameters"] != summary["advertised_vst3_parameters"]):
+                    raise ValueError("controller parameter count changed between inventory and sweep")
+                if (checked["status"] != "PASS" or sweep_proc.returncode != 0 or
+                    "[PASS] VST3 controller boundary sweep:" not in sweep_log):
+                    raise ValueError("native VST3 normalized parameter roundtrip failed")
+                summary["coverage"]["native_parameter_sweep"] = checked["controller_roundtrip"]
+            except (ValueError, TypeError, OSError, OverflowError) as error:
+                summary["status"] = "FAIL"
+                summary["coverage"]["native_parameter_sweep"] = "FAIL"
+                summary["reason"] = "native VST3 controller parameter sweep invalid: " + str(error)
+
     if summary["status"] == "TECHNICAL_PASS" and gui_controls is not None:
         control_spec = json.loads(Path(gui_controls).read_text(encoding="utf-8"))
         if not isinstance(control_spec, dict) or set(control_spec) != {"controls"}:

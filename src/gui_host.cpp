@@ -19,6 +19,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <vector>
 
 #include <algorithm>
@@ -446,6 +447,145 @@ int inventoryParameters(const std::string& pluginPath,
     }
     require(audioClasses == 1, "No unique VST3 processor class for inventory");
     return 0;
+}
+
+// Generic controller parameter sweep.  This probes *only* declared writable
+// VST3 parameters in a disposable test instance.  It never guesses editor
+// coordinates or asserts a relation between controller values and audio.
+int sweepParameters(const std::string& pluginPath,
+                    const std::filesystem::path& reportPath) {
+    std::string error;
+    auto module = Module::create(pluginPath, error);
+    require(bool(module), "Controller sweep could not load VST3");
+    HostApplication app;
+    auto factory = module->getFactory();
+    factory.setHostContext(&app);
+    int audioClasses = 0;
+    for (const auto& cls : factory.classInfos()) {
+        if (cls.category() != kVstAudioEffectClass) continue;
+        ++audioClasses;
+        require(audioClasses == 1,
+                "Multiple audio classes require explicit selection (INCONCLUSIVE)");
+        auto component = factory.createInstance<IComponent>(cls.ID());
+        require(bool(component) && component->initialize(&app) == kResultOk,
+                "Controller sweep cannot initialize processor");
+        int tested = 0, skipped = 0, failed = 0, observations = 0;
+        struct Observation {
+            double requested{};
+            double actual{};
+            int result{};
+        };
+        struct Row {
+            int32 index{};
+            ParamID id{};
+            int32 steps{};
+            int32 flags{};
+            double initial{};
+            bool eligible{};
+            bool restored{};
+            bool passed{};
+            std::vector<Observation> observations;
+        };
+        std::vector<Row> rows;
+        {
+            Controller controller;
+            acquireController(component.get(), factory, &app, controller);
+            const int32 count = controller.ptr->getParameterCount();
+            require(count >= 0 && count <= 8192,
+                    "Controller sweep reports invalid parameter count");
+            rows.reserve(static_cast<size_t>(count));
+            std::vector<ParamID> ids;
+            ids.reserve(static_cast<size_t>(count));
+            for (int32 index = 0; index < count; ++index) {
+                ParameterInfo p{};
+                require(controller.ptr->getParameterInfo(index, p) == kResultTrue,
+                        "Controller sweep cannot read parameter info");
+                require(p.stepCount >= 0 &&
+                        std::isfinite(p.defaultNormalizedValue) &&
+                        p.defaultNormalizedValue >= 0.0 &&
+                        p.defaultNormalizedValue <= 1.0 &&
+                        std::find(ids.begin(), ids.end(), p.id) == ids.end(),
+                        "Controller sweep invalid or duplicate parameter metadata");
+                ids.push_back(p.id);
+                const double initial = controller.ptr->getParamNormalized(p.id);
+                require(std::isfinite(initial) && initial >= 0.0 && initial <= 1.0,
+                        "Controller sweep initial normalized value invalid");
+                Row row;
+                row.index = index;
+                row.id = p.id;
+                row.steps = p.stepCount;
+                row.flags = p.flags;
+                row.initial = initial;
+                row.eligible = (p.flags & ParameterInfo::kCanAutomate) != 0 &&
+                               (p.flags & ParameterInfo::kIsReadOnly) == 0;
+                row.restored = true;
+                row.passed = true;
+                if (row.eligible) {
+                    ++tested;
+                    // Probe endpoints and quartiles.  For discrete parameters
+                    // use actual integral step positions, not invalid half steps.
+                    for (int i = 0; i <= 4; ++i) {
+                        double requested = static_cast<double>(i) / 4.0;
+                        if (p.stepCount > 0)
+                            requested = std::round(requested * p.stepCount) /
+                                        static_cast<double>(p.stepCount);
+                        if (!row.observations.empty() &&
+                            std::abs(row.observations.back().requested - requested) < 1e-12)
+                            continue;
+                        const auto rc = controller.ptr->setParamNormalized(p.id, requested);
+                        const double actual = controller.ptr->getParamNormalized(p.id);
+                        const bool ok = rc == kResultTrue && std::isfinite(actual) &&
+                                        actual >= 0.0 && actual <= 1.0 &&
+                                        std::abs(actual - requested) <= 1e-5;
+                        row.observations.push_back({requested, actual, ok ? 1 : 0});
+                        row.passed = row.passed && ok;
+                        ++observations;
+                    }
+                    const auto rc = controller.ptr->setParamNormalized(p.id, initial);
+                    const auto restored = controller.ptr->getParamNormalized(p.id);
+                    row.restored = rc == kResultTrue && std::isfinite(restored) &&
+                                   std::abs(restored - initial) <= 1e-5;
+                    row.passed = row.passed && row.restored;
+                    if (!row.passed) ++failed;
+                } else {
+                    ++skipped;
+                }
+                rows.push_back(std::move(row));
+            }
+            controller.close();
+        }
+        require(component->terminate() == kResultOk,
+                "Controller sweep component termination failed");
+        if (!reportPath.parent_path().empty())
+            std::filesystem::create_directories(reportPath.parent_path());
+        std::ofstream out(reportPath, std::ios::trunc);
+        require(bool(out), "Controller sweep cannot create report");
+        out << std::setprecision(17);
+        out << "format\t125A-GUI-SWEEP-v1\n"
+            << "param_count\t" << rows.size() << "\n"
+            << "tested\t" << tested << "\n"
+            << "skipped\t" << skipped << "\n"
+            << "failed\t" << failed << "\n"
+            << "observations\t" << observations << "\n";
+        for (const auto& row : rows) {
+            out << "param\t" << row.index << "\t" << row.id << "\t"
+                << row.steps << "\t" << row.flags << "\t" << row.initial << "\t"
+                << (row.eligible ? (row.passed ? "PASS" : "FAIL") : "SKIP")
+                << "\t" << (row.restored ? 1 : 0) << "\n";
+            for (const auto& x : row.observations)
+                out << "probe\t" << row.index << "\t" << row.id << "\t"
+                    << x.requested << "\t" << x.actual << "\t" << x.result << "\n";
+        }
+        out.flush();
+        require(out.good(), "Controller sweep cannot write full evidence");
+        std::cout << (failed ? "[FAIL]" : "[PASS]")
+                  << " VST3 controller boundary sweep: " << tested
+                  << " writable parameters, " << observations
+                  << " checked values, " << failed << " failed\n";
+        return failed ? 1 : 0;
+    }
+    require(audioClasses == 1, "No unique audio processor class for controller sweep");
+    return 10;
 }
 
 std::vector<std::uint8_t> captureActualComponentState(IComponent* component) {
@@ -1717,6 +1857,8 @@ int main(int argc, char** argv) {
         }
         if (argc == 4 && std::string(argv[1]) == "--inventory-parameters")
             return inventoryParameters(argv[2],argv[3]);
+        if (argc == 4 && std::string(argv[1]) == "--sweep-parameters")
+            return sweepParameters(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "--snapshot-editor")
             return run(argv[2], false, 0, -1, -1, 1.0,
                        std::filesystem::path(argv[3]));
@@ -1724,7 +1866,8 @@ int main(int argc, char** argv) {
             return run(argv[2], false, 0);
         if (argc == 4 && std::string(argv[1]) == "--prove-click")
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
-        std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"
+        std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"                  << "       125A_Test_Lab_GUI --sweep-parameters <plugin.vst3> <sweep.tsv>\n"
+
                   << "       125A_Test_Lab_GUI --prove-click-and-snapshot <plugin.vst3> <param-id> <x> <y> <expected> <output.bmp>\n"
                   << "       125A_Test_Lab_GUI --snapshot-editor <plugin.vst3> <output.bmp>\n"
                   << "       125A_Test_Lab_GUI --probe <plugin.vst3>\n"
