@@ -10,6 +10,8 @@ on:
       - 'tests/verify_drumator_swing.py'
       - 'tests/verify_drumator_recall.py'
       - 'tests/verify_drumator_matrix.py'
+      - 'tests/verify_drumator_v15_acceptance.py'
+      - 'tests/test_drumator_v15_acceptance.py'
       - 'tests/drumator_midi_probe.cpp'
       - 'tests/midi_probe/CMakeLists.txt'
       - 'tests/verify_midi_export.py'
@@ -528,6 +530,46 @@ jobs:
             throw 'P21 required gate evidence is incomplete, contradictory or FAILED'
           }
           Write-Host '[PASS] P21 machine-readable release evidence and exact tested product SHA'
+
+      - name: P47 exact Drumator V1.5 source and real GUI user-coverage acceptance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/test_drumator_v15_acceptance.py
+          if ($LASTEXITCODE -ne 0) { throw 'P47 acceptance matrix accepted forged/stale V1.5 evidence' }
+          $actual = (git -C drumator-src rev-parse HEAD).Trim()
+          if ($actual -cne '3f1e82c99e716071486fa73b81c3e4f062400276' -and
+              $env:GITHUB_EVENT_NAME -ne 'workflow_dispatch') {
+            throw "P47 changed product release source during immutable P03 regression: $actual"
+          }
+          $plugin = @(Get-ChildItem build-drumator -Recurse -File -Filter 'Drumator.vst3' |
+            Where-Object { $_.FullName -match '[\\/]VST3[\\/]' })
+          if ($plugin.Count -ne 1) { throw 'P47 ambiguous actual source-built Drumator VST3' }
+          $arguments = @(
+            'tests/verify_drumator_v15_acceptance.py',
+            '--release-evidence', 'artifact/P03/RELEASE-EVIDENCE.json',
+            '--gui-exports', 'build/p11-gui-exports',
+            '--product-sha', $actual,
+            '--built-binary', $plugin[0].FullName,
+            '--out', 'artifact/P03/V15-REAL-USER-COVERAGE.json'
+          )
+          & python @arguments
+          if ($LASTEXITCODE -ne 0) {
+            throw 'P47 current real Drumator V1.5 source or user-visible MIDI/export requirements failed'
+          }
+          $report = Get-Content artifact/P03/V15-REAL-USER-COVERAGE.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'TECHNICAL_PASS' -or
+              $report.verified_product_source_sha -cne $actual -or
+              $report.checks_passed -ne 12 -or
+              $report.requirements_not_covered -lt 10 -or
+              $report.release_approved -ne $false -or
+              $report.commercial_daw_tested -ne $false -or
+              $report.full_gui_interaction_coverage -ne 'NOT COVERED' -or
+              $report.exact_customer_package_file_tested -ne 'NOT VERIFIED') {
+            throw 'P47 V1.5 user acceptance coverage is incomplete or falsely claims DAW/GUI release'
+          }
+          Write-Host '[PASS] P47 real V1.5 acceptance: 12 proven domains, explicit untested GUI/DAW functions'
+          exit 0
 
       - name: Collect P03 diagnostic evidence
         if: always()
