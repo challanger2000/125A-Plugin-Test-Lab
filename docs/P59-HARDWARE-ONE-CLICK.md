@@ -5,7 +5,7 @@ one explicit GitHub Actions `workflow_dispatch` action in
 `.github/workflows/p59-one-click-asio-hardware.yml`. The workflow:
 
 1. Runs **only** from the trusted `main` branch, with an explicit hardware
-   acknowledgement and the `125A-ASIO` Windows x64 self-hosted runner label.
+   acknowledgement, the repository variable\n   `ASIO_RUNNER_ENABLED=YES_PRIVATE_ISOLATED`, and the `125A-ASIO` Windows\n   x64 self-hosted runner label.
 2. Downloads an exact source-pinned ASIO SDK for local compilation only,
    builds the P58 host against the existing pinned VST3 SDK.
 3. Uses the selected real local VST3 DLL and exact locally registered ASIO
@@ -38,7 +38,7 @@ testing workstation with no sensitive data, restricted repository/runner
 access, and a trusted protected GitHub environment named
 `125A-Physical-ASIO` configured with branch restrictions and required
 approvals; a separate private repository/workflow for the hardware runner is
-preferable. The workflow definition alone does not create such protection.
+preferable. The workflow definition alone does not create such protection. The\n`ASIO_RUNNER_ENABLED` variable is an explicit additional opt-in and MUST NOT\nbe enabled until the self-hosted runner is appropriately isolated and approved.
 
 This is an optional workflow: on GitHub-hosted Windows-2022, no hardware
 ASIO callback run is executed and the result remains `NOT RUN`. The test
