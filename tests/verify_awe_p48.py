@@ -55,8 +55,14 @@ def audit(ctest_path, quickcheck_path, module_path, source_sha):
         r"100% tests passed,\s*0 tests failed out of (\d+)", native).group(1))
     if count < len(EXPECTED_NATIVE_TESTS) + 15:
         raise ValueError("AWE native suite unexpectedly shrank")
-    if any(native.count(name) != 1 for name in EXPECTED_NATIVE_TESTS):
-        # CTest prints every test name on its result line once.
+    # CTest normally prints the same name twice: once in 'Start n:'
+    # and again in the *actual* result line. Count ONLY passed result
+    # lines, not potentially misleading start/attempt messages.
+    passed_cases = re.findall(
+        r"^\s*\d+/\d+\s+Test\s+#\d+:\s*(\S+).*?\bPassed\b",
+        native, flags=re.MULTILINE)
+    if len(passed_cases) != count or any(
+            passed_cases.count(name) != 1 for name in EXPECTED_NATIVE_TESTS):
         raise ValueError("essential AWE recall/GUI/program/allocation regression missing")
     quick = json.loads(Path(quickcheck_path).read_text(encoding="utf-8"))
     actual_hash = sha_file(module_path)
