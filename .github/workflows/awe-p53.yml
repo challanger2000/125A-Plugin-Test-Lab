@@ -1,0 +1,176 @@
+name: P53 Current P137/P139 AWE real VST3 in independent Test Lab
+on:
+  push:
+    branches: [integration/p53-current-awe-p137-final-lab]
+    paths:
+      - '.github/workflows/awe-p53.yml'
+      - 'tests/verify_awe_p53.py'
+      - 'tests/test_awe_p53.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/awe-p53.yml'
+      - 'tests/verify_awe_p53.py'
+      - 'tests/test_awe_p53.py'
+      - 'tests/run_plugin_quickcheck.py'
+      - 'tests/run_product_qa.py'
+      - 'tests/run_p34_capture.py'
+      - 'src/gui_host.cpp'
+      - 'CMakeLists.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# This source-built AWE check is expensive; never pay for duplicate push/PR
+# clones of the same test while a newer P53 revision is available.
+concurrency:
+  group: p53-awe-current-source-built-vst3
+  cancel-in-progress: true
+
+jobs:
+  real-awe:
+    runs-on: windows-2022
+    timeout-minutes: 55
+    steps:
+      - name: Checkout actual Test Lab code (no mock plugin)
+        uses: actions/checkout@v4
+
+      - name: Checkout exact latest verified P137/P139/P140 AWE source, product read-only
+        uses: actions/checkout@v4
+        with:
+          repository: challanger2000/125A-AWE-Synthesizer
+          ref: d7f534a5eb44f56942706019a6973ad3c0d5ce40
+          path: awe-src
+          persist-credentials: false
+
+      - name: Pin current P137 commit and explicitly retain physical ASIO release boundaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force artifacts/P53 | Out-Null
+          $actual = (git -C awe-src rev-parse HEAD).Trim()
+          if ($actual -cne 'd7f534a5eb44f56942706019a6973ad3c0d5ce40') {
+            throw 'AWE source unexpectedly changed since independently pinned baseline'
+          }
+          @(
+            "AWE_SOURCE_SHA=$actual"
+            'CUSTOMER_ROM_OR_SF2=NOT PROVIDED'
+            'WINDOWS_ETW_201600_P139=INDEPENDENT_SOURCE_REPOSITORY_ONLY'
+            'P140_PAIRED_ABBA=INDEPENDENT_SOURCE_REPOSITORY_ONLY'
+            'CURRENT_CREATIVE_FX_PRESETS=8_REVERB_x_8_CHORUS'
+            'PROJECT_STATE_VERSION=V11'
+            'REAL_ASIO_HARDWARE_APPROVAL=NOT COVERED'
+            'HARDWARE_CHORUS_APPROVAL=NOT COVERED'
+            'AWE_GUI_RELEASE=NO-GO'
+            'AWE_COMMERCIAL_RELEASE=NO-GO'
+          ) | Set-Content artifacts/P53/PROVENANCE.txt
+
+      - name: Fetch exact Steinberg SDK for real AWE VST3 sources
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git clone --depth 1 --branch v3.8.1_build_84 --recurse-submodules https://github.com/steinbergmedia/vst3sdk.git awe-src/external/vst3sdk
+          if ($LASTEXITCODE -ne 0) { throw 'SDK clone failed' }
+          $sha=(git -C awe-src/external/vst3sdk rev-parse HEAD).Trim()
+          if ($sha -cne '3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96') { throw "Unexpected AWE SDK: $sha" }
+
+      - name: Build actual source-based AWE VST3 with native safety tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S awe-src -B build-awe -G "Visual Studio 17 2022" -A x64 -D125A_BUILD_VST3=ON -D125A_BUILD_ENGINE_PROBES=ON -D125A_BUILD_EDITORHOST_TEST=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Real AWE configure failed' }
+          # Shared generated header: parallel MSBuild can run overlapping generators.
+          # Serialize this actual AWE product build; subsequent Lab builds stay parallel.
+          cmake --build build-awe --config Release --parallel 1
+          if ($LASTEXITCODE -ne 0) { throw 'Real AWE Windows build failed' }
+
+      - name: Run entire P137 AWE native suite including FX and CC120
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ctest --test-dir build-awe -C Release --output-on-failure --timeout 120 2>&1 | Tee-Object -FilePath artifacts/P53/ctest.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Current P137 AWE actual native CTest suite failed' }
+          $log=Get-Content artifacts/P53/ctest.txt -Raw
+          if ($log -notmatch '100% tests passed, 0 tests failed out of (\d+)') { throw 'AWE CTest proof missing' }
+          if ([int]$Matches[1] -lt 44) { throw 'Current AWE full V11/CC120/native test count under 44' }
+          foreach ($name in @('125A_p122_state_snapshot','125A_p128_sample_accurate_program_pcm',
+                              '125A_p128_persistent_controls','125A_p130_no_cpp_new_on_audio_thread',
+                              '125A_p133_fx_processor_modes','125A_p134_cc120_physical_stop')) {
+            if (-not $log.Contains($name)) { throw "AWE native regression not executed: $name" }
+          }
+
+      - name: Require real Steinberg 537-test VST3 module validation
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $validators=@(Get-ChildItem build-awe -Recurse -File -Filter validator.exe | Where-Object { $_.FullName -match 'Release' })
+          $bundles=@(Get-ChildItem build-awe -Recurse -Directory -Filter '125A_AWE_Synthesizer.vst3')
+          if ($validators.Count -lt 1 -or $bundles.Count -ne 1) { throw 'Actual AWE validator/bundle missing' }
+          & $validators[0].FullName -e $bundles[0].FullName 2>&1 | Tee-Object -FilePath artifacts/P53/vst3-module-validator.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Real AWE VST3 module validator failed' }
+          if ((Get-Content artifacts/P53/vst3-module-validator.txt -Raw) -notmatch 'Result:\s+537 tests passed,\s+0 tests failed') {
+            throw 'Expected current 537/537 real VST3 module validation evidence missing'
+          }
+
+      - name: Compile independent Windows Test Lab hosts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S . -B build-testlab -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'Test Lab configure failed' }
+          cmake --build build-testlab --config Release --parallel 4 --target TestLabHost TestLabStateStress TestLabGUI TestLabInstanceIsolation
+          if ($LASTEXITCODE -ne 0) { throw 'Independent Test Lab native host build failed' }
+
+      - name: Audit genuine current AWE VST3 in universal Windows hosts
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/test_awe_p53.py
+          if ($LASTEXITCODE -ne 0) { throw 'P53 false-certification negative test broken' }
+          $plugin = @(Get-ChildItem build-awe -Recurse -Directory -Filter '125A_AWE_Synthesizer.vst3')
+          $hostExe = @(Get-ChildItem build-testlab -Recurse -File -Filter '125A_Test_Lab_Host.exe')
+          $stress = @(Get-ChildItem build-testlab -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
+          $gui = @(Get-ChildItem build-testlab -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $dual = @(Get-ChildItem build-testlab -Recurse -File -Filter '125A_Test_Lab_Instance_Isolation.exe')
+          if ($plugin.Count -ne 1 -or $hostExe.Count -ne 1 -or $stress.Count -ne 1 -or
+              $gui.Count -ne 1 -or $dual.Count -ne 1) {
+            throw 'AWE actual VST3 bundle or independent host binaries missing/ambiguous'
+          }
+          $module = @(Get-ChildItem $plugin[0].FullName -Recurse -File -Filter '*.vst3')
+          if ($module.Count -ne 1) { throw 'AWE VST3 native DLL ambiguous' }
+          python tests/run_plugin_quickcheck.py --plugin $plugin[0].FullName --host $hostExe[0].FullName --stress-host $stress[0].FullName --gui-host $gui[0].FullName --dual-host $dual[0].FullName --out artifacts/P53/quickcheck --timeout 120
+          if ($LASTEXITCODE -ne 0) { throw 'Genuine AWE Test Lab quickcheck failed' }
+          $sha = (git -C awe-src rev-parse HEAD).Trim()
+          $args = @(
+            'tests/verify_awe_p53.py',
+            '--ctest', 'artifacts/P53/ctest.txt',
+            '--quickcheck', 'artifacts/P53/quickcheck/QUICKCHECK-RESULT.json',
+            '--module', $module[0].FullName,
+            '--source-sha', $sha,
+            '--out', 'artifacts/P53/AWE-REAL-USER-COVERAGE.json'
+          )
+          & python @args
+          if ($LASTEXITCODE -ne 0) { throw 'Real AWE source-host evidence or release boundaries failed' }
+          $report = Get-Content artifacts/P53/AWE-REAL-USER-COVERAGE.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'TECHNICAL_PASS' -or
+              $report.release_approved -ne $false -or
+              $report.commercial_release_status -ne 'NO-GO' -or
+              $report.studio_one_integration_tested -ne $false) {
+            throw 'P53 native test falsely granted AWE GUI/DAW/release approval'
+          }
+          Write-Host '[PASS] Real AWE VST3 independent Windows host, bank-state CTests, with explicit ROM/chorus/ASIO release blockers'
+          exit 0
+
+      - name: Preserve real AWE Windows evidence even when a gate fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 125A-AWE-P53-Actual-VST3-Independent-Test-Lab
+          path: artifacts/P53/
+          if-no-files-found: warn
+          retention-days: 14
