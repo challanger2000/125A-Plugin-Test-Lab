@@ -102,7 +102,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick QAGuiBadParam QAGuiText QAGuiBadText QAGuiToggle QAGuiHover QAGuiNested QAGuiPaintedOnly QAGuiExportGood QAGuiExportBad QAGuiInert QAGuiStalePaint TestLabStateStress TestLabInstanceIsolation QAStateMode8 QAStateMode9 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
+          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick QAGuiBadParam QAGuiText QAGuiBadText QAGuiToggle QAGuiHover QAGuiNested QAGuiPaintedOnly QAGuiExportGood QAGuiExportBad QAGuiExportMidiGood QAGuiExportMidiBad QAGuiInert QAGuiStalePaint TestLabStateStress TestLabInstanceIsolation QAStateMode8 QAStateMode9 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -1023,9 +1023,12 @@ jobs:
           $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
           $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_ExportGood.vst3')
           $bad = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_ExportBad.vst3')
+          $midiGood = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_ExportMidiGood.vst3')
+          $midiBad = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_ExportMidiBad.vst3')
           $missing = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Click.vst3')
           if ($gui.Count -ne 1 -or $good.Count -ne 1 -or
-              $bad.Count -ne 1 -or $missing.Count -ne 1) {
+              $bad.Count -ne 1 -or $midiGood.Count -ne 1 -or
+              $midiBad.Count -ne 1 -or $missing.Count -ne 1) {
             throw 'P46 real native GUI-triggered export VST3 fixtures missing'
           }
           $golden = '3c548b8ac23f3be44063b4afce2609137a6e274e409af17f2397f0c95172741b'
@@ -1081,6 +1084,61 @@ jobs:
                   $report.approved_independent_file_oracles -ne 'FAIL' -or
                   $report.release_approved -ne $false) {
                 throw "P46 broken GUI export accidentally passed independent PCM/file oracle: $($scenario.name)"
+              }
+            }
+          }
+          # The same product-independent engine must also catch a WRONG
+          # musical note in a structurally valid SMF MIDI export.
+          $midiGolden = '7aa58ed767a3c5ec19ea0c33d0f104f37cfd82ce244c369a1a4f8abfd31e5244'
+          foreach ($scenario in @(
+            @{name='midi-good';bundle=$midiGood[0].FullName;success=$true},
+            @{name='midi-bad-note';bundle=$midiBad[0].FullName;success=$false}
+          )) {
+            $module = @(Get-ChildItem $scenario.bundle -Recurse -File -Filter '*.vst3')
+            if ($module.Count -ne 1) { throw "P46 ambiguous MIDI VST3: $($scenario.name)" }
+            $workflow = @{
+              schema='125a-gui-workflow-v1'
+              product=@{
+                binary=$module[0].FullName
+                sha256=(Get-FileHash $module[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              }
+              gui_host=$gui[0].FullName
+              initial=@(@{param_id=9001;normalized=0.0})
+              steps=@(
+                @{id='export_midi';action='click';x=160;y=90;
+                  param_id=9001;before_normalized=0.0;expected_normalized=1.0}
+              )
+            }
+            $contract = @{
+              schema='125a-gui-export-contract-v1'
+              workflow=$workflow
+              expected_exports=@(@{
+                filename='gui-export.mid';type='midi';sha256=$midiGolden
+                format=0;tracks=1;ticks_per_quarter=96;note_on_count=1
+              })
+            }
+            $casePath = "artifacts/P46/$($scenario.name)"
+            New-Item -ItemType Directory -Force $casePath | Out-Null
+            $contract | ConvertTo-Json -Depth 16 | Set-Content "$casePath/contract.json"
+            python tests/run_gui_export_contract.py --manifest "$casePath/contract.json" --out "$casePath/results"
+            $exit = $LASTEXITCODE
+            $report = Get-Content "$casePath/results/GUI-EXPORT-CONTRACT-RESULT.json" -Raw | ConvertFrom-Json
+            if ($scenario.success) {
+              if ($exit -ne 0 -or $report.status -ne 'CONTRACT_PASS' -or
+                  $report.gui_declared_action_oracles -ne 'PASS' -or
+                  $report.approved_independent_file_oracles -ne 'PASS' -or
+                  $report.verified_export_count -ne 1 -or
+                  $report.verified_exports.'gui-export.mid'.sha256 -ne $midiGolden -or
+                  $report.verified_exports.'gui-export.mid'.metadata.note_on_count -ne 1 -or
+                  $report.release_approved -ne $false) {
+                throw 'P46 real GUI MIDI file failed independently pinned musical note oracle'
+              }
+            } else {
+              if ($exit -ne 1 -or $report.status -ne 'FAIL' -or
+                  $report.gui_declared_action_oracles -ne 'PASS' -or
+                  $report.approved_independent_file_oracles -ne 'FAIL' -or
+                  $report.release_approved -ne $false) {
+                throw 'P46 real valid MIDI with WRONG musical note incorrectly passed'
               }
             }
           }
