@@ -28,6 +28,16 @@ assert "<script>alert(1)</script>" not in page
 assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
 assert "Freigabe des Plugins" in page
 assert page.count("BESTANDEN") == 4
+critical = dict(passed)
+critical["coverage"] = dict(passed["coverage"])
+critical["coverage"]["realtime_deadline_observation"] = "FAIL"
+critical["measured_callback_overruns"] = 3
+page = report.report_html(critical)
+assert "Gemessene Audio-Deadline-Ueberschreitungen" in page
+assert "Gemessene Audio-Callback-Deadlines" in page
+assert "FEHLER" in page
+assert "KEINE PRODUKTFREIGABE" in page
+
 
 bad = {
     "status": "FAIL",
