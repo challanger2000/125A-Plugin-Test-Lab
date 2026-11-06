@@ -1,5 +1,17 @@
 # START HERE — 125A Plugin Test Lab
 
+## Latest P43 — real nested Win32 controls are testable (Windows-verified 6 November 2026)
+
+**Merged and independently Windows-verified:** [PR #68](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/68) and [P25 Windows run #42181664171](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42181664171). Exact tested feature commit: `956de30b4660e67159e7aec1eb3ed2334fe1f245`. All **P02, P03, P04, P25 and P29 Windows workflows completed SUCCESS** on this exact code. The P25 artifact `125A-Universal-VST3-State-Stress-P25` includes the native host and portable test scripts.
+
+**New P43 universal GUI input routing:** Both the isolated sham-controlled explorer and the persistent ordered GUI workflow now locate the deepest enabled, visible **native child HWND** below each requested editor coordinate and send genuine Win32 mouse input directly to that window, converting coordinates correctly. This catches standard Win32 buttons nested inside the plugin editor, which editor-root-only clicking missed. P43 evidence schema is `125A-GUI-EXPLORE-v3`, with `target_depth`, independently checked for identical sham/click dispatch and included in the observation results.
+
+**Proof with a real nested-button VST3:** the new source-built `125A_QA_GUI_Nested.vst3` exposes a true nested Win32 `BUTTON`. Only that child's actual `BN_CLICKED` notification changes VST3 parameter 9001. P25 proves the inside click changes the parameter, outside root-background clicks do not, and two sequential nested-button clicks in the same editor toggle ON→OFF correctly. Prior good/inert/stale-paint and hover-only controls also pass.
+
+**Hover stabilization:** both sham and click first settle their actual mouseover state before baseline captures, preventing hover painting alone from masking legitimate native buttons. No-click controls are still required to reject unrelated visual/parameter effects.
+
+**Important limitations:** Custom VSTGUI/JUCE controls drawn inside one HWND still require independent visual or parameter oracles. Native child targeting is not a magic detector for every button and does not verify product-specific MIDI, WAV, audio or DAW behavior. Unmapped controls remain `NOT COVERED`; exploratory candidates remain `OBSERVATIONS_ONLY`, not release approval. Exploration only runs after explicit opt-in on trusted disposable plugin tests. GitHub Windows runners supply Python, so the end user needs no local Python installation.
+
 ## Latest P42 — independently controlled GUI exploration (Windows-verified 6 November 2026)
 
 **Tested and merged:** [PR #67](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/67) and [P25 Windows run #42178099352](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42178099352). Exact tested revision: `8d7a7d4d5a5574d91eba9bdae3f9686d2842dc12`; **P02, P03, P04, P25, P29 all SUCCESS** on that revision. The P25 artifact `125A-Universal-VST3-State-Stress-P25` includes the reusable test scripts and native hosts.
