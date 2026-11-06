@@ -429,17 +429,17 @@ int inventoryParameters(const std::string& pluginPath,
             std::ofstream out(reportPath,std::ios::trunc);
             require(bool(out),"Parameter inventory report file cannot be created");
             out.precision(17);
-            out<<"format\\t125A-GUI-PARAMS-v1\\n";
-            out<<"param_count\\t"<<count<<"\\n";
+            out<<"format\t125A-GUI-PARAMS-v1\n";
+            out<<"param_count\t"<<count<<"\n";
             for(const auto& row:rows)
-                out<<"param\\t"<<row.index<<"\\t"<<row.id<<"\\t"
-                   <<row.steps<<"\\t"<<row.defaultValue<<"\\t"
-                   <<row.current<<"\\t"<<row.flags<<"\\n";
+                out<<"param\t"<<row.index<<"\t"<<row.id<<"\t"
+                   <<row.steps<<"\t"<<row.defaultValue<<"\t"
+                   <<row.current<<"\t"<<row.flags<<"\n";
             out.flush();
             require(out.good(),"Parameter inventory cannot write verified output");
             controller.close();
             std::cout<<"[PASS] VST3 parameter inventory verified "
-                     <<count<<" unique parameters\\n";
+                     <<count<<" unique parameters\n";
         }
         require(component->terminate()==kResultOk,
                 "Parameter inventory component termination failed");
@@ -1724,7 +1724,7 @@ int main(int argc, char** argv) {
             return run(argv[2], false, 0);
         if (argc == 4 && std::string(argv[1]) == "--prove-click")
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
-        std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\\n"
+        std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"
                   << "       125A_Test_Lab_GUI --prove-click-and-snapshot <plugin.vst3> <param-id> <x> <y> <expected> <output.bmp>\n"
                   << "       125A_Test_Lab_GUI --snapshot-editor <plugin.vst3> <output.bmp>\n"
                   << "       125A_Test_Lab_GUI --probe <plugin.vst3>\n"
