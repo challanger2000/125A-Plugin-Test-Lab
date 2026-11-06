@@ -1,5 +1,50 @@
 # One-command real VST3 technical quickcheck
 
+## Optional deep checks in the same report
+
+The default drag-and-drop runner is safe for arbitrary Windows VST3 plugins.
+The same one-command runner now supports two **explicit opt-in** deep checks
+with their own native evidence and fail-closed `QUICKCHECK-RESULT.json` coverage.
+
+For an instrument whose VST3 contract supports loading a valid saved state
+while processing is active, enable the real six-case live-state stress:
+
+```powershell
+python run_plugin_quickcheck.py --plugin "C:\\VST3\\Instrument.vst3" --host ".\\125A_Test_Lab_Host.exe" --stress-host ".\\125A_Test_Lab_State_Stress.exe" --out ".\\Instrument-QA" --active-replay
+```
+
+This additional test performs 3,000 genuine `setState()` operations and
+3,000 saves alongside 15,000 audio callbacks; it must report six separately
+verified rate/buffer cases with observed in-playback overlap. A failing
+requested deep test produces **FAIL**, not an unqualified technical PASS.
+Not all plugins support concurrent `setState()`, so it is **not** enabled
+automatically for an arbitrary dropped plugin.
+
+If you have two **independently approved** product bank/preset states and
+their saved-state and PCM references, provide a
+`125a-product-dual-state-oracle-v1` JSON manifest and the native dual host:
+
+```powershell
+python run_plugin_quickcheck.py --plugin "C:\\VST3\\Instrument.vst3" --host ".\\125A_Test_Lab_Host.exe" --stress-host ".\\125A_Test_Lab_State_Stress.exe" --dual-host ".\\125A_Test_Lab_Instance_Isolation.exe" --dual-state-manifest ".\\approved-AB.json" --out ".\\Instrument-QA"
+```
+
+The manifest format and independent-oracle requirements are described in
+`tests/run_product_dual_state.py`, `tests/make_qa_dual_manifest.py`, and
+`docs/P32-PRODUCT-ADAPTERS.md`. Both state streams, the manifest, the tested
+VST3 and all native hosts are fingerprinted across the complete run.
+`distinct_instance_state_isolation` and `reference_pcm_isolation` become
+PASS only after both the real native two-instance test and the approved
+A/B oracle succeed. The generic **identical-state** two-instance smoke test
+must never imply different banks/presets are independently correct.
+
+Both deep switches can be used together. Without them, their coverage is
+**NOT COVERED**, not PASS. Even with them, full musical sound quality, every
+product control and a commercial DAW session remain **NOT COVERED** unless
+there is separate independent product evidence. The HTML result uses FAIL
+as the top-level outcome if any measured coverage gate fails, including
+audio callback deadline overruns. Host/OS deadline observations are not
+formal hard-real-time guarantees on other computers.
+
 Download the latest successful P25 Windows Actions artifact and extract its `PORTABLE` directory. It contains both native hosts, all required Python scripts, a README, and a SHA-256 inventory. Python 3 is required. Run the following from that directory.
 
 On Windows x64, given two native Test Lab executables and an installed VST3
