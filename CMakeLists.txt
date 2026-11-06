@@ -317,3 +317,25 @@ foreach(mode RANGE 0 1)
   target_link_libraries(QAGuiRecoveryMode${mode} PRIVATE sdk user32 gdi32)
   target_compile_definitions(QAGuiRecoveryMode${mode} PRIVATE NOMINMAX P30_MODE=${mode})
 endforeach()
+
+# P58: optional actual Windows ASIO driver host. The ASIO SDK is NOT shipped
+# in the Test Lab; supply separately under its applicable license.
+set(ASIO_SDK_DIR "" CACHE PATH "Path containing Steinberg ASIO SDK common/asio.h")
+if(ASIO_SDK_DIR)
+  if(NOT EXISTS "${ASIO_SDK_DIR}/common/asio.h" OR
+     NOT EXISTS "${ASIO_SDK_DIR}/common/iasiodrv.h")
+    message(FATAL_ERROR "P58 requires an external ASIO SDK common/asio.h and common/iasiodrv.h")
+  endif()
+  add_executable(TestLabPhysicalASIO src/physical_asio.cpp)
+  set_target_properties(TestLabPhysicalASIO PROPERTIES
+      OUTPUT_NAME "125A_Test_Lab_Physical_ASIO")
+  target_include_directories(TestLabPhysicalASIO PRIVATE "${ASIO_SDK_DIR}/common")
+  target_link_libraries(TestLabPhysicalASIO PRIVATE
+      Vst3WinModule sdk_hosting sdk_common base pluginterfaces ole32 advapi32 bcrypt)
+  target_compile_definitions(TestLabPhysicalASIO PRIVATE
+      NOMINMAX _CRT_SECURE_NO_WARNINGS)
+  if(MSVC)
+    target_compile_options(TestLabPhysicalASIO PRIVATE /W4 /permissive- /utf-8)
+  endif()
+endif()
+

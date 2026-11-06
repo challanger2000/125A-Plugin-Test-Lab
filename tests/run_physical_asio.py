@@ -129,6 +129,7 @@ def run(plan, out, *, acknowledge=False, timeout=120,
         "hardware_asio": "NOT_RUN", "commercial_daw_session": "NOT_RUN",
         "executor_integrity": "NOT_VERIFIED", "scenarios": [], "faults": []
     }
+    attempted_hardware = False
     try:
         if platform != "win32":
             raise ValueError("physical ASIO proof is Windows-only")
@@ -160,6 +161,7 @@ def run(plan, out, *, acknowledge=False, timeout=120,
                 "--callbacks", str(scenario["callbacks"]),
                 "--nonce", nonce,
                 "--out", str(target)]
+            attempted_hardware = True
             result = runner(args, check=False, capture_output=True,
                             text=True, errors="replace", timeout=timeout)
             (folder / "native.log").write_text(
@@ -184,7 +186,7 @@ def run(plan, out, *, acknowledge=False, timeout=120,
     except (OSError, ValueError, KeyError, TypeError, UnicodeError,
             json.JSONDecodeError, subprocess.TimeoutExpired) as err:
         report["faults"].append(str(err))
-        if report["scenarios"]:
+        if attempted_hardware or report["scenarios"]:
             report["status"] = "FAIL"
             report["hardware_asio"] = "FAIL"
     report_file.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

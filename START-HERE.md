@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P58 — native actual ASIO-driver/VST3 host (hardware still NOT RUN)
+
+The new optional Windows executable `125A_Test_Lab_Physical_ASIO.exe` in `src/physical_asio.cpp` drives real ASIO double-buffer callbacks, runs the VST3 processor on the driver callback and outputs nonce/hash-bound hardware metrics to the P56 validator. Requires an independently licensed external ASIO SDK to build and an opt-in physical self-hosted Windows device to run. The CI compile/format tests and absent-driver negative tests **are not actual device tests**. A successful green GitHub cloud check **must never** certify user-hardware ASIO or a DAW session. See `docs/P58-NATIVE-ASIO-HOST.md`.
+
+
 ## P56 physical ASIO qualification adapter — currently hardware NOT RUN
 
 The portable Windows ASIO evidence gate and optional opt-in `125A-ASIO` self-hosted Actions workflow are in `tests/run_physical_asio.py` and `.github/workflows/p56-physical-workstation.yml`. The independent Windows CI checks rejected fake/replayed/hardware-absent evidence and publishes `NOT_RUN`. **There is no implemented ASIO-driver callback executor inside this repo yet. Actual Audient/other physical ASIO tests, DAW sessions and final release approval are `NOT_RUN`.** See `docs/P56-PHYSICAL-ASIO-GATE.md` before claiming coverage.
