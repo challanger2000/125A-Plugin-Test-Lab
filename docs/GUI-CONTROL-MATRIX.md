@@ -218,6 +218,88 @@ interacting with a commercial DAW window and arbitrary keyboard shortcuts
 cannot be certified in every plugin without a product-specific observable
 oracle. The full set of undisclosed controls remains NOT COVERED.
 
+## P46 — Independent functional oracle for GUI-initiated WAV/MIDI exports
+
+Unlike GUI pixel/parameter-only tests, the optional P46 runner joins one
+**declared native GUI workflow** to an **independent expected file contract**.
+It opens a real Windows VST3 editor, dispatches approved clicks/keys,
+then inspects actual files created by that plugin. A correct-looking
+GUI is insufficient: wrong PCM samples, incorrect WAV frames or
+sample rates, invalid MIDI contents, missing exports and extra files
+are all FAIL. This closes one specific user-visible functional gap.
+
+Portable/Windows CI invocation:
+
+\`\`\`powershell
+python tests/run_gui_export_contract.py --manifest .\export-contract.json --out .\results
+\`\`\`
+
+Contract example (provide actual host and source-built VST3 paths and its
+independently computed SHA-256 before running):
+
+\`\`\`json
+{
+  "schema": "125a-gui-export-contract-v1",
+  "workflow": {
+    "schema": "125a-gui-workflow-v1",
+    "product": {
+      "binary": "C:/Build/Plugin.vst3/Contents/x86_64-win/Plugin.vst3",
+      "sha256": "<SHA256 of independently pinned real VST3 module>"
+    },
+    "gui_host": "C:/TestLab/125A_Test_Lab_GUI.exe",
+    "initial": [{"param_id": 9001, "normalized": 0.0}],
+    "steps": [{
+      "id": "export_wav", "action": "click", "x": 160, "y": 90,
+      "param_id": 9001, "before_normalized": 0.0,
+      "expected_normalized": 1.0
+    }]
+  },
+  "expected_exports": [{
+    "filename": "gui-export.wav",
+    "type": "wav",
+    "sha256": "3c548b8ac23f3be44063b4afce2609137a6e274e409af17f2397f0c95172741b",
+    "channels": 1, "sample_rate": 44100,
+    "sample_width_bits": 16, "frames": 16
+  }]
+}
+\`\`\`
+
+A MIDI export instead uses \`"type": "midi"\`, and independently supplied
+\`sha256\`, \`format\` (0/1), \`tracks\`, \`ticks_per_quarter\`, and
+\`note_on_count\` values. The validator parses strict Standard MIDI File
+track lengths, running status and End-Of-Track events rather than trusting
+the filename or a plugin-generated summary.
+
+The output is checked in an **empty, automatically isolated fresh
+directory**. No previous run can satisfy the expected files. The runner
+pins the tested binary and GUI host, verifies the complete approved
+mouse/keyboard workflow, demands exactly the expected filenames (no extras),
+matches independently approved SHA-256 and separately validates native
+WAV/SMF structure. A copy of verified files is retained with the Windows
+artifact. The \`QA_TEST_LAB_EXPORT_ROOT\` environment variable is provided
+as an optional output-directory hint; source-built test fixtures use it,
+whereas ordinary plugins must be configured to save into the designated
+test folder through their own UI and supported workflows.
+
+**Positive and adversarial real-VST3 proof:** Windows CI builds a fixture
+whose genuine GUI click writes a valid 16-frame PCM WAV. Another real VST3
+performs exactly the *same correct GUI parameter transition* but writes a
+valid WAV with intentionally wrong audio samples; a third transitions the
+controller but exports nothing. The independent oracle must pass **only**
+the correct file. Python tests also reject a wrong golden checksum, wrong
+WAV metadata, malformed MIDI, path traversal, extra outputs and
+self-asserted successful GUI events.
+
+This is a **profile/contract mechanism**, not a claim the tester knows what
+unknown controls should do. Without a preapproved expected output (or
+product-specific adapter), a generated WAV cannot be declared musically
+correct merely by observing its existence. Pop-up Save dialogs and full DAW
+drag/drop require separate approved workflows; P46 itself does not invent
+their automation. A passing P46 contract establishes only its declared
+GUI-to-export behavior. **It is not a complete commercial plugin release
+approval** and does not automatically cover every product control.
+
+
 ## P45 — Same-editor real GUI two-way observations (A/B/A)
 
 Previously, P44 created candidates only from one attributed click. A
