@@ -131,6 +131,17 @@ smtg_add_vst3plugin(QAGuiPaintedOnly
 target_link_libraries(QAGuiPaintedOnly PRIVATE sdk user32 gdi32)
 target_compile_definitions(QAGuiPaintedOnly PRIVATE NOMINMAX QA_GUI_PAINTED_ONLY=1)
 
+# P52: continuous mouse-drag parameter mapping and deliberately quantized fault.
+# The same native P51 oracle must PASS the good VST3 and FAIL the defective one.
+foreach(kind IN ITEMS Good Bad)
+  smtg_add_vst3plugin(QAGuiAnalog${kind}
+      PACKAGE_NAME "125A_QA_GUI_Analog${kind}"
+      SOURCES_LIST tests/gui_fixture.cpp)
+  target_link_libraries(QAGuiAnalog${kind} PRIVATE sdk user32 gdi32)
+endforeach()
+target_compile_definitions(QAGuiAnalogGood PRIVATE NOMINMAX QA_GUI_ANALOG_GOOD=1)
+target_compile_definitions(QAGuiAnalogBad PRIVATE NOMINMAX QA_GUI_ANALOG_BAD=1)
+
 # P46: Real native VST3 editor exports valid/WAV-but-wrong PCM on click.
 # Both plugins expose the SAME passing GUI parameter, so only independent
 # file/PCM verification can distinguish the semantic defect.
