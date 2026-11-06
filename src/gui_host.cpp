@@ -376,6 +376,78 @@ int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
 }
 
 
+// Non-destructive audit of every advertised VST3 controller parameter.
+// This inventory does not infer corresponding physical GUI control locations.
+int inventoryParameters(const std::string& pluginPath,
+                        const std::filesystem::path& reportPath) {
+    std::string error;
+    auto module = Module::create(pluginPath, error);
+    require(bool(module), "Parameter inventory could not load VST3");
+    HostApplication app;
+    auto factory = module->getFactory();
+    factory.setHostContext(&app);
+    int audioClasses = 0;
+    for(const auto& info : factory.classInfos()) {
+        if(info.category() != kVstAudioEffectClass) continue;
+        ++audioClasses;
+        require(audioClasses == 1, "Multiple audio classes need explicit selection (INCONCLUSIVE)");
+        auto component = factory.createInstance<IComponent>(info.ID());
+        require(bool(component) && component->initialize(&app) == kResultOk,
+                "Parameter inventory cannot initialize processor");
+        {
+            Controller controller;
+            acquireController(component.get(), factory, &app, controller);
+            const int32 count = controller.ptr->getParameterCount();
+            require(count >= 0 && count <= 8192,
+                    "VST3 controller returned invalid/oversized parameter count");
+            struct Row {int32 index; ParamID id; int32 steps; double defaultValue;
+                        double current; int32 flags;};
+            std::vector<Row> rows;
+            std::vector<ParamID> identifiers;
+            rows.reserve(static_cast<size_t>(count));
+            identifiers.reserve(static_cast<size_t>(count));
+            for(int32 index=0; index<count; ++index) {
+                ParameterInfo info{};
+                require(controller.ptr->getParameterInfo(index, info) == kResultTrue,
+                        "VST3 getParameterInfo failed for advertised index");
+                require(info.stepCount >= 0 &&
+                        std::isfinite(info.defaultNormalizedValue) &&
+                        info.defaultNormalizedValue >= 0.0 &&
+                        info.defaultNormalizedValue <= 1.0,
+                        "Invalid VST3 parameter steps/default normalized value");
+                require(std::find(identifiers.begin(),identifiers.end(),info.id)
+                        == identifiers.end(), "Duplicate VST3 parameter ID");
+                const auto current=controller.ptr->getParamNormalized(info.id);
+                require(std::isfinite(current) && current >= 0.0 && current <= 1.0,
+                        "Invalid current normalized VST3 parameter value");
+                identifiers.push_back(info.id);
+                rows.push_back({index,info.id,info.stepCount,
+                                info.defaultNormalizedValue,current,info.flags});
+            }
+            if(!reportPath.parent_path().empty())
+                std::filesystem::create_directories(reportPath.parent_path());
+            std::ofstream out(reportPath,std::ios::trunc);
+            require(bool(out),"Parameter inventory report file cannot be created");
+            out.precision(17);
+            out<<"format\t125A-GUI-PARAMS-v1\n";
+            out<<"param_count\t"<<count<<"\n";
+            for(const auto& row:rows)
+                out<<"param\t"<<row.index<<"\t"<<row.id<<"\t"
+                   <<row.steps<<"\t"<<row.defaultValue<<"\t"
+                   <<row.current<<"\t"<<row.flags<<"\n";
+            out.flush();
+            require(out.good(),"Parameter inventory cannot write verified output");
+            controller.close();
+            std::cout<<"[PASS] VST3 parameter inventory verified "
+                     <<count<<" unique parameters\n";
+        }
+        require(component->terminate()==kResultOk,
+                "Parameter inventory component termination failed");
+    }
+    require(audioClasses == 1, "No unique VST3 processor class for inventory");
+    return 0;
+}
+
 std::vector<std::uint8_t> captureActualComponentState(IComponent* component) {
     ResizableMemoryIBStream stream;
     require(component->getState(&stream) == kResultOk,
@@ -1643,6 +1715,8 @@ int main(int argc, char** argv) {
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])),
                        x, y, expected, std::filesystem::path(argv[7]));
         }
+        if (argc == 4 && std::string(argv[1]) == "--inventory-parameters")
+            return inventoryParameters(argv[2],argv[3]);
         if (argc == 4 && std::string(argv[1]) == "--snapshot-editor")
             return run(argv[2], false, 0, -1, -1, 1.0,
                        std::filesystem::path(argv[3]));
@@ -1650,7 +1724,8 @@ int main(int argc, char** argv) {
             return run(argv[2], false, 0);
         if (argc == 4 && std::string(argv[1]) == "--prove-click")
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
-        std::cerr << "Usage: 125A_Test_Lab_GUI --prove-click-and-snapshot <plugin.vst3> <param-id> <x> <y> <expected> <output.bmp>\n"
+        std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"
+                  << "       125A_Test_Lab_GUI --prove-click-and-snapshot <plugin.vst3> <param-id> <x> <y> <expected> <output.bmp>\n"
                   << "       125A_Test_Lab_GUI --snapshot-editor <plugin.vst3> <output.bmp>\n"
                   << "       125A_Test_Lab_GUI --probe <plugin.vst3>\n"
                   << "       125A_Test_Lab_GUI --prove-click <plugin.vst3> <param-id>\n"

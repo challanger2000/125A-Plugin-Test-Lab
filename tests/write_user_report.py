@@ -19,6 +19,7 @@ LABELS = {
     "fresh_process_project_recall": "Projektzustand in zwei neuen Hostprozessen laden",
     "recall_audio_determinism": "Samplegenauer Vergleich nach Neuladen",
     "native_gui_lifecycle": "Pluginfenster oeffnen und erneut oeffnen",
+    "native_parameter_inventory": "Alle vom VST3-Controller gemeldeten Parameter aufgueltigkeit pruefen",
     "declared_gui_controls": "Explizit definierte Bedienelemente",
     "product_gui_controls": "Alle Bedienelemente des Produktes",
     "independent_musical_audio": "Musikalisch korrekter Klang",

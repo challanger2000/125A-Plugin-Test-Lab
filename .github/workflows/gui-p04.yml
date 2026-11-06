@@ -6,6 +6,8 @@ on:
     paths:
       - 'src/gui_host.cpp'
       - 'tests/run_gui_control_matrix.py'
+      - 'tests/verify_parameter_inventory.py'
+      - 'tests/test_parameter_inventory.py'
       - 'tests/test_native_gui_snapshot.py'
       - 'tests/verify_p33_artifacts.py'
       - 'tests/gui_fixture.cpp'
@@ -186,6 +188,37 @@ jobs:
             throw 'Negative fixture did not successfully change its controller parameter'
           }
           Write-Host '[PASS] Native controller action and real painted GUI oracle detect deliberately stale visuals'
+          exit 0
+
+      - name: Automatically discover VST3 parameters and reject duplicate/invalid reports
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/test_parameter_inventory.py
+          if ($LASTEXITCODE -ne 0) { throw 'Independent parameter-inventory negative controls failed' }
+          New-Item -ItemType Directory -Force artifact/parameter-inventory | Out-Null
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Click.vst3')
+          $without = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_SignalGood.vst3')
+          if ($exe.Count -ne 1 -or $good.Count -ne 1 -or $without.Count -ne 1) {
+            throw 'Real VST3 inventory fixture or native host missing'
+          }
+          & $exe[0].FullName --inventory-parameters $good[0].FullName artifact/parameter-inventory/real.tsv
+          if ($LASTEXITCODE -ne 0) { throw 'Real VST3 controller parameter enumeration failed' }
+          python tests/verify_parameter_inventory.py --inventory artifact/parameter-inventory/real.tsv --out artifact/parameter-inventory/real
+          if ($LASTEXITCODE -ne 0) { throw 'Independent validator rejected correctly implemented native VST3' }
+          $result = Get-Content artifact/parameter-inventory/real/PARAMETER-INVENTORY-RESULT.json -Raw | ConvertFrom-Json
+          if ($result.status -ne 'PASS' -or $result.unique_ids_checked -ne 1 -or
+              $result.user_visible_control_coverage -ne 'NOT COVERED') {
+            throw 'False parameter inventory PASS or invalid control coverage'
+          }
+          $fields = Get-Content artifact/parameter-inventory/real.tsv
+          if (-not (($fields -join ' ').Contains("param"+[char]9+"0"+[char]9+"9001"))) {
+            throw 'Real native VST3 parameter 9001 was never enumerated'
+          }
+          & $exe[0].FullName --inventory-parameters $without[0].FullName artifact/parameter-inventory/editorless.tsv
+          if ($LASTEXITCODE -ne 10) { throw 'No-controller VST3 was not classified INCONCLUSIVE' }
+          Write-Host '[PASS] Genuine native parameter enumeration and malformed evidence mutation gate'
           exit 0
 
       - name: Collect logs and proven GUI executable

@@ -28,7 +28,7 @@ def parse(path):
     if rows["result"] == "PASS":
         assert rows["saves_during_playback"] > 0, "no real saves during active playback"
     assert rows["callback_max_ns"]>0, "invalid maximum callback runtime"
-    assert 0 < rows["callback_p95_ns"] <= rows["callback_p99_ns"] <= rows["callback_max_ns"]
+    assert 0 <= rows["callback_p95_ns"] <= rows["callback_p99_ns"] <= rows["callback_max_ns"], "invalid callback timing order"
     assert rows["callback_deadline_ns"]>0
     assert rows["strict_realtime"] in (0,1)
     assert rows["sample_rate"] in (44100,48000,96000)

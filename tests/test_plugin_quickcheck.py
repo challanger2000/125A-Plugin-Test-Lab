@@ -190,6 +190,13 @@ with tempfile.TemporaryDirectory() as td:
          "expected_normalized": 1.0}]}), encoding="utf-8")
 
     def all_native_gui(cmd, **kwargs):
+        if cmd[1] == "--inventory-parameters":
+            Path(cmd[3]).write_text(
+                "format\t125A-GUI-PARAMS-v1\nparam_count\t1\n"
+                "param\t0\t9001\t1\t0\t0\t1\n",
+                encoding="utf-8")
+            return subprocess.CompletedProcess(
+                cmd, 0, "[PASS] VST3 parameter inventory verified 1 unique parameters", "")
         if cmd[1] == "--probe":
             return subprocess.CompletedProcess(
                 cmd, 0, "two actual editor attach/message/input/detach cycles", "")
@@ -206,10 +213,14 @@ with tempfile.TemporaryDirectory() as td:
                        gui_host=gui, gui_controls=controls_file)
     assert report["status"] == "TECHNICAL_PASS"
     assert report["coverage"]["native_gui_lifecycle"] == "PASS"
+    assert report["coverage"]["native_parameter_inventory"] == "PASS"
+    assert report["advertised_vst3_parameters"] == 1
     assert report["coverage"]["declared_gui_controls"] == "PASS"
     assert report["coverage"]["product_gui_controls"] == "NOT COVERED"
 
     def gui_not_available(cmd, **kwargs):
+        if cmd[1] == "--inventory-parameters":
+            return subprocess.CompletedProcess(cmd, 10, "", "[INCONCLUSIVE] no controller")
         if cmd[1] == "--probe":
             return subprocess.CompletedProcess(cmd, 10, "", "[INCONCLUSIVE] no editor")
         return synthetic_native(cmd, **kwargs)
@@ -221,6 +232,30 @@ with tempfile.TemporaryDirectory() as td:
     result = quick.run(bundle, host, stress, out, runner=gui_not_available,
                        gui_host=gui, gui_controls=controls_file)
     assert result["status"] == "FAIL", "requested unexecutable GUI test approved"
+
+    def broken_inventory(cmd, **kwargs):
+        if cmd[1] == "--inventory-parameters":
+            Path(cmd[3]).write_text(
+                "format\\t125A-GUI-PARAMS-v1\\nparam_count\\t2\\n"
+                "param\\t0\\t9001\\t1\\t0\\t0\\t1\\n"
+                "param\\t1\\t9001\\t1\\t0\\t0\\t1\\n", encoding="utf-8")
+            return subprocess.CompletedProcess(
+                cmd, 0, "[PASS] VST3 parameter inventory verified 2 unique parameters", "")
+        return all_native_gui(cmd, **kwargs)
+
+    bad_inventory = quick.run(bundle, host, stress, out,
+                              runner=broken_inventory, gui_host=gui)
+    assert bad_inventory["status"] == "FAIL", "duplicate parameter ID went unreported"
+
+    def missing_inventory(cmd, **kwargs):
+        if cmd[1] == "--inventory-parameters":
+            return subprocess.CompletedProcess(
+                cmd, 0, "[PASS] VST3 parameter inventory verified 1 unique parameters", "")
+        return all_native_gui(cmd, **kwargs)
+
+    stale_inventory = quick.run(bundle, host, stress, out,
+                                runner=missing_inventory, gui_host=gui)
+    assert stale_inventory["status"] == "FAIL", "stale parameter inventory reused"
 
     def absent_matrix(cmd, **kwargs):
         if cmd[1].endswith("run_gui_control_matrix.py"):
