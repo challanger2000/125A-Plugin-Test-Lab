@@ -133,3 +133,25 @@ The technical API tests may independently succeed while the timing domain
 is FAIL. Inspect the actual callback logs before treating measured overruns
 as a definitive plugin defect. The real-time section is never silently
 classified as PASS solely from a green technical API result.
+
+
+## Proved saves during active audio playback
+
+A previously overlooked false-green case was 500 successful calls to
+`getState()` that could all happen *after* the audio callback thread had
+finished. This does not test the concurrency issue users encounter when
+saving while a track is playing.
+
+The native host now counts only successfully captured project saves made
+**after audio callbacks have started and before the callback thread
+finishes**. Every playback/save scenario requires at least one such
+observation, while still requiring all 500 saves and 2,500 callbacks.
+`saves_during_playback` is present in native TSV evidence and
+`measured_active_playback_saves` in per-case adapter JSON. If all saves
+occur after playback, the check is FAIL, even if every save returned
+success. Windows CI runs positive real-VST3 observation and intentionally
+false evidence containing 0, 501 or missing in-playback saves.
+
+This proves temporal overlap of playback activity with project-state
+retrieval, not necessarily that a save blocked an individual `process()`
+call. Deadline and state-consistency checks remain separate.
