@@ -41,7 +41,7 @@ def parse_tree(raw):
         if any(not INT.fullmatch(x) for x in [parent_s, *numbers]):
             raise ValueError("invalid native HWND coordinate/control identifier")
         parent = int(parent_s)
-        if parent != (-1 if i == 0 else parent) or (i > 0 and not 0 <= parent < i):
+        if (i == 0 and parent != -1) or (i > 0 and not 0 <= parent < i):
             # The HWND root must have -1, every later node must have a
             # previously enumerated parent (parent order is not guaranteed
             # by EnumChildWindows, so native inventory canonicalizes it).
