@@ -25,6 +25,7 @@ LABELS = {
     "native_gui_lifecycle": "Pluginfenster oeffnen und erneut oeffnen",
     "native_parameter_inventory": "Alle vom VST3-Controller gemeldeten Parameter aufgueltigkeit pruefen",
     "native_parameter_sweep": "Alle automationsfaehigen VST3-Parameter an Grenzwerten durchtesten",
+    "native_gui_workflow": "Mehrstufige echte Mausbedienung im selben Pluginfenster",
     "declared_gui_controls": "Explizit definierte Bedienelemente",
     "product_gui_controls": "Alle Bedienelemente des Produktes",
     "independent_musical_audio": "Musikalisch korrekter Klang",

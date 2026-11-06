@@ -23,7 +23,8 @@ def digest(path):
 
 def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         gui_host=None, gui_controls=None, reference_wav=None, reference_tolerance=0,
-        dual_host=None, dual_state_manifest=None, active_replay=False):
+        dual_host=None, dual_state_manifest=None, active_replay=False,
+        gui_workflow=None):
     bundle = bundle.resolve(strict=True)
     host = host.resolve(strict=True)
     stress_host = stress_host.resolve(strict=True)
@@ -44,12 +45,26 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         dual_host = Path(dual_host).resolve(strict=True)
         if not dual_host.is_file():
             raise ValueError("native same-process dual-instance host missing")
-    if gui_controls is not None and gui_host is None:
-        raise ValueError("GUI controls require an actual native GUI host")
+    if (gui_controls is not None or gui_workflow is not None) and gui_host is None:
+        raise ValueError("GUI controls and workflows require an actual native GUI host")
     if gui_host is not None:
         gui_host = Path(gui_host).resolve(strict=True)
         if not gui_host.is_file():
             raise ValueError("native GUI host missing")
+    workflow_actions = 0
+    if gui_workflow is not None:
+        gui_workflow = Path(gui_workflow).resolve(strict=True)
+        if not gui_workflow.is_file():
+            raise ValueError("approved GUI workflow profile missing")
+        from run_gui_workflow import validate as validate_workflow
+        workflow_profile = json.loads(gui_workflow.read_text(encoding="utf-8"))
+        workflow_host, workflow_bundle, workflow_binary, _, workflow_steps = (
+            validate_workflow(workflow_profile))
+        if (workflow_host != gui_host or workflow_bundle != bundle or
+                workflow_binary != binary or
+                workflow_profile["product"]["sha256"] != sha):
+            raise ValueError("GUI workflow belongs to another VST3 module or native host")
+        workflow_actions = len(workflow_steps)
     pinned_states = []
     if dual_state_manifest is not None:
         if dual_host is None:
@@ -72,7 +87,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
     # evidence that belongs to different bytes.
     approved_inputs = [(binary, sha), (host, digest(host)),
                        (stress_host, digest(stress_host))]
-    for optional in (dual_host, gui_host, gui_controls, reference_wav,
+    for optional in (dual_host, gui_host, gui_controls, gui_workflow, reference_wav,
                      dual_state_manifest, *pinned_states):
         if optional is not None:
             path = Path(optional).resolve(strict=True)
@@ -160,6 +175,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "native_gui_lifecycle": "NOT COVERED",
             "native_parameter_inventory": "NOT COVERED",
             "native_parameter_sweep": "NOT COVERED",
+            "native_gui_workflow": "NOT COVERED",
             "midi_wav_export": "NOT COVERED",
             "preset_semantics": "NOT COVERED",
             "commercial_daw_integration": "NOT COVERED"
@@ -441,6 +457,41 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
                 else:
                     summary["status"] = "FAIL"
                     summary["reason"] = "actual GUI control/pixel oracle failed"
+    # Optional ordered click/drag user journey against one live HWND editor.
+    # Every transition is independently declared, not inferred from the GUI.
+    if gui_workflow is not None:
+        summary["coverage"]["native_gui_workflow"] = "NOT EXECUTED"
+    if summary["status"] == "TECHNICAL_PASS" and gui_workflow is not None:
+        journey_dir = out / "gui-workflow"
+        journey_report = journey_dir / "GUI-WORKFLOW-RESULT.json"
+        journey_report.unlink(missing_ok=True)
+        journey_proc = checked_runner([
+            sys.executable, str(Path(__file__).with_name("run_gui_workflow.py")),
+            "--manifest", str(gui_workflow), "--out", str(journey_dir),
+            "--timeout", str(timeout)
+        ], capture_output=True, text=True, timeout=timeout + 30,
+            check=False, errors="replace")
+        (out / "gui-workflow.log").write_text(
+            (journey_proc.stdout or "") + "\n" + (journey_proc.stderr or ""),
+            encoding="utf-8")
+        try:
+            evidence = json.loads(journey_report.read_text(encoding="utf-8"))
+            if (journey_proc.returncode != 0 or
+                evidence.get("status") != "TECHNICAL_PASS" or
+                evidence.get("verified_module_sha256") != sha or
+                evidence.get("gui_host_sha256") != digest(gui_host) or
+                evidence.get("declared_actions") != workflow_actions or
+                evidence.get("verified_actions") != workflow_actions or
+                evidence.get("controller_action_chain") != "PASS" or
+                evidence.get("product_gui_complete") != "NOT COVERED"):
+                raise ValueError("native ordered GUI workflow incomplete or invalid")
+            summary["coverage"]["native_gui_workflow"] = "PASS"
+            summary["native_gui_workflow_actions_verified"] = workflow_actions
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            summary["status"] = "FAIL"
+            summary["coverage"]["native_gui_workflow"] = "FAIL"
+            summary["reason"] = "optional real GUI workflow: " + str(error)
+
     # An explicitly requested high-concurrency test uses the plugin's
     # genuine getState() bytes. It is not safe to require for every VST3:
     # some plugins only allow setState() with processing inactive.
@@ -539,6 +590,7 @@ def main():
     p.add_argument("--gui-host", type=Path)
     p.add_argument("--dual-host", type=Path)
     p.add_argument("--gui-controls", type=Path)
+    p.add_argument("--gui-workflow", type=Path)
     p.add_argument("--reference-wav", type=Path)
     p.add_argument("--dual-state-manifest", type=Path)
     p.add_argument("--active-replay", action="store_true")
@@ -551,7 +603,8 @@ def main():
                      reference_tolerance=a.reference_tolerance_lsb,
                      dual_host=a.dual_host,
                      dual_state_manifest=a.dual_state_manifest,
-                     active_replay=a.active_replay)
+                     active_replay=a.active_replay,
+                     gui_workflow=a.gui_workflow)
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired,
             json.JSONDecodeError) as error:
         a.out.mkdir(parents=True, exist_ok=True)

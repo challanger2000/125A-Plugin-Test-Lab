@@ -19,6 +19,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <iomanip>
 #include <vector>
 
@@ -347,6 +348,249 @@ void runView(IEditController* controller, int cycle, bool checkClick, ParamID pa
         throw;
     }
     view->release();
+}
+
+// P37: Run a declared ordered click/drag workflow in ONE actual VST3 editor
+// instance.  Unlike isolated click fixtures, each action must start from the
+// previous action's real controller state.  No product-specific code or
+// guessed UI locations are embedded in this reusable native host.
+struct WorkflowStep {
+    int index{};
+    bool drag{};
+    int x1{}, y1{}, x2{}, y2{};
+    ParamID parameter{};
+    double before{}, expected{};
+    bool screenshot{};
+};
+struct WorkflowInput {
+    std::vector<std::pair<ParamID, double>> initial;
+    std::vector<WorkflowStep> steps;
+};
+
+std::vector<std::string> splitWorkflowRow(const std::string& input) {
+    std::vector<std::string> parts;
+    std::istringstream stream(input);
+    std::string part;
+    while (std::getline(stream, part, '\t')) parts.push_back(part);
+    // Do not silently discard trailing empty fields.
+    if (!input.empty() && input.back() == '\t') parts.emplace_back();
+    return parts;
+}
+int workflowInt(const std::string& data, int max) {
+    require(!data.empty() && data.size() <= 12 &&
+            std::all_of(data.begin(), data.end(), [](char c) {
+                return c >= '0' && c <= '9';
+            }), "invalid workflow unsigned integer");
+    const auto value = std::stoull(data);
+    require(value <= static_cast<unsigned long long>(max),
+            "out-of-range workflow integer");
+    return static_cast<int>(value);
+}
+ParamID workflowParam(const std::string& data) {
+    require(!data.empty() && data.size() <= 10 &&
+            std::all_of(data.begin(), data.end(), [](char c) {
+                return c >= '0' && c <= '9';
+            }), "invalid workflow parameter ID");
+    const auto value = std::stoull(data);
+    require(value <= 4294967295ULL, "out-of-range workflow parameter ID");
+    return static_cast<ParamID>(value);
+}
+double workflowValue(const std::string& data) {
+    require(!data.empty() && data.size() <= 32, "workflow value missing");
+    std::size_t length{};
+    const auto value = std::stod(data, &length);
+    require(length == data.size() && std::isfinite(value) &&
+            value >= 0.0 && value <= 1.0,
+            "invalid workflow normalized parameter value");
+    return value;
+}
+WorkflowInput parseWorkflow(const std::filesystem::path& path) {
+    std::ifstream input(path);
+    require(bool(input), "cannot open approved GUI workflow");
+    auto row = [&]() {
+        std::string line;
+        require(bool(std::getline(input, line)), "truncated GUI workflow");
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        require(line.size() <= 512, "oversized GUI workflow row");
+        return splitWorkflowRow(line);
+    };
+    require(row() == std::vector<std::string>{"format", "125A-GUI-WORKFLOW-v1"},
+            "unrecognized workflow schema");
+    auto head = row();
+    require(head.size() == 2 && head[0] == "init_count",
+            "missing exact workflow initial-state count");
+    const int initCount = workflowInt(head[1], 64);
+    WorkflowInput workflow;
+    for (int n = 0; n < initCount; ++n) {
+        auto parts = row();
+        require(parts.size() == 3 && parts[0] == "init", "malformed workflow initial state");
+        const auto id = workflowParam(parts[1]);
+        require(std::none_of(workflow.initial.begin(), workflow.initial.end(),
+                             [id](const auto& v) { return v.first == id; }),
+                "duplicate workflow initial parameter");
+        workflow.initial.emplace_back(id, workflowValue(parts[2]));
+    }
+    head = row();
+    require(head.size() == 2 && head[0] == "step_count",
+            "missing workflow action count");
+    const int count = workflowInt(head[1], 64);
+    require(count >= 1, "GUI workflow requires actions");
+    int screenshots = 0;
+    for (int i = 0; i < count; ++i) {
+        const auto parts = row();
+        require(parts.size() == 11 && parts[0] == "step",
+                "malformed GUI workflow action");
+        WorkflowStep step;
+        step.index = workflowInt(parts[1], 63);
+        require(step.index == i, "missing, duplicated or out-of-order workflow action");
+        require(parts[2] == "click" || parts[2] == "drag",
+                "unsupported GUI workflow action");
+        step.drag = parts[2] == "drag";
+        step.x1 = workflowInt(parts[3], 8191);
+        step.y1 = workflowInt(parts[4], 8191);
+        step.x2 = workflowInt(parts[5], 8191);
+        step.y2 = workflowInt(parts[6], 8191);
+        if (!step.drag) require(step.x1 == step.x2 && step.y1 == step.y2,
+                                "click workflow action has different endpoints");
+        step.parameter = workflowParam(parts[7]);
+        step.before = workflowValue(parts[8]);
+        step.expected = workflowValue(parts[9]);
+        step.screenshot = workflowInt(parts[10], 1) == 1;
+        if (step.screenshot) ++screenshots;
+        require(std::abs(step.before - step.expected) > 0.00001,
+                "GUI workflow requires an observable value change");
+        workflow.steps.push_back(step);
+    }
+    require(screenshots <= 16, "too many GUI workflow screenshots");
+    std::string extra;
+    require(!std::getline(input, extra), "unexpected extra GUI workflow actions");
+    return workflow;
+}
+
+int runGuiWorkflow(const std::string& pluginPath,
+                   const std::filesystem::path& approvedActions,
+                   const std::filesystem::path& report,
+                   const std::filesystem::path& screenshots) {
+    const auto input = parseWorkflow(approvedActions);
+    std::string error;
+    auto module = Module::create(pluginPath, error);
+    require(bool(module), "GUI workflow could not load actual VST3 module");
+    HostApplication host;
+    auto factory = module->getFactory();
+    factory.setHostContext(&host);
+    int classes = 0;
+    for (const auto& cls : factory.classInfos()) {
+        if (cls.category() != kVstAudioEffectClass) continue;
+        ++classes;
+        require(classes == 1, "GUI workflow requires a unique VST3 processor (INCONCLUSIVE)");
+        auto component = factory.createInstance<IComponent>(cls.ID());
+        require(bool(component) && component->initialize(&host) == kResultOk,
+                "GUI workflow processor initialization failed");
+        {
+            Controller controller;
+            acquireController(component.get(), factory, &host, controller);
+            for (const auto& initial : input.initial) {
+                require(controller.ptr->setParamNormalized(initial.first, initial.second) ==
+                        kResultTrue, "GUI workflow cannot set declared initial parameter");
+                const auto actual = controller.ptr->getParamNormalized(initial.first);
+                require(std::isfinite(actual) &&
+                        std::abs(actual - initial.second) <= 0.00001,
+                        "GUI workflow initial-state parameter mismatch");
+            }
+            IPlugView* view = controller.ptr->createView(ViewType::kEditor);
+            require(view != nullptr, "GUI workflow plugin has no editor (INCONCLUSIVE)");
+            HostFrame* frame = nullptr;
+            bool frameSet = false, attached = false;
+            try {
+                ViewRect size{};
+                require(view->getSize(&size) == kResultTrue, "workflow editor getSize failed");
+                require(view->isPlatformTypeSupported(kPlatformTypeHWND) == kResultTrue,
+                        "workflow editor has no native HWND");
+                Window window(size);
+                frame = new HostFrame(window.get());
+                require(view->setFrame(frame) == kResultTrue, "workflow setFrame failed");
+                frameSet = true;
+                require(view->attached(window.get(), kPlatformTypeHWND) == kResultTrue,
+                        "workflow real editor attach failed");
+                attached = true;
+                ShowWindow(window.get(), SW_SHOWNA);
+                UpdateWindow(window.get());
+                pump(90);
+                const HWND child = GetWindow(window.get(), GW_CHILD);
+                require(child && IsWindow(child), "workflow cannot locate real editor child");
+                RECT client{};
+                require(GetClientRect(child, &client) && client.right > 0 && client.bottom > 0,
+                        "GUI workflow invalid client dimensions");
+                if (!report.parent_path().empty())
+                    std::filesystem::create_directories(report.parent_path());
+                std::ofstream out(report, std::ios::trunc);
+                require(bool(out), "workflow result cannot be created");
+                out << std::setprecision(17);
+                out << "format\t125A-GUI-WORKFLOW-RESULT-v1\n"
+                    << "step_count\t" << input.steps.size() << "\n";
+                for (const auto& step : input.steps) {
+                    require(step.x1 < client.right && step.x2 < client.right &&
+                            step.y1 < client.bottom && step.y2 < client.bottom,
+                            "approved GUI workflow coordinates are outside actual HWND");
+                    const auto before = controller.ptr->getParamNormalized(step.parameter);
+                    require(std::isfinite(before) &&
+                            std::abs(before - step.before) <= 0.00001,
+                            "GUI workflow precondition mismatches previous action");
+                    const LPARAM start = MAKELPARAM(step.x1, step.y1);
+                    const LPARAM end = MAKELPARAM(step.x2, step.y2);
+                    SendMessageW(child, WM_MOUSEMOVE, 0, start);
+                    SendMessageW(child, WM_LBUTTONDOWN, MK_LBUTTON, start);
+                    if (step.drag) {
+                        SendMessageW(child, WM_MOUSEMOVE, MK_LBUTTON, end);
+                        pump(10);
+                    }
+                    SendMessageW(child, WM_LBUTTONUP, 0, end);
+                    pump(50);
+                    if (step.screenshot) {
+                        InvalidateRect(child, nullptr, TRUE);
+                        (void)UpdateWindow(child);
+                        pump(20);
+                        const auto name = std::to_string(step.index) + ".bmp";
+                        captureEditorBmp(child, screenshots / name);
+                    }
+                    const auto after = controller.ptr->getParamNormalized(step.parameter);
+                    const bool passed = std::isfinite(after) &&
+                                        std::abs(after - step.expected) <= 0.00001;
+                    out << "step\t" << step.index << "\t" << step.parameter
+                        << "\t" << before << "\t" << after << "\t"
+                        << (passed ? "PASS" : "FAIL") << "\n";
+                    out.flush();
+                    require(out.good(), "GUI workflow step evidence could not be written");
+                    require(passed, "real GUI workflow control produced wrong value");
+                }
+                out << "end\tPASS\n";
+                out.flush();
+                require(out.good(), "GUI workflow final evidence unavailable");
+                require(view->removed() == kResultTrue, "GUI workflow editor remove failed");
+                attached = false;
+                require(view->setFrame(nullptr) == kResultTrue,
+                        "GUI workflow editor setFrame(nullptr) failed");
+                frameSet = false;
+                frame->release();
+                frame = nullptr;
+                pump(10);
+            } catch (...) {
+                if (attached) (void)view->removed();
+                if (frameSet) (void)view->setFrame(nullptr);
+                if (frame) frame->release();
+                view->release();
+                throw;
+            }
+            view->release();
+            controller.close();
+        }
+        require(component->terminate() == kResultOk,
+                "GUI workflow processor terminate failed");
+        std::cout << "[PASS] native GUI workflow checked " << input.steps.size()
+                  << " ordered actions in one real VST3 editor\n";
+        return 0;
+    }
+    throw std::runtime_error("GUI workflow no VST3 audio class (INCONCLUSIVE)");
 }
 
 int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
@@ -1843,6 +2087,8 @@ int main(int argc, char** argv) {
             runRealDrumatorGui(argv[2], argv[3], argv[4], argv[5]);
             return 0;
         }
+        if (argc == 6 && std::string(argv[1]) == "--gui-workflow")
+            return runGuiWorkflow(argv[2], argv[3], argv[4], argv[5]);
         if (argc == 8 && std::string(argv[1]) == "--prove-click-at-from") {
             const int x = std::stoi(argv[4]);
             const int y = std::stoi(argv[5]);
@@ -1900,7 +2146,8 @@ int main(int argc, char** argv) {
             return run(argv[2], false, 0);
         if (argc == 4 && std::string(argv[1]) == "--prove-click")
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
-        std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"                  << "       125A_Test_Lab_GUI --sweep-parameters <plugin.vst3> <sweep.tsv>\n"
+        std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"                  << "       125A_Test_Lab_GUI --gui-workflow <plugin.vst3> <approved-actions.tsv> <report.tsv> <screenshots-dir>\n"
+                  << "       125A_Test_Lab_GUI --sweep-parameters <plugin.vst3> <sweep.tsv>\n"
 
                   << "       125A_Test_Lab_GUI --prove-click-and-snapshot <plugin.vst3> <param-id> <x> <y> <expected> <output.bmp>\n"
                   << "       125A_Test_Lab_GUI --snapshot-editor <plugin.vst3> <output.bmp>\n"

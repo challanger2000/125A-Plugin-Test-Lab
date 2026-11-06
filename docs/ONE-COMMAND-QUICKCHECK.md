@@ -21,6 +21,24 @@ profile is still needed to test controls not exposed as VST3 parameters.
 No DAW installation or end-user Python installation is needed when
 running these checks in GitHub Actions.
 
+## Optional ordered user journeys on the real VST3 GUI
+
+In addition to the independent controller sweep and isolated GUI clicks,
+the shared Windows editor now supports a real **ordered click/drag workflow
+in one persistent native VST3 window**. Use an independently approved JSON
+profile described in `docs/GUI-CONTROL-MATRIX.md` (P37).
+
+```powershell
+python run_plugin_quickcheck.py --plugin "C:\\VST3\\Instrument.vst3" --host ".\\125A_Test_Lab_Host.exe" --stress-host ".\\125A_Test_Lab_State_Stress.exe" --gui-host ".\\125A_Test_Lab_GUI.exe" --gui-workflow ".\\approved-workflow.json" --out ".\\Instrument-QA"
+```
+
+The quickcheck runs the normal native audio/save/GUI/parameter checks,
+then the independently asserted GUI journey. It records
+`native_gui_workflow` as PASS only when **every declared step and requested
+painted-pixel oracle** succeeds; on errors it produces FAIL. Without a
+profile the result remains `NOT COVERED`, including controls not exposed
+to the host's controller interface.
+
 ## Optional deep checks in the same report
 
 The default drag-and-drop runner is safe for arbitrary Windows VST3 plugins.

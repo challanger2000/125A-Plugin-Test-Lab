@@ -81,3 +81,62 @@ Windows P04 regression includes a deliberately broken VST3 whose controller
 parameter changes normally while its painted status remains stale. Only the
 external painted-pixel expectation detects it. As before, this is a declared
 pixel/control test, not automatic discovery of every product control.
+
+
+## Ordered user interaction workflows (P37)
+
+The generic Windows VST3 editor host can now execute a bounded multi-step
+workflow **without closing the plugin window between actions**. An independent
+`125a-gui-workflow-v1` JSON profile lists its initial VST3 controller state,
+then each real native mouse click or drag, the expected parameter value before
+and after that action, and optional painted-pixel reference snapshots.
+
+The same universal runner works with existing and future VST3 products; it
+has **no baked-in Drumator or AWE control coordinates**.
+
+Example (absolute bundle/module/host paths and the actual SHA-256 are needed):
+
+```json
+{
+  "schema": "125a-gui-workflow-v1",
+  "product": {
+    "binary": "C:/QA/MyPlugin.vst3/Contents/x86_64-win/MyPlugin.vst3",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "gui_host": "C:/QA/125A_Test_Lab_GUI.exe",
+  "initial": [{"param_id": 9001, "normalized": 0.0}],
+  "steps": [
+    {"id": "activate", "action": "click", "x": 160, "y": 90,
+     "param_id": 9001, "before_normalized": 0.0, "expected_normalized": 1.0,
+     "screenshot": true, "expected_pixel": {"x": 10, "y": 10, "rgb": [12, 142, 85]}},
+    {"id": "deactivate", "action": "click", "x": 160, "y": 90,
+     "param_id": 9001, "before_normalized": 1.0, "expected_normalized": 0.0}
+  ]
+}
+```
+
+For a drag instead of a click, use `"action": "drag"` and supply
+`"end_x"` and `"end_y"`. The Win32 host dispatches
+mouse down, button-held movement, and mouse up. Individual tests run in one
+persistent GUI session; an inconsistent next-step precondition therefore
+detects unexpected prior action effects. Up to 64 mouse actions and 16
+screenshots are supported per manifest. Actions have a bounded native
+subprocess timeout.
+
+```powershell
+python tests/run_gui_workflow.py --manifest approved-workflow.json --out GUI-RESULTS
+```
+
+The independent Python verifier checks the exact native action sequence,
+all controller before/after observations, source/host hashes, and requested
+painted pixels. Missing, stale, truncated, reordered, or forged PASS records
+fail the workflow. The native C++ host emits evidence even on an unexpected
+post-click value. The same feature can be requested within the unified
+quickcheck using `--gui-host` and `--gui-workflow`.
+
+**Important:** This is a real ordered user-action test, not automatic
+discovery of button meanings. Controls not tied to an observable VST3
+parameter still require a different independent oracle. Native file dialogs,
+keyboard shortcuts, the plugin's true MIDI/WAV outputs, and production DAW
+integration are not automatically certified by these click/drag workflows.
+No commercial product release is implied by `TECHNICAL_PASS`.
