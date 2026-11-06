@@ -48,7 +48,7 @@ equivalent to launching a commercial DAW and saving/reloading projects.
 
 **Audio warning:** the P58 VST3 host generates a deterministic input signal
 for insert effects. Use a disposable session, disable monitor speakers
-or use a low output volume before authorizing the callback test.
+or use a low output volume before authorizing the callback test.\nP59 also hard-limits the native driver output to -20 dBFS as a second\nprotective measure; this is an ASIO stability probe, not a fidelity or\nfull-scale signal-chain certification.
 
 ## ASIO SDK license
 
