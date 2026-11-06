@@ -22,7 +22,7 @@ def digest(path):
 
 
 def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
-        gui_host=None, gui_controls=None):
+        gui_host=None, gui_controls=None, reference_wav=None, reference_tolerance=0):
     bundle = bundle.resolve(strict=True)
     host = host.resolve(strict=True)
     stress_host = stress_host.resolve(strict=True)
@@ -101,6 +101,7 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "fresh_process_project_recall": "NOT EXECUTED",
             "recall_audio_determinism": "NOT COVERED",
             "independent_musical_audio": "NOT COVERED",
+            "externally_referenced_audio": "NOT COVERED",
             "product_gui_controls": "NOT COVERED",
             "native_gui_lifecycle": "NOT COVERED",
             "midi_wav_export": "NOT COVERED",
@@ -156,6 +157,20 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
                     summary["coverage"]["sample_rate_buffer_matrix"] = "PASS"
                     summary["coverage"]["native_audio_state_capture"] = "PASS"
                     summary["sample_rate_buffer_matrix_cases"] = len(expected_ids)
+    if summary["status"] == "TECHNICAL_PASS" and reference_wav is not None:
+        from verify_audio_reference import compare
+        audio = out / "native" / "P34" / "captured.wav"
+        if not audio.is_file():
+            summary["status"] = "FAIL"
+            summary["reason"] = "requested independent reference but no fresh real VST3 PCM"
+        else:
+            checked = compare(audio, Path(reference_wav), out / "reference-audio",
+                              reference_tolerance)
+            if checked.get("status") != "PASS":
+                summary["status"] = "FAIL"
+                summary["reason"] = "real VST3 PCM differs from independently supplied reference"
+            else:
+                summary["coverage"]["externally_referenced_audio"] = "REFERENCE_MATCH"
     # Reopen a captured project state in TWO independent native host processes.
     # Never equate successful IComponent::setState calls with musical correctness.
     if summary["status"] == "TECHNICAL_PASS":
@@ -274,10 +289,14 @@ def main():
     p.add_argument("--timeout", type=int, default=120)
     p.add_argument("--gui-host", type=Path)
     p.add_argument("--gui-controls", type=Path)
+    p.add_argument("--reference-wav", type=Path)
+    p.add_argument("--reference-tolerance-lsb", type=int, default=0)
     a = p.parse_args()
     try:
         result = run(a.plugin, a.host, a.stress_host, a.out, a.timeout,
-                     gui_host=a.gui_host, gui_controls=a.gui_controls)
+                     gui_host=a.gui_host, gui_controls=a.gui_controls,
+                     reference_wav=a.reference_wav,
+                     reference_tolerance=a.reference_tolerance_lsb)
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired,
             json.JSONDecodeError) as error:
         a.out.mkdir(parents=True, exist_ok=True)
