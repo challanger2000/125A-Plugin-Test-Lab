@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P41: Bounded, opt-in real Win32 VST3 GUI control *exploration*.
+"""P42: Sham-controlled, bounded Win32 VST3 GUI candidate exploration.
 
 Not a GUI release gate: a screenshot change is not proof of the effect's
 semantics. Each probe starts in a fresh process and a fresh VST3 instance,
@@ -16,7 +16,7 @@ import subprocess
 import sys
 
 
-NATIVE = "125A-GUI-EXPLORE-v1"
+NATIVE = "125A-GUI-EXPLORE-v2"
 SCHEMA = "125a-gui-exploration-result-v1"
 MAX_PIXELS = 4_194_304
 MAX_POINTS = 16
@@ -82,22 +82,26 @@ def changed_pixels(a, b):
                for i in range(0, len(a[2]), 3))
 
 
-def native_evidence(path, x, y, width, height):
+def native_evidence(path, x, y, width, height, *, mode):
     lines = Path(path).read_text(encoding="utf-8").splitlines()
-    if len(lines) < 5 or lines[0] != "format\t" + NATIVE or (
-            lines[1] != "coordinate\t%d\t%d" % (x, y)) or (
-            lines[2] != "canvas\t%d\t%d" % (width, height)) or (
+    if mode not in ("click", "sham"):
+        raise ValueError("unknown GUI exploration control mode")
+    if len(lines) < 6 or lines[0] != "format\t" + NATIVE or (
+            lines[1] != "mode\t" + mode) or (
+            lines[2] != "coordinate\t%d\t%d" % (x, y)) or (
+            lines[3] != "canvas\t%d\t%d" % (width, height)) or (
             lines[-1] != "end\tCOMPLETE"):
-        raise ValueError("missing/stale/misattributed VST3 click observations")
-    fields = lines[3].split("\t")
+        raise ValueError("missing/stale/misattributed native GUI control evidence")
+    fields = lines[4].split("\t")
     if len(fields) != 2 or fields[0] != "param_count":
-        raise ValueError("no declared native controller observation count")
+        raise ValueError("no declared native GUI parameter observation count")
     count = positive_int(fields[1], 8192)
-    if len(lines) != count + 5:
-        raise ValueError("missing or extra GUI parameter observations")
+    if len(lines) != count + 6:
+        raise ValueError("missing/extra native GUI parameter observations")
     ids = set()
     changed = []
-    for index, line in enumerate(lines[4:-1]):
+    values = {}
+    for index, line in enumerate(lines[5:-1]):
         parts = line.split("\t")
         if len(parts) != 5 or parts[0] != "param" or (
                 positive_int(parts[1], 8192) != index):
@@ -107,11 +111,12 @@ def native_evidence(path, x, y, width, height):
             raise ValueError("duplicate native GUI parameter identifier")
         ids.add(identifier)
         before, after = normalized(parts[3]), normalized(parts[4])
+        values[identifier] = (before, after)
         if abs(before - after) > 1e-5:
             changed.append({"param_id": identifier,
                             "before_normalized": before,
                             "after_normalized": after})
-    return count, changed
+    return count, changed, values
 
 
 def grid_points(width, height, count):
@@ -167,6 +172,7 @@ def run(bundle, gui_host, out, *, points=None, max_points=9,
         "verified_module_sha256": module_hash,
         "verified_gui_host_sha256": host_hash,
         "requested_points": 0, "completed_points": 0,
+        "sham_verified_points": 0, "sham_control": "NOT COVERED",
         "candidates": [], "probes": [],
         "gui_control_discovery": "NOT COVERED",
         "product_gui_controls": "NOT COVERED",
@@ -192,67 +198,110 @@ def run(bundle, gui_host, out, *, points=None, max_points=9,
                 raise ValueError("VST3 module or GUI host changed during exploration")
             run_dir = out / ("probe-%02d" % index)
             run_dir.mkdir(parents=True, exist_ok=True)
-            report = run_dir / "native.tsv"
-            first_bmp = run_dir / "before-a.bmp"
-            second_bmp = run_dir / "before-b.bmp"
-            after_bmp = run_dir / "after.bmp"
-            for p in (report, first_bmp, second_bmp, after_bmp):
-                p.unlink(missing_ok=True)
-            proc = runner([str(host), "--explore-gui-click", str(bundle),
-                           str(x), str(y), str(report), str(first_bmp),
-                           str(second_bmp), str(after_bmp)],
-                          capture_output=True, text=True, check=False,
-                          errors="replace", timeout=timeout)
-            (run_dir / "native.log").write_text(
-                (proc.stdout or "") + "\n" + (proc.stderr or ""),
-                encoding="utf-8")
-            if proc.returncode != 0:
-                raise ValueError("real Win32 GUI probe failed at %d,%d (exit %d)" %
-                                 (x, y, proc.returncode))
-            if any(not p.is_file() for p in (
-                    report, first_bmp, second_bmp, after_bmp)):
-                raise ValueError("missing real native controller/pixel observations")
-            pre_a, pre_b, after = [read_bmp(p) for p in (
-                first_bmp, second_bmp, after_bmp)]
-            if any(p[:2] != (width, height) for p in (pre_a, pre_b, after)):
-                raise ValueError("real HWND pixel geometry differs from initial plugin")
-            drift = changed_pixels(pre_a, pre_b)
-            changed = changed_pixels(pre_b, after)
-            total, parameters = native_evidence(report, x, y, width, height)
-            stable_visual_change = changed > 0 and drift == 0
-            if parameters and stable_visual_change:
+            captures = {}
+            for mode in ("sham", "click"):
+                # Independent process/plugin instance per mode. A sham uses
+                # exactly the same delays and repainting but sends NO mouse
+                # event. It must not be treated as a successful button click.
+                report = run_dir / (mode + ".tsv")
+                first_bmp = run_dir / (mode + "-before-a.bmp")
+                second_bmp = run_dir / (mode + "-before-b.bmp")
+                after_bmp = run_dir / (mode + "-after.bmp")
+                for path in (report, first_bmp, second_bmp, after_bmp):
+                    path.unlink(missing_ok=True)
+                proc = runner([
+                    str(host), "--explore-gui-" + mode, str(bundle),
+                    str(x), str(y), str(report), str(first_bmp),
+                    str(second_bmp), str(after_bmp)
+                ], capture_output=True, text=True, check=False,
+                    errors="replace", timeout=timeout)
+                (run_dir / (mode + ".log")).write_text(
+                    (proc.stdout or "") + "\n" + (proc.stderr or ""),
+                    encoding="utf-8")
+                if proc.returncode != 0:
+                    raise ValueError("real Win32 GUI %s failed at %d,%d (exit %d)" %
+                                     (mode, x, y, proc.returncode))
+                if any(not path.is_file() for path in
+                       (report, first_bmp, second_bmp, after_bmp)):
+                    raise ValueError("missing genuine %s controller/pixel evidence" % mode)
+                a, b, after = [
+                    read_bmp(path) for path in
+                    (first_bmp, second_bmp, after_bmp)]
+                if any(p[:2] != (width, height) for p in (a, b, after)):
+                    raise ValueError("native %s editor dimensions changed" % mode)
+                total, changed, values = native_evidence(
+                    report, x, y, width, height, mode=mode)
+                captures[mode] = (a, b, after, total, changed, values)
+                if module_hash != digest(binary) or host_hash != digest(host):
+                    raise ValueError("VST3 module or host changed during %s control" % mode)
+            sham_a, sham_b, sham_after, sham_total, sham_changes, sham_values = (
+                captures["sham"])
+            click_a, click_b, click_after, total, parameters, click_values = (
+                captures["click"])
+            if total != sham_total or set(click_values) != set(sham_values):
+                raise ValueError("native sham and click returned incompatible parameter inventories")
+            matching_initial = all(
+                abs(click_values[pid][0] - sham_values[pid][0]) <= 1e-5
+                for pid in click_values)
+            sham_drift = changed_pixels(sham_a, sham_b)
+            click_drift = changed_pixels(click_a, click_b)
+            sham_motion = changed_pixels(sham_b, sham_after)
+            click_motion = changed_pixels(click_b, click_after)
+            baseline_mismatch = changed_pixels(sham_b, click_b)
+            differential = changed_pixels(sham_after, click_after)
+            reliable_control = (matching_initial and not sham_changes and
+                                not sham_drift and not click_drift and
+                                not sham_motion and not baseline_mismatch)
+            # If a changing background or spontaneous VST3 state is detected
+            # in the sham, the click is NOT assigned an observed effect.
+            visual = reliable_control and click_motion > 0 and differential > 0
+            attributed_parameters = parameters if reliable_control else []
+            if not reliable_control:
+                classification = "UNSTABLE_CONTROL"
+            elif attributed_parameters and visual:
                 classification = "PARAMETER_AND_VISUAL_CHANGE"
-            elif parameters:
+            elif attributed_parameters:
                 classification = "PARAMETER_CHANGE"
-            elif drift:
-                classification = "UNSTABLE_BASELINE"
-            elif stable_visual_change:
+            elif visual:
                 classification = "VISUAL_CHANGE"
             else:
                 classification = "NO_OBSERVED_CHANGE"
             observed = {
                 "x": x, "y": y, "classification": classification,
                 "parameters_inspected": total,
-                "changed_parameters": parameters,
-                "painted_pixels_changed": changed,
-                "painted_baseline_drift": drift,
+                "changed_parameters": attributed_parameters,
+                "unattributed_parameters_changed": (
+                    parameters if not reliable_control else []),
+                "painted_pixels_changed": click_motion,
+                "painted_baseline_drift": click_drift,
+                "sham_pixels_changed": sham_motion,
+                "sham_baseline_drift": sham_drift,
+                "cross_process_baseline_mismatch": baseline_mismatch,
+                "click_minus_sham_pixels_changed": differential,
+                "sham_parameter_changes": sham_changes,
+                "sham_control_attribution": (
+                    "SUPPORTED" if reliable_control else "UNSTABLE"),
                 "painted_visual_observation": (
-                    "UNSTABLE" if drift else
-                    "OBSERVED" if changed else "NO_OBSERVED_CHANGE"),
+                    "UNSTABLE" if not reliable_control else
+                    "OBSERVED" if visual else "NO_OBSERVED_CHANGE"),
             }
             result["probes"].append(observed)
-            if parameters or stable_visual_change:
+            if attributed_parameters or visual:
                 result["candidates"].append({
                     "x": x, "y": y, "observation": classification,
-                    "parameter_ids_changed": [p["param_id"] for p in parameters],
+                    "parameter_ids_changed": [
+                        p["param_id"] for p in attributed_parameters],
                 })
+            result["sham_verified_points"] = index + 1
             result["completed_points"] = index + 1
         if module_hash != digest(binary) or host_hash != digest(host):
             raise ValueError("plugin or host modified during GUI scan")
         result["status"] = "OBSERVATIONS_COMPLETE"
+        result["sham_control"] = "COMPLETE"
         result["gui_control_discovery"] = "OBSERVATIONS_ONLY"
     except (OSError, ValueError, UnicodeError, OverflowError,
             struct.error, subprocess.TimeoutExpired) as error:
+        result["sham_control"] = "FAIL"
         result["faults"].append(str(error))
     report_file.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
