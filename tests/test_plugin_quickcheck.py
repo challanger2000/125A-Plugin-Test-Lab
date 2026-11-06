@@ -167,9 +167,10 @@ with tempfile.TemporaryDirectory() as td:
         return synthetic_native(cmd, **kwargs)
 
     measured = quick.run(bundle, host, stress, out, runner=slow_audio_callback)
-    assert measured["status"] == "TECHNICAL_PASS"
+    assert measured["status"] == "FAIL", "measured realtime failure incorrectly certified"
     assert measured["coverage"]["realtime_deadline_observation"] == "FAIL"
     assert measured["measured_callback_overruns"] == 3
+    assert measured["reason"] == "one or more measured QA coverage checks failed"
     assert measured["release_approved"] is False
 
     def mismatched(cmd, **kwargs):
@@ -335,6 +336,108 @@ with tempfile.TemporaryDirectory() as td:
             input_path.write_bytes(original)
         assert not (out / "QUICKCHECK-RESULT.json").exists(), (
             name + " mutation reused stale successful report")
+
+    # The advanced one-command runner must consume real independent A/B
+    # references and genuinely overlapping state-reload evidence, rather
+    # than upgrading generic dual-instance TECHNICAL_PASS to musical PASS.
+    state_a = root / "approved-bank-A.bin"
+    state_b = root / "approved-bank-B.bin"
+    state_a.write_bytes(b"independent approved bank A")
+    state_b.write_bytes(b"independent approved bank B")
+    states = {"A": state_a, "B": state_b}
+    dual_manifest = root / "approved-AB-oracle.json"
+    independent = {
+        "schema": "125a-product-dual-state-oracle-v1",
+        "product": {"bundle": str(bundle), "binary": str(binary), "sha256": sha},
+        "host": str(dual),
+        "initial_states": {
+            k: {"path": str(v), "sha256": hashlib.sha256(v.read_bytes()).hexdigest()}
+            for k, v in states.items()},
+        "reference": {
+            "expected_saved_sha256": {"A": "a" * 64, "B": "b" * 64},
+            "expected_pcm": {"A_first_pcm": 0.25, "B_first_pcm": 0.5,
+                             "B_second_pcm": 0.5, "A_second_pcm": 0.25},
+            "abs_tolerance": 0.0}}
+    dual_manifest.write_text(json.dumps(independent), encoding="utf-8")
+    deep_mode = {"broken": None}
+
+    def deep_native(cmd, **kwargs):
+        if cmd[1].endswith("run_live_state_replay.py"):
+            target = Path(cmd[cmd.index("--out") + 1])
+            target.mkdir(parents=True, exist_ok=True)
+            cases = [
+                {"id": f"live-replay-{rate}-{block}",
+                 "status": "PASS", "sets_during_playback": 100,
+                 "saves_during_playback": 100}
+                for rate in (44100, 48000, 96000) for block in (64, 512)]
+            if deep_mode["broken"] == "missing_replay_case":
+                cases.pop()
+            identity = sha if deep_mode["broken"] != "wrong_replay_plugin" else "e" * 64
+            (target / "LIVE-STATE-REPLAY-RESULT.json").write_text(json.dumps({
+                "status": "TECHNICAL_PASS", "release_approved": False,
+                "verified_module_sha256": identity,
+                "native_host_sha256": hashlib.sha256(stress.read_bytes()).hexdigest(),
+                "cases": cases}), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "genuine replay observed", "")
+        if cmd[1].endswith("run_product_dual_state.py"):
+            target = Path(cmd[cmd.index("--out") + 1])
+            target.mkdir(parents=True, exist_ok=True)
+            (target / "PRODUCT-DUAL-STATE-RESULT.json").write_text(json.dumps({
+                "status": "TECHNICAL_PASS", "release_approved": False,
+                "verified_module_sha256": sha,
+                "native_instances": 2, "native_process_calls": 4,
+                "saved_state_isolation": "FAIL" if deep_mode["broken"] == "wrong_bank" else "PASS",
+                "reference_pcm_isolation": "PASS"}), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "independent A/B observed", "")
+        return same_process(cmd, **kwargs)
+
+    deep_mode["broken"] = None
+    deep = quick.run(bundle, host, stress, out, dual_host=dual,
+                     active_replay=True, dual_state_manifest=dual_manifest,
+                     runner=deep_native)
+    assert deep["status"] == "TECHNICAL_PASS"
+    assert deep["release_approved"] is False
+    assert deep["coverage"]["active_playback_state_replay"] == "PASS"
+    assert deep["coverage"]["distinct_instance_state_isolation"] == "PASS"
+    assert deep["coverage"]["reference_pcm_isolation"] == "PASS"
+    assert deep["coverage"]["independent_musical_audio"] == "NOT COVERED"
+    assert deep["coverage"]["commercial_daw_integration"] == "NOT COVERED"
+
+    for broken in ("missing_replay_case", "wrong_replay_plugin", "wrong_bank"):
+        deep_mode["broken"] = broken
+        failed = quick.run(bundle, host, stress, out, dual_host=dual,
+                           active_replay=True, dual_state_manifest=dual_manifest,
+                           runner=deep_native)
+        assert failed["status"] == "FAIL", broken
+        assert failed["release_approved"] is False, broken
+        if broken == "wrong_bank":
+            assert failed["coverage"]["distinct_instance_state_isolation"] == "FAIL"
+        else:
+            assert failed["coverage"]["active_playback_state_replay"] == "FAIL"
+            assert failed["coverage"]["distinct_instance_state_isolation"] == "NOT EXECUTED"
+    deep_mode["broken"] = None
+
+    # A reference approved for a different module or host must fail before
+    # any real native process is launched.
+    wrong = dict(independent)
+    wrong["product"] = dict(independent["product"])
+    wrong["product"]["sha256"] = "f" * 64
+    dual_manifest.write_text(json.dumps(wrong), encoding="utf-8")
+    try:
+        quick.run(bundle, host, stress, out, dual_host=dual,
+                  dual_state_manifest=dual_manifest, runner=deep_native)
+    except ValueError as error:
+        assert "fingerprint" in str(error) or "another plugin" in str(error)
+    else:
+        raise AssertionError("other module's A/B references accepted")
+    dual_manifest.write_text(json.dumps(independent), encoding="utf-8")
+    try:
+        quick.run(bundle, host, stress, out,
+                  dual_state_manifest=dual_manifest, runner=deep_native)
+    except ValueError as error:
+        assert "requires native dual host" in str(error)
+    else:
+        raise AssertionError("advanced A/B test without real host accepted")
 
     (bundle / "Contents" / "x86_64-win" / "Extra.vst3").write_bytes(b"extra")
     try:

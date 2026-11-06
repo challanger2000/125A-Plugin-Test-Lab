@@ -23,7 +23,7 @@ def digest(path):
 
 def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         gui_host=None, gui_controls=None, reference_wav=None, reference_tolerance=0,
-        dual_host=None):
+        dual_host=None, dual_state_manifest=None, active_replay=False):
     bundle = bundle.resolve(strict=True)
     host = host.resolve(strict=True)
     stress_host = stress_host.resolve(strict=True)
@@ -33,6 +33,8 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         raise ValueError("one or both native Windows test hosts missing")
     if not 5 <= timeout <= 300:
         raise ValueError("invalid timeout")
+    if type(active_replay) is not bool:
+        raise ValueError("active replay option must be a boolean")
     binaries = [p for p in bundle.rglob("*.vst3") if p.is_file()]
     if len(binaries) != 1:
         raise ValueError("exactly one VST3 processor module expected in bundle")
@@ -48,13 +50,30 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
         gui_host = Path(gui_host).resolve(strict=True)
         if not gui_host.is_file():
             raise ValueError("native GUI host missing")
+    pinned_states = []
+    if dual_state_manifest is not None:
+        if dual_host is None:
+            raise ValueError("distinct A/B state oracle requires native dual host")
+        dual_state_manifest = Path(dual_state_manifest).resolve(strict=True)
+        if not dual_state_manifest.is_file():
+            raise ValueError("distinct A/B reference manifest missing")
+        from run_product_dual_state import validated_manifest
+        dual_spec = validated_manifest(dual_state_manifest)
+        if (Path(dual_spec["product"]["bundle"]) != bundle or
+            Path(dual_spec["product"]["binary"]) != binary or
+            dual_spec["product"]["sha256"] != sha or
+            Path(dual_spec["host"]) != dual_host):
+            raise ValueError("dual-state oracle belongs to another plugin or native host")
+        pinned_states = [Path(dual_spec["initial_states"][label]["path"])
+                         for label in ("A", "B")]
     # The default one-click QA performs several native test stages. Pin
     # *all* approved inputs across them, not just the initial module SHA.
     # Otherwise a rebuild or edited reference during testing can inherit
     # evidence that belongs to different bytes.
     approved_inputs = [(binary, sha), (host, digest(host)),
                        (stress_host, digest(stress_host))]
-    for optional in (dual_host, gui_host, gui_controls, reference_wav):
+    for optional in (dual_host, gui_host, gui_controls, reference_wav,
+                     dual_state_manifest, *pinned_states):
         if optional is not None:
             path = Path(optional).resolve(strict=True)
             if not path.is_file():
@@ -132,6 +151,8 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
             "fresh_process_project_recall": "NOT EXECUTED",
             "same_process_dual_instance_lifecycle": "NOT COVERED",
             "distinct_instance_state_isolation": "NOT COVERED",
+            "reference_pcm_isolation": "NOT COVERED",
+            "active_playback_state_replay": "NOT COVERED",
             "recall_audio_determinism": "NOT COVERED",
             "independent_musical_audio": "NOT COVERED",
             "externally_referenced_audio": "NOT COVERED",
@@ -383,6 +404,89 @@ def run(bundle, host, stress_host, out, timeout=120, runner=subprocess.run,
                 else:
                     summary["status"] = "FAIL"
                     summary["reason"] = "actual GUI control/pixel oracle failed"
+    # An explicitly requested high-concurrency test uses the plugin's
+    # genuine getState() bytes. It is not safe to require for every VST3:
+    # some plugins only allow setState() with processing inactive.
+    if active_replay:
+        summary["coverage"]["active_playback_state_replay"] = "NOT EXECUTED"
+    if summary["status"] == "TECHNICAL_PASS" and active_replay:
+        live_dir = out / "live-replay"
+        live_report = live_dir / "LIVE-STATE-REPLAY-RESULT.json"
+        live_report.unlink(missing_ok=True)
+        live_proc = checked_runner([
+            sys.executable, str(Path(__file__).with_name("run_live_state_replay.py")),
+            "--plugin", str(bundle), "--host", str(stress_host),
+            "--out", str(live_dir), "--timeout", str(timeout)
+        ], capture_output=True, text=True, timeout=timeout * 6 + 60,
+            check=False, errors="replace")
+        (out / "live-replay.log").write_text(
+            (live_proc.stdout or "") + "\n" + (live_proc.stderr or ""),
+            encoding="utf-8")
+        try:
+            evidence = json.loads(live_report.read_text(encoding="utf-8"))
+            cases = evidence.get("cases", [])
+            expected = {f"live-replay-{rate}-{block}" for rate in (44100, 48000, 96000)
+                        for block in (64, 512)}
+            if (live_proc.returncode != 0 or evidence.get("status") != "TECHNICAL_PASS" or
+                evidence.get("release_approved") is not False or
+                evidence.get("verified_module_sha256") != sha or
+                evidence.get("native_host_sha256") != digest(stress_host) or
+                not isinstance(cases, list) or len(cases) != 6 or
+                {case.get("id") for case in cases if isinstance(case, dict)} != expected or
+                any(case.get("status") != "PASS" or
+                    case.get("sets_during_playback", 0) < 1 or
+                    case.get("saves_during_playback", 0) < 1
+                    for case in cases if isinstance(case, dict))):
+                raise ValueError("genuine six-case live state replay incomplete or invalid")
+            summary["coverage"]["active_playback_state_replay"] = "PASS"
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            summary["status"] = "FAIL"
+            summary["coverage"]["active_playback_state_replay"] = "FAIL"
+            summary["reason"] = "optional active-playback state replay: " + str(error)
+
+    # Optional independent product A/B state and PCM oracles extend the same
+    # one-click report. Without a separately approved manifest the generic
+    # same-state two-instance test must NOT imply distinct-bank correctness.
+    if dual_state_manifest is not None:
+        summary["coverage"]["distinct_instance_state_isolation"] = "NOT EXECUTED"
+        summary["coverage"]["reference_pcm_isolation"] = "NOT EXECUTED"
+    if summary["status"] == "TECHNICAL_PASS" and dual_state_manifest is not None:
+        dual_dir = out / "distinct-state"
+        dual_report = dual_dir / "PRODUCT-DUAL-STATE-RESULT.json"
+        dual_report.unlink(missing_ok=True)
+        dual_proc = checked_runner([
+            sys.executable, str(Path(__file__).with_name("run_product_dual_state.py")),
+            "--manifest", str(dual_state_manifest), "--out", str(dual_dir),
+            "--timeout", str(timeout)
+        ], capture_output=True, text=True, timeout=timeout + 30,
+            check=False, errors="replace")
+        (out / "distinct-state.log").write_text(
+            (dual_proc.stdout or "") + "\n" + (dual_proc.stderr or ""),
+            encoding="utf-8")
+        try:
+            evidence = json.loads(dual_report.read_text(encoding="utf-8"))
+            if (dual_proc.returncode != 0 or evidence.get("status") != "TECHNICAL_PASS" or
+                evidence.get("verified_module_sha256") != sha or
+                evidence.get("release_approved") is not False or
+                evidence.get("native_instances") != 2 or
+                evidence.get("native_process_calls") != 4 or
+                evidence.get("saved_state_isolation") != "PASS" or
+                evidence.get("reference_pcm_isolation") != "PASS"):
+                raise ValueError("real two-bank state or PCM differs from independent oracle")
+            summary["coverage"]["distinct_instance_state_isolation"] = "PASS"
+            summary["coverage"]["reference_pcm_isolation"] = "PASS"
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            summary["status"] = "FAIL"
+            summary["coverage"]["distinct_instance_state_isolation"] = "FAIL"
+            summary["coverage"]["reference_pcm_isolation"] = "FAIL"
+            summary["reason"] = "independently referenced A/B state test: " + str(error)
+
+    # A successful VST3 API call is not an overall successful QA run when a
+    # measured timing/GUI/audio domain test explicitly failed.
+    if summary["status"] == "TECHNICAL_PASS" and any(
+            value == "FAIL" for value in summary["coverage"].values()):
+        summary["status"] = "FAIL"
+        summary["reason"] = "one or more measured QA coverage checks failed"
     verify_immutable_inputs()
     report_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary
@@ -399,6 +503,8 @@ def main():
     p.add_argument("--dual-host", type=Path)
     p.add_argument("--gui-controls", type=Path)
     p.add_argument("--reference-wav", type=Path)
+    p.add_argument("--dual-state-manifest", type=Path)
+    p.add_argument("--active-replay", action="store_true")
     p.add_argument("--reference-tolerance-lsb", type=int, default=0)
     a = p.parse_args()
     try:
@@ -406,7 +512,9 @@ def main():
                      gui_host=a.gui_host, gui_controls=a.gui_controls,
                      reference_wav=a.reference_wav,
                      reference_tolerance=a.reference_tolerance_lsb,
-                     dual_host=a.dual_host)
+                     dual_host=a.dual_host,
+                     dual_state_manifest=a.dual_state_manifest,
+                     active_replay=a.active_replay)
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired,
             json.JSONDecodeError) as error:
         a.out.mkdir(parents=True, exist_ok=True)

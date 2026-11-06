@@ -19,6 +19,8 @@ LABELS = {
     "fresh_process_project_recall": "Projektzustand in zwei neuen Hostprozessen laden",
     "same_process_dual_instance_lifecycle": "Zwei gleichzeitige Plugininstanzen in einem Host",
     "distinct_instance_state_isolation": "Unabhaengige Bank-/Projektzustaende beider Instanzen",
+    "reference_pcm_isolation": "Unabhaengige A/B-Referenzpruefung von vier PCM-Beobachtungen",
+    "active_playback_state_replay": "500 echte Zustand-Reloads parallel zur Wiedergabe je Konfiguration",
     "recall_audio_determinism": "Samplegenauer Vergleich nach Neuladen",
     "native_gui_lifecycle": "Pluginfenster oeffnen und erneut oeffnen",
     "native_parameter_inventory": "Alle vom VST3-Controller gemeldeten Parameter aufgueltigkeit pruefen",

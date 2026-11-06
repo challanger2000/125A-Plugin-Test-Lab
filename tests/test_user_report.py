@@ -40,6 +40,17 @@ assert "Vergleich mit freigegebener WAV-Referenz" in page
 assert page.count("BESTANDEN") == 6, "independent reference falsely displayed untested"
 assert "KEINE PRODUKTFREIGABE" in page
 
+deep = dict(enriched)
+deep["coverage"] = dict(enriched["coverage"])
+deep["coverage"]["distinct_instance_state_isolation"] = "PASS"
+deep["coverage"]["reference_pcm_isolation"] = "PASS"
+deep["coverage"]["active_playback_state_replay"] = "PASS"
+page = report.report_html(deep)
+assert "Unabhaengige A/B-Referenzpruefung" in page
+assert "500 echte Zustand-Reloads" in page
+assert page.count("BESTANDEN") == 9
+assert "KEINE PRODUKTFREIGABE" in page
+
 critical = dict(passed)
 critical["coverage"] = dict(passed["coverage"])
 critical["coverage"]["realtime_deadline_observation"] = "FAIL"
