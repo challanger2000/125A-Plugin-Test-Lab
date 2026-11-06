@@ -218,6 +218,45 @@ interacting with a commercial DAW window and arbitrary keyboard shortcuts
 cannot be certified in every plugin without a product-specific observable
 oracle. The full set of undisclosed controls remains NOT COVERED.
 
+## P43 — Deep native child-HWND mouse targeting
+
+The generic Windows VST3 test host now dispatches real mouse click/drag
+messages to the **deepest visible enabled native child HWND** that contains
+the requested point, using Win32 hit-testing and coordinate transformation.
+Previously, it sent messages only to the editor's surface, which missed
+standard nested `BUTTON` controls and other legitimate child windows.
+Drag gestures preserve the actual target selected at mouse-down.
+
+The same pointer routing is used by both `--gui-workflow` (persistent
+ordered interaction) and automatic `--gui-explore` (disposable native
+test sessions). Every `sham` and actual click must hit the **same native
+child depth** or the independently checked result is FAIL; source-built
+evidence format is now `125A-GUI-EXPLORE-v3` with `target_depth`.
+The observation report retains the original editor-coordinate click and
+adds `native_child_depth` and `routed_to_descendant_hwnd`.
+
+**Positive Windows regression:** a genuine VST3 fixture has a nested
+standard Win32 `BUTTON` inside its own editor HWND. Only that button's
+real `BN_CLICKED` notification changes VST3 parameter 9001. The tester
+must click its center and observe a real parameter change; clicking an
+editor-background coordinate must do nothing. The same button must
+toggle ON then OFF through an approved two-step `--gui-workflow`.
+
+**Hover baseline correction:** the host first sends the same hover
+`WM_MOUSEMOVE` to sham and click runs, then captures the two stable
+baseline images. Only afterward does the real-click run send
+`WM_LBUTTONDOWN/WM_LBUTTONUP`. This avoids labeling legitimate
+standard buttons as unstable merely because they visually respond to
+hover, while rejecting hover-only false positives.
+
+**Limitations:** Custom-painted VSTGUI/JUCE controls typically exist
+inside a single HWND and must still be located through image/parameter
+oracles. Native hit-testing does not discover all plugin controls or
+verify their intended semantics, and it cannot replace a product-specific
+audio/MIDI/DAW verification. Unknown GUI exploration remains opt-in
+and can trigger actions; results are `OBSERVATIONS_ONLY`, not release
+certification.
+
 ## P42 — Matched no-click control for automatic GUI exploration
 
 An unknown GUI control may appear to change because of animation, meters,

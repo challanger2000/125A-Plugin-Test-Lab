@@ -96,7 +96,7 @@ jobs:
       - name: Build universal live VST3 host and four instrumented fixtures
         shell: pwsh
         run: |
-          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick QAGuiBadParam QAGuiText QAGuiBadText QAGuiToggle QAGuiHover QAGuiInert QAGuiStalePaint TestLabStateStress TestLabInstanceIsolation QAStateMode8 QAStateMode9 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
+          cmake --build build --config Release --target TestLabHost TestLabGUI QAGuiClick QAGuiBadParam QAGuiText QAGuiBadText QAGuiToggle QAGuiHover QAGuiNested QAGuiInert QAGuiStalePaint TestLabStateStress TestLabInstanceIsolation QAStateMode8 QAStateMode9 TestLabRecovery TestLabRateBlock QAStateMode0 QAStateMode1 QAStateMode2 QAStateMode3 QAStateMode4 QAStateMode5 QAStateMode6 QAStateMode7 TestLabControllerRecovery QAControllerMode0 QAControllerMode1 TestLabGuiRecovery QAGuiRecoveryMode0 QAGuiRecoveryMode1 --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'P25 VST3 host or fixtures compilation failed' }
       - name: P25 concurrent VST3 process/state saves and semantic snapshot oracle
         shell: pwsh
@@ -790,7 +790,7 @@ jobs:
             @{name='interactive';plugin=$good[0].FullName;expected='PARAMETER_AND_VISUAL_CHANGE';candidate=1;attribution='SUPPORTED'},
             @{name='inert';plugin=$inert[0].FullName;expected='NO_OBSERVED_CHANGE';candidate=0;attribution='SUPPORTED'},
             @{name='stale-paint';plugin=$stale[0].FullName;expected='PARAMETER_CHANGE';candidate=1;attribution='SUPPORTED'},
-            @{name='hover';plugin=$hover[0].FullName;expected='UNSTABLE_CONTROL';candidate=0;attribution='UNSTABLE'}
+            @{name='hover';plugin=$hover[0].FullName;expected='NO_OBSERVED_CHANGE';candidate=0;attribution='SUPPORTED'}
           )) {
             python tests/run_gui_exploration.py --plugin $fixture.plugin --gui-host $gui[0].FullName --out "artifacts/P41/$($fixture.name)" --points "160,90" --acknowledge-ui-clicks --timeout 30
             if ($LASTEXITCODE -ne 0) { throw "P41 actual GUI exploration failed: $($fixture.name)" }
@@ -818,11 +818,77 @@ jobs:
             throw 'P41 default autonomous GUI probing did not observe three genuine actions'
           }
           $hoverReport = Get-Content artifacts/P41/hover/GUI-EXPLORATION-RESULT.json -Raw | ConvertFrom-Json
-          if ($hoverReport.probes[0].sham_pixels_changed -le 0 -or
-              $hoverReport.probes[0].changed_parameters.Count -ne 0) {
-            throw 'P42 genuine hover-only native GUI was falsely treated as click behavior'
+          if ($hoverReport.probes[0].sham_pixels_changed -ne 0 -or
+              @($hoverReport.probes[0].changed_parameters).Count -ne 0 -or
+              $hoverReport.probes[0].classification -ne 'NO_OBSERVED_CHANGE') {
+            throw 'P43 hover-stabilized baseline misclassified mouseover as click behavior'
           }
           Write-Host '[PASS] P42 genuine click/sham Windows VST3s reject inert, stale and hover-only false-positive controls'
+          exit 0
+
+      - name: P43 real nested Win32 BUTTON targeting, sham pairing and persistent workflow
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $nested = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Nested.vst3')
+          if ($gui.Count -ne 1 -or $nested.Count -ne 1) {
+            throw 'P43 real native Win32 child-button test plugin or host missing'
+          }
+          New-Item -ItemType Directory -Force artifacts/P43 | Out-Null
+          $plugin = $nested[0].FullName
+          # This x,y is INSIDE the genuine Win32 button nested inside
+          # the editor's custom HWND. Sending directly to the editor root
+          # produces no parameter changes by deliberate fixture design.
+          python tests/run_gui_exploration.py --plugin $plugin --gui-host $gui[0].FullName --out artifacts/P43/nested-actual --points "160,90" --acknowledge-ui-clicks --timeout 30
+          if ($LASTEXITCODE -ne 0) { throw 'P43 native button click failed' }
+          $observed = Get-Content artifacts/P43/nested-actual/GUI-EXPLORATION-RESULT.json -Raw | ConvertFrom-Json
+          if ($observed.status -ne 'OBSERVATIONS_COMPLETE' -or
+              $observed.sham_control -ne 'COMPLETE' -or
+              $observed.sham_verified_points -ne 1 -or
+              $observed.probes[0].native_child_depth -lt 1 -or
+              $observed.probes[0].sham_control_attribution -ne 'SUPPORTED' -or
+              $observed.probes[0].classification -notin @('PARAMETER_AND_VISUAL_CHANGE','PARAMETER_CHANGE') -or
+              @($observed.probes[0].changed_parameters).Count -ne 1 -or
+              $observed.probes[0].changed_parameters[0].param_id -ne 9001 -or
+              @($observed.candidates).Count -ne 1 -or
+              $observed.product_gui_controls -ne 'NOT COVERED') {
+            throw 'P43 real nested child HWND was not reached or attribution was forged'
+          }
+          # A click on the editor background must NOT trigger the nested button.
+          python tests/run_gui_exploration.py --plugin $plugin --gui-host $gui[0].FullName --out artifacts/P43/nested-outside --points "20,20" --acknowledge-ui-clicks --timeout 30
+          if ($LASTEXITCODE -ne 0) { throw 'P43 outside native child hit probe failed' }
+          $outside = Get-Content artifacts/P43/nested-outside/GUI-EXPLORATION-RESULT.json -Raw | ConvertFrom-Json
+          if ($outside.status -ne 'OBSERVATIONS_COMPLETE' -or
+              $outside.probes[0].native_child_depth -ne 0 -or
+              $outside.probes[0].classification -ne 'NO_OBSERVED_CHANGE' -or
+              @($outside.candidates).Count -ne 0) {
+            throw 'P43 root click falsely activated a nested child button'
+          }
+          # Same actual editor instance: each of two native nested button
+          # clicks must independently toggle the exposed controller value.
+          $module = @(Get-ChildItem $plugin -Recurse -File -Filter '*.vst3')
+          if ($module.Count -ne 1) { throw 'P43 ambiguous source-built binary' }
+          $profile = @{
+            schema='125a-gui-workflow-v1'
+            product=@{binary=$module[0].FullName;sha256=(Get-FileHash $module[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
+            gui_host=$gui[0].FullName
+            initial=@(@{param_id=9001;normalized=0.0})
+            steps=@(
+              @{id='nested_on';action='click';x=160;y=90;param_id=9001;before_normalized=0.0;expected_normalized=1.0},
+              @{id='nested_off';action='click';x=160;y=90;param_id=9001;before_normalized=1.0;expected_normalized=0.0}
+            )
+          }
+          $profile | ConvertTo-Json -Depth 12 | Set-Content artifacts/P43/nested-workflow.json
+          python tests/run_gui_workflow.py --manifest artifacts/P43/nested-workflow.json --out artifacts/P43/sequence
+          if ($LASTEXITCODE -ne 0) { throw 'P43 actual nested child HWND two-way click failed' }
+          $seq = Get-Content artifacts/P43/sequence/GUI-WORKFLOW-RESULT.json -Raw | ConvertFrom-Json
+          if ($seq.status -ne 'TECHNICAL_PASS' -or $seq.verified_actions -ne 2 -or
+              $seq.controller_action_chain -ne 'PASS' -or
+              $seq.product_gui_complete -ne 'NOT COVERED') {
+            throw 'P43 nested two-way native click created false successful evidence'
+          }
+          Write-Host '[PASS] P43 real nested VST3 child button detected, hit, and toggled ON/OFF; background clicks and false UI coverage rejected'
           exit 0
 
       - name: One-command real VST3 quickcheck without handwritten manifests
@@ -964,7 +1030,8 @@ jobs:
             artifacts/QUICKCHECK/
             artifacts/P35/
             artifacts/P40/
-            artifacts/P41/
+            artifacts/P41/            artifacts/P43/
+
             artifacts/P36/
             artifacts/P37/
             artifacts/QUICKCHECK-DEEP/
