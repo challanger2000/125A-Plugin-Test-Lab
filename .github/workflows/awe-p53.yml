@@ -22,6 +22,12 @@ on:
 permissions:
   contents: read
 
+# This source-built AWE check is expensive; never pay for duplicate push/PR
+# clones of the same test while a newer P53 revision is available.
+concurrency:
+  group: p53-awe-current-source-built-vst3
+  cancel-in-progress: true
+
 jobs:
   real-awe:
     runs-on: windows-2022
