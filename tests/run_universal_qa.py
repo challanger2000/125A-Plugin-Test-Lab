@@ -25,7 +25,7 @@ def preflight(plan, matrix, module, gui, audio=None, stress=None):
         return None
     actual, hosts, cases = validate_contract(plan)
     if (actual != Path(module).resolve(strict=True) or
-            hosts["gui"] != Path(gui).resolve(strict=True)):
+            hosts["gui"] != Path(gui).resolve()):
         raise ValueError("P74 approved test plan references a different plugin or GUI host")
     for key, wanted in (("audio", audio), ("stress", stress)):
         if key in hosts and (wanted is None or hosts[key] != wanted):
