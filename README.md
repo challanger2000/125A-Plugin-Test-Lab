@@ -1,5 +1,8 @@
 # 125A Plugin Test Lab
 
+**P71/P72 one-command onboarding:** Unified native HWND and custom-painted VST3 GUI discovery (deduplicated candidates, no clicks by default), plus one read-only command combining P68 plugin ABI metadata with GUI candidates and a concrete product-owner review task list. No product-specific Test Lab code or automated release claims. [Universal onboarding](docs/P71-P72-UNIVERSAL-ONBOARDING.md).
+
+
 **P70 universal custom-painted GUI candidates:** Static native editor BMP foreground-region discovery proposes possible click targets even for one-HWND painted UIs, with **no click by default**. Explicit opt-in can feed candidates into existing sham-controlled P42 native GUI exploration. The detector cannot know control semantics or certify complete coverage. [P70 limitations and tests](docs/P70-PAINTED-CANDIDATES.md).
 
 
