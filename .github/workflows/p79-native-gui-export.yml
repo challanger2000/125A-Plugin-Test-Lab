@@ -1,0 +1,55 @@
+name: P79 real VST3 GUI-triggered WAV MIDI export via P65
+on:
+  pull_request:
+    paths:
+      - 'tests/run_product_test_plan.py'
+      - 'tests/run_p79_native_export_fixtures.py'
+      - 'tests/test_p79_native_export_adapter.py'
+      - 'tests/run_gui_export_contract.py'
+      - '.github/workflows/p79-native-gui-export.yml'
+      - 'docs/P79-NATIVE-GUI-EXPORT.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-export:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: P79 validation and compatible adapter unit tests
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_p79_native_export_adapter.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P79 adapter tests FAILED' }
+          python -m unittest discover -s tests -p test_product_test_plan.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P65 backwards compatibility FAILED' }
+          python -m py_compile tests/run_p79_native_export_fixtures.py
+          if ($LASTEXITCODE -ne 0) { throw 'P79 compile FAILED' }
+      - name: Build source-defined export-positive and wrong-file VST3 modules
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P79 CMake configure FAILED' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiExportGood QAGuiExportBad QAGuiExportMidiGood QAGuiExportMidiBad
+          if ($LASTEXITCODE -ne 0) { throw 'P79 real source-built VST3 compilation FAILED' }
+      - name: Run genuine Windows GUI-click generated WAV and SMF export contracts
+        shell: pwsh
+        run: |
+          python tests/run_p79_native_export_fixtures.py --build build --out build/p79-results
+          if ($LASTEXITCODE -ne 0) { throw 'P79 actual native VST3 GUI exports FAILED' }
+          $report = Get-Content build/p79-results/NATIVE-EXPORT-REGRESSION.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'POSITIVE_AND_NEGATIVE_CONFIRMED' -or
+              $report.fixtures.Count -ne 4 -or
+              $report.actual_native_vst3_gui_export_fixture_tested -ne $true -or
+              $report.arbitrary_third_party_exporter_tested -ne $false -or
+              $report.process_writer_provenance_verified -ne $false -or
+              $report.release_approved -ne $false) {
+            throw 'P79 incorrectly claimed independent exporter proof'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P79-real-source-built-VST3-WAV-MIDI-good-bad
+          path: build/p79-results/
+          if-no-files-found: warn
