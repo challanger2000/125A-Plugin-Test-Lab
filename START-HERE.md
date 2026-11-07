@@ -1,3 +1,21 @@
+## P95 — Genuine virtual ASIO4ALL audio return, not just driver callbacks
+
+P94 validated only the virtual driver handshake/callback path. P95 builds
+an independent source-defined stereo VST3 test signal and a special
+native 2-in/2-out ASIO4ALL callback recorder. Its **separate** PCM oracle
+compares the actual received virtual input with the originally emitted
+audio: level, correlation, channel identity and approximate return delay.
+
+CLOUD CI on Windows **compiles** the full native ASIO source but cannot
+prove an audio driver or actual VB-CABLE return. Real execution requires
+a separately installed, rebooted, dedicated Windows virtual driver
+test station with ASIO4ALL and VB-CABLE exposed together, opt-in
+`125A-VIRTUAL-ASIO` private runner and
+`VIRTUAL_ASIO_RUNNER_ENABLED=YES_ISOLATED`.
+Physical ASIO hardware and licensed DAW release verification are STILL
+NOT COVERED by virtual-return evidence.
+Read [P95 loopback setup](docs/P95-VIRTUAL-ASIO-LOOPBACK.md).
+
 ## P94 — Real virtual ASIO4ALL + VB-CABLE (opt-in, no physical hardware approval)
 
 A registered real ASIO4ALL COM driver and rebooted VB-CABLE Windows WDM
