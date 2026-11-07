@@ -232,6 +232,43 @@ void writeAsioSamples(void* target, ASIOSampleType type, const Sample32* source,
     }
 }
 
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+float readAsioSample(const void* base, ASIOSampleType type, int n, bool& ok) noexcept {
+    if (!base || n < 0) { ok = false; return 0.f; }
+    switch (type) {
+    case ASIOSTFloat32LSB: {
+        float v{};
+        std::memcpy(&v, static_cast<const unsigned char*>(base) + 4 * n, 4);
+        if (!std::isfinite(v)) { ok = false; return 0.f; }
+        return v;
+    }
+    case ASIOSTInt32LSB: {
+        int32_t v{};
+        std::memcpy(&v, static_cast<const unsigned char*>(base) + 4 * n, 4);
+        return static_cast<float>(static_cast<double>(v) / 2147483648.);
+    }
+    case ASIOSTInt32LSB24: {
+        int32_t v{};
+        std::memcpy(&v, static_cast<const unsigned char*>(base) + 4 * n, 4);
+        return static_cast<float>(static_cast<double>(v) / 8388608.);
+    }
+    case ASIOSTInt16LSB: {
+        int16_t v{};
+        std::memcpy(&v, static_cast<const unsigned char*>(base) + 2 * n, 2);
+        return static_cast<float>(static_cast<double>(v) / 32768.);
+    }
+    case ASIOSTInt24LSB: {
+        const auto* b = static_cast<const unsigned char*>(base) + 3 * n;
+        int32_t raw = static_cast<int32_t>(uint32_t(b[0]) |
+                         (uint32_t(b[1]) << 8) | (uint32_t(b[2]) << 16));
+        if (raw & 0x800000) raw |= static_cast<int32_t>(0xff000000u);
+        return static_cast<float>(static_cast<double>(raw) / 8388608.);
+    }
+    default: ok = false; return 0.f;
+    }
+}
+#endif
+
 // CI-only sample-format conversion check; cannot produce hardware evidence.
 int formatSelfTest() {
     const std::array<float, 3> values{0.0f, 0.5f, -1.0f};
@@ -276,8 +313,15 @@ struct Engine {
     IASIO* driver{};
     IAudioProcessor* processor{};
     Processing* processing{};
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+    std::array<ASIOBufferInfo, 4> asioBuffers{};
+    std::array<ASIOSampleType, 4> sampleTypes{};
+    std::vector<float> loopbackTrace; // preallocated before ASIO callback start
+    uint64_t maxRecordedFrames{};
+#else
     std::array<ASIOBufferInfo, 2> asioBuffers{};
     std::array<ASIOSampleType, 2> sampleTypes{};
+#endif
     int frames{}, rate{};
     std::atomic<uint64_t> asioCallbacks{0};
     std::atomic<uint64_t> processedCallbacks{0};
@@ -302,7 +346,26 @@ struct Engine {
             deadlineMisses.fetch_add(1, std::memory_order_relaxed);
         lastEndNs = startNs;
         bool ok = false;
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+        ok = true;
+#endif
         try {
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+            // Input is sampled before output to preserve actual driver timing.
+            // Four interleaved floats/frame: emitted L,R then captured L,R.
+            if (framePosition + static_cast<uint64_t>(frames) > maxRecordedFrames)
+                throw std::runtime_error("P95 trace buffer capacity exhausted");
+            for (size_t ch = 0; ch < 2; ++ch) {
+                const void* input = asioBuffers[ch + 2].buffers[index];
+                if (!input) throw std::runtime_error("P95 ASIO input buffer absent");
+                for (int n = 0; n < frames; ++n) {
+                    const float v = readAsioSample(input, sampleTypes[ch + 2], n, ok);
+                    // readAsioSample sets ok=false on failure; start true.
+                    if (!ok) throw std::runtime_error("P95 corrupt ASIO input format");
+                    loopbackTrace[static_cast<size_t>((framePosition + n) * 4 + 2 + ch)] = v;
+                }
+            }
+#endif
             auto& p = *processing;
             // Deterministic low-level stimulus for insert effects; each
             // buffer stays preallocated, so this code does not allocate.
@@ -325,6 +388,11 @@ struct Engine {
                 const auto& samples = p.outputs[0].channels[ch];
                 writeAsioSamples(target, sampleTypes[ch],
                                  samples.data(), frames, ok, 0.10); // -20 dBFS safety ceiling
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                if (ok) for (int n = 0; n < frames; ++n)
+                    loopbackTrace[static_cast<size_t>((framePosition + n) * 4 + ch)] =
+                        std::clamp(samples[static_cast<size_t>(n)], -0.10f, 0.10f);
+#endif
             }
         } catch (...) { ok = false; }
         if (ok) processedCallbacks.fetch_add(1, std::memory_order_relaxed);
@@ -373,21 +441,38 @@ ASIOTime* onTimeInfo(ASIOTime* info, long index, ASIOBool direct) {
 }
 struct Arguments {
     std::filesystem::path plugin, output;
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+    std::filesystem::path pcm;
+#endif
     std::string name, clsid, nonce;
     int rate{}, frames{}, callbacks{};
 };
 Arguments parse(int argc, char** argv) {
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+    ensure(argc >= 2 && std::strcmp(argv[1], "--virtual-asio-loopback") == 0,
+           "P95 only accepts the explicit virtual ASIO loopback command");
+#else
     ensure(argc >= 2 && std::strcmp(argv[1], "--physical-asio-probe") == 0,
            "P58 only accepts --physical-asio-probe");
+#endif
     Arguments args;
     args.plugin = std::filesystem::u8path(requireArg(argc, argv, "--plugin"));
     args.output = std::filesystem::u8path(requireArg(argc, argv, "--out"));
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+    args.pcm = std::filesystem::u8path(requireArg(argc, argv, "--pcm"));
+    ensure(args.pcm != args.output && !args.pcm.empty(),
+           "P95 separate native PCM trace required");
+#endif
     args.name = requireArg(argc, argv, "--driver-name");
     args.clsid = requireArg(argc, argv, "--driver-clsid");
     args.nonce = requireArg(argc, argv, "--nonce");
     args.rate = parseInteger(requireArg(argc, argv, "--rate"), 44100, 96000);
     args.frames = parseInteger(requireArg(argc, argv, "--frames"), 64, 1024);
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+    args.callbacks = parseInteger(requireArg(argc, argv, "--callbacks"), 200, 1000);
+#else
     args.callbacks = parseInteger(requireArg(argc, argv, "--callbacks"), 100, 200000);
+#endif
     ensure(args.rate == 44100 || args.rate == 48000 || args.rate == 96000,
            "unsupported ASIO sample rate");
     ensure(args.frames == 64 || args.frames == 128 || args.frames == 256 ||
@@ -401,6 +486,30 @@ Arguments parse(int argc, char** argv) {
            args.plugin.extension() == ".vst3", "physical test requires exact .vst3 DLL");
     return args;
 }
+
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+void writeLoopbackTrace(const Arguments& args, const Engine& engine) {
+    ensure(engine.framePosition <= engine.maxRecordedFrames,
+           "P95 loopback trace contains more samples than preallocated");
+    ensure(engine.framePosition >= static_cast<uint64_t>(args.frames) * 200,
+           "P95 not enough actual virtual ASIO samples for independent PCM");
+    std::ofstream out(args.pcm, std::ios::binary | std::ios::trunc);
+    ensure(out.good(), "P95 cannot create independently analyzable PCM trace");
+    const std::array<char,8> magic{'1','2','5','A','L','B','0','1'};
+    out.write(magic.data(), magic.size());
+    const std::array<uint32_t, 4> header{
+        static_cast<uint32_t>(args.rate),
+        static_cast<uint32_t>(engine.framePosition),
+        static_cast<uint32_t>(args.frames), 4u
+    };
+    out.write(reinterpret_cast<const char*>(header.data()), sizeof(header));
+    const auto values = static_cast<size_t>(engine.framePosition) * 4;
+    out.write(reinterpret_cast<const char*>(engine.loopbackTrace.data()),
+              static_cast<std::streamsize>(values * sizeof(float)));
+    out.flush();
+    ensure(out.good(), "P95 complete native ASIO capture trace not written");
+}
+#endif
 
 void proof(const Arguments& args, const Engine& engine, const std::string& dllHash,
            const std::string& exeHash) {
@@ -449,6 +558,10 @@ int run(const Arguments& a) {
         checkASIO(driver->getChannels(&inputCount, &outputCount),
                   "Actual ASIO channel inventory failed");
         ensure(outputCount >= 2, "Physical ASIO hardware has fewer than 2 outputs");
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+        ensure(inputCount >= 2,
+               "P95 ASIO4ALL did not expose two selected virtual recording inputs");
+#endif
         checkASIO(driver->getBufferSize(&minimum, &maximum, &preferred, &granularity),
                   "Physical ASIO buffer capability query failed");
         ensure(a.frames >= minimum && a.frames <= maximum &&
@@ -507,6 +620,12 @@ int run(const Arguments& a) {
                 engine.processing = &audio;
                 engine.frames = a.frames;
                 engine.rate = a.rate;
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                engine.maxRecordedFrames =
+                    static_cast<uint64_t>(a.callbacks + 32) * a.frames;
+                engine.loopbackTrace.assign(
+                    static_cast<size_t>(engine.maxRecordedFrames) * 4, 0.f);
+#endif
                 LARGE_INTEGER freq{};
                 ensure(QueryPerformanceFrequency(&freq) && freq.QuadPart > 0,
                        "High resolution callback clock unavailable");
@@ -528,7 +647,27 @@ int run(const Arguments& a) {
                     engine.asioBuffers[ch].isInput = ASIOFalse;
                     engine.asioBuffers[ch].channelNum = static_cast<long>(ch);
                 }
-                checkASIO(driver->createBuffers(engine.asioBuffers.data(), 2, a.frames,
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                for (size_t ch = 0; ch < 2; ++ch) {
+                    ASIOChannelInfo info{};
+                    info.isInput = ASIOTrue;
+                    info.channel = static_cast<long>(ch);
+                    checkASIO(driver->getChannelInfo(&info),
+                              "P95 cannot inspect selected virtual ASIO recording channel");
+                    ensure(asioBytesPerSample(info.type) != 0,
+                           "P95 unsupported incoming ASIO PCM format");
+                    engine.sampleTypes[ch + 2] = info.type;
+                    engine.asioBuffers[ch + 2].isInput = ASIOTrue;
+                    engine.asioBuffers[ch + 2].channelNum = static_cast<long>(ch);
+                }
+#endif
+                checkASIO(driver->createBuffers(engine.asioBuffers.data(),
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                    4,
+#else
+                    2,
+#endif
+                    a.frames,
                                                 &callbacks), "Actual ASIO buffer allocation failed");
                 buffers = true;
                 ensure(component->setActive(true) == kResultOk, "VST3 setActive failed");
@@ -570,6 +709,9 @@ int run(const Arguments& a) {
                 ensure(hashFile(a.plugin) == moduleHash &&
                        hashFile(selfPath()) == executorHash,
                        "ASIO plugin/executor changed during real callback processing");
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                writeLoopbackTrace(a, engine);
+#endif
                 proof(a, engine, moduleHash, executorHash);
             } catch (...) {
                 activeEngine.store(nullptr, std::memory_order_release);

@@ -62,6 +62,13 @@ smtg_add_vst3plugin(QASignalBad
 target_link_libraries(QASignalBad PRIVATE sdk)
 target_compile_definitions(QASignalBad PRIVATE NOMINMAX QA_DELIBERATE_NAN=1)
 
+# P95 independent virtual ASIO stereo output/input loopback signature plugin.
+smtg_add_vst3plugin(QAVirtualASIOReturn
+    PACKAGE_NAME "125A_QA_Virtual_ASIO_Return"
+    SOURCES_LIST tests/virtual_asio_signal_fixture.cpp)
+target_link_libraries(QAVirtualASIOReturn PRIVATE sdk)
+target_compile_definitions(QAVirtualASIOReturn PRIVATE NOMINMAX)
+
 # P92 isolated audible/negative MIDI-to-PCM REAPER DAW oracle.
 smtg_add_vst3plugin(QAReaperMidiTone
     PACKAGE_NAME "125A_QA_REAPER_MIDI"
@@ -390,6 +397,20 @@ if(ASIO_SDK_DIR)
       NOMINMAX _CRT_SECURE_NO_WARNINGS)
   if(MSVC)
     target_compile_options(TestLabPhysicalASIO PRIVATE /W4 /permissive- /utf-8)
+  endif()
+
+  # P95: a completely separate target. It cannot be used to certify actual
+  # physical hardware and requires two real registered ASIO input channels.
+  add_executable(TestLabVirtualASIOLoopback src/physical_asio.cpp)
+  set_target_properties(TestLabVirtualASIOLoopback PROPERTIES
+      OUTPUT_NAME "125A_Test_Lab_Virtual_ASIO_Loopback")
+  target_include_directories(TestLabVirtualASIOLoopback PRIVATE "${ASIO_SDK_DIR}/common")
+  target_link_libraries(TestLabVirtualASIOLoopback PRIVATE
+      Vst3WinModule sdk_hosting sdk_common base pluginterfaces ole32 advapi32 bcrypt)
+  target_compile_definitions(TestLabVirtualASIOLoopback PRIVATE
+      NOMINMAX _CRT_SECURE_NO_WARNINGS QA_ASIO_VIRTUAL_LOOPBACK=1)
+  if(MSVC)
+    target_compile_options(TestLabVirtualASIOLoopback PRIVATE /W4 /permissive- /utf-8)
   endif()
 endif()
 
