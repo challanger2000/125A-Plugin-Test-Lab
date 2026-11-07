@@ -1,0 +1,53 @@
+name: P97 local one-command virtual ASIO readiness and no-consent gate
+on:
+  pull_request:
+    paths:
+      - 'tests/Invoke-VirtualASIOAcceptance.ps1'
+      - '.github/workflows/p97-local-virtual-asio.yml'
+      - 'docs/P97-ONE-COMMAND-LOCAL-ASIO.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p97-local-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  windows-runner-negatives:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Actual Windows read-only device/registry preflight without local driver install
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests/Invoke-VirtualASIOAcceptance.ps1 -CheckOnly -OutputFolder artifacts/P97-ci-readonly
+          if ($LASTEXITCODE -ne 0) { throw 'P97 read-only Windows probe failed' }
+          $state = Get-Content artifacts/P97-ci-readonly/P97-ACCEPTANCE.json -Raw | ConvertFrom-Json
+          if ($state.status -notin @('DRIVERS_READY_LIVE_AUDIO_NOT_RUN','DRIVERS_NOT_READY_LIVE_AUDIO_NOT_RUN') -or
+              $state.native_virtual_asio_callbacks -ne 'NOT_RUN' -or
+              $state.virtual_pcm_loopback -ne 'NOT_RUN' -or
+              $state.physical_asio_hardware_verified -ne $false -or
+              $state.commercial_daw_verified -ne $false -or
+              $state.release_approved -ne $false) {
+            throw 'P97 cloud preflight forged an ASIO callback/DAW/hardware approval'
+          }
+          Write-Output "P97 genuine Windows CI readiness status: $($state.status)"
+      - name: Fail closed when virtual audio consent was not granted
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests/Invoke-VirtualASIOAcceptance.ps1 -OutputFolder artifacts/P97-ci-no-consent 2>&1 | Out-Null
+          $rejected = $LASTEXITCODE -ne 0
+          $state = Get-Content artifacts/P97-ci-no-consent/P97-ACCEPTANCE.json -Raw | ConvertFrom-Json
+          if (-not $rejected -or $state.status -ne 'NOT_RUN_OR_FAILED' -or
+              $state.native_virtual_asio_callbacks -ne 'NOT_RUN' -or
+              $state.virtual_pcm_loopback -ne 'NOT_RUN') {
+            throw 'P97 native virtual sound driver invocation was possible without opt-in'
+          }
+          Write-Output 'P97 explicit no-consent negative PASS; actual ASIO hardware/audio NOT RUN'
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P97-readiness-only-NOT-audio-certification
+          path: artifacts/P97-ci-readonly/P97-ACCEPTANCE.json
+          if-no-files-found: warn
