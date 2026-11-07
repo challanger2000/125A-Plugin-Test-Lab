@@ -15,12 +15,15 @@ import sys
 
 from run_gui_workflow import run as gui_run, validate as validate_gui
 from run_gui_gesture_sweep import run as sweep_run, compile_contract
+from run_plugin_quickcheck import run as quick_run
 
 SCHEMA = "125a-product-test-plan-v1"
 RESULT = "125a-product-test-plan-result-v1"
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 HEX = re.compile(r"^[a-f0-9]{64}$")
-KINDS = {"gui_workflow", "gesture_sweep"}
+KINDS = {"gui_workflow", "gesture_sweep", "technical_quickcheck"}
+QUICK_COVERAGE = {"api_playback_save", "sample_rate_buffer_matrix",
+                  "native_audio_state_capture", "fresh_process_project_recall"}
 
 
 def sha256(path):
@@ -42,20 +45,28 @@ def validate(plan):
         raise ValueError("P65 invalid product identifier")
     if not isinstance(product["sha256"], str) or not HEX.fullmatch(product["sha256"]):
         raise ValueError("P65 invalid product digest")
-    if not isinstance(hosts, dict) or set(hosts) != {"gui"}:
-        raise ValueError("P65 exact supported GUI host declaration required")
-    if not isinstance(hosts["gui"], dict) or set(hosts["gui"]) != {"path", "sha256"}:
-        raise ValueError("P65 GUI host path and independent SHA-256 required")
-    if not isinstance(hosts["gui"]["sha256"], str) or not HEX.fullmatch(hosts["gui"]["sha256"]):
-        raise ValueError("P65 invalid host hash")
+    if (not isinstance(hosts, dict) or "gui" not in hosts
+            or not set(hosts) <= {"gui", "audio", "stress"}):
+        raise ValueError("P66 supported GUI/audio/stress host declarations only")
+    for name, spec in hosts.items():
+        if not isinstance(spec, dict) or set(spec) != {"path", "sha256"}:
+            raise ValueError("P66 each native host requires path and SHA-256")
+        if not isinstance(spec["sha256"], str) or not HEX.fullmatch(spec["sha256"]):
+            raise ValueError("P66 host hash invalid")
     module = Path(product["module"]).resolve(strict=True)
     host = Path(hosts["gui"]["path"]).resolve(strict=True)
     if (not module.is_file() or module.suffix.lower() != ".vst3"
             or not any(p.suffix.lower() == ".vst3" and p.is_dir()
                        for p in module.parents) or not host.is_file()):
         raise ValueError("P65 real DLL must belong to a native VST3 bundle")
-    if sha256(module) != product["sha256"] or sha256(host) != hosts["gui"]["sha256"]:
-        raise ValueError("P65 pinned plugin/host changed or wrong hash")
+    if sha256(module) != product["sha256"]:
+        raise ValueError("P66 native VST3 module hash changed")
+    host_paths = {}
+    for name, spec in hosts.items():
+        actual = Path(spec["path"]).resolve(strict=True)
+        if not actual.is_file() or sha256(actual) != spec["sha256"]:
+            raise ValueError("P66 pinned native host missing or changed")
+        host_paths[name] = actual
     if not isinstance(cases, list) or not 1 <= len(cases) <= 32:
         raise ValueError("P65 requires 1..32 product-specific cases")
     ids = set()
@@ -69,10 +80,21 @@ def validate(plan):
         ids.add(cid)
         if kind not in KINDS or not isinstance(contract, dict):
             raise ValueError("P65 unknown or unapproved adapter kind")
-        if kind == "gui_workflow":
-            workflow = contract
-        else:
-            workflow = compile_contract(contract)
+        if kind == "technical_quickcheck":
+            if not {"audio", "stress"} <= set(host_paths):
+                raise ValueError("P66 technical quickcheck requires two native audio/stress hosts")
+            if (set(contract) != {"required_coverage"} or
+                    not isinstance(contract["required_coverage"], list)
+                    or not 1 <= len(contract["required_coverage"]) <= len(QUICK_COVERAGE)
+                    or any(type(v) is not str or v not in QUICK_COVERAGE
+                           for v in contract["required_coverage"])
+                    or len(set(contract["required_coverage"])) !=
+                    len(contract["required_coverage"])):
+                raise ValueError("P66 only explicitly approved technical quickcheck assertions")
+            compiled.append({"id": cid, "kind": kind, "contract": contract,
+                             "expected_actions": 1})
+            continue
+        workflow = contract if kind == "gui_workflow" else compile_contract(contract)
         # Invoke the actual native GUI contract validator. This prevents
         # accepting malformed instructions or manually guessed param values.
         gui_host, _, gui_module, _, steps = validate_gui(workflow)
@@ -84,12 +106,14 @@ def validate(plan):
             raise ValueError("P65 each case must share the pinned binary and host")
         compiled.append({"id": cid, "kind": kind, "contract": contract,
                          "expected_actions": len(steps)})
-    return module, host, compiled
+    return module, host_paths, compiled
 
 
-def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run, timeout=90):
+def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run,
+            quick_runner=quick_run, timeout=90):
     # Validate the ENTIRE plan before doing a single real GUI click.
-    module, host, cases = validate(plan)
+    module, hosts, cases = validate(plan)
+    host = hosts["gui"]
     if type(timeout) is not int or not 5 <= timeout <= 300:
         raise ValueError("P65 invalid bounded native test timeout")
     out = Path(out)
@@ -97,7 +121,8 @@ def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run, timeout=90
     result_file = out / "PRODUCT-TEST-PLAN-RESULT.json"
     result_file.unlink(missing_ok=True)
     fingerprint = sha256(module)
-    hostprint = sha256(host)
+    hostprints = {name: sha256(path) for name, path in hosts.items()}
+    hostprint = hostprints["gui"]
     report = {
         "schema": RESULT, "status": "FAIL",
         "product_id": plan["product"]["id"],
@@ -119,30 +144,51 @@ def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run, timeout=90
             entry["faults"].append("prior case failed; remaining actions deliberately skipped")
         else:
             try:
-                if sha256(module) != fingerprint or sha256(host) != hostprint:
-                    raise ValueError("P65 executable or VST3 module changed before case")
+                if (sha256(module) != fingerprint or
+                        any(sha256(path) != hostprints[name]
+                            for name, path in hosts.items())):
+                    raise ValueError("P66 executable or VST3 module changed before case")
                 folder = out / ("%02d-%s" % (idx + 1, cid))
-                if kind == "gui_workflow":
-                    observed = gui_runner(case["contract"], folder, timeout=timeout)
-                    expected_status = "TECHNICAL_PASS"
-                    counter = "verified_actions"
+                if kind == "technical_quickcheck":
+                    bundle = next(x for x in module.parents if
+                                  x.is_dir() and x.suffix.lower() == ".vst3")
+                    observed = quick_runner(bundle, hosts["audio"], hosts["stress"],
+                                            folder, timeout=timeout)
+                    if (not isinstance(observed, dict)
+                            or observed.get("schema") != "125a-quickcheck-result-v1"
+                            or observed.get("status") != "TECHNICAL_PASS"
+                            or observed.get("release_approved") is not False
+                            or observed.get("verified_module_sha256") != fingerprint
+                            or not isinstance(observed.get("coverage"), dict)
+                            or any(observed["coverage"].get(name) != "PASS"
+                                   for name in case["contract"]["required_coverage"])
+                            or observed["coverage"].get("physical_asio_hardware") != "NOT RUN"
+                            or observed["coverage"].get("real_commercial_daw_session") != "NOT RUN"):
+                        raise ValueError("P66 actual native technical quickcheck coverage incomplete")
                 else:
-                    observed = sweep_runner(case["contract"], folder, timeout=timeout)
-                    expected_status = "CONTRACT_PASS"
-                    counter = "verified_checkpoints"
-                if (not isinstance(observed, dict)
-                        or observed.get("status") != expected_status
-                        or type(observed.get(counter)) is not int
-                        or observed[counter] != case["expected_actions"]
-                        or observed.get("release_approved") is True):
-                    raise ValueError("P65 nested native result failed independent expected counts")
-                if kind == "gui_workflow" and (
-                        observed.get("verified_module_sha256") != fingerprint or
-                        observed.get("gui_host_sha256") != hostprint or
-                        observed.get("declared_actions") != case["expected_actions"]):
-                    raise ValueError("P65 workflow result belongs to another module/host")
-                if sha256(module) != fingerprint or sha256(host) != hostprint:
-                    raise ValueError("P65 binary changed during case")
+                    if kind == "gui_workflow":
+                        observed = gui_runner(case["contract"], folder, timeout=timeout)
+                        expected_status = "TECHNICAL_PASS"
+                        counter = "verified_actions"
+                    else:
+                        observed = sweep_runner(case["contract"], folder, timeout=timeout)
+                        expected_status = "CONTRACT_PASS"
+                        counter = "verified_checkpoints"
+                    if (not isinstance(observed, dict)
+                            or observed.get("status") != expected_status
+                            or type(observed.get(counter)) is not int
+                            or observed[counter] != case["expected_actions"]
+                            or observed.get("release_approved") is True):
+                        raise ValueError("P65 nested native result failed independent expected counts")
+                    if kind == "gui_workflow" and (
+                            observed.get("verified_module_sha256") != fingerprint or
+                            observed.get("gui_host_sha256") != hostprint or
+                            observed.get("declared_actions") != case["expected_actions"]):
+                        raise ValueError("P65 workflow result belongs to another module/host")
+                if (sha256(module) != fingerprint or
+                        any(sha256(path) != hostprints[name]
+                            for name, path in hosts.items())):
+                    raise ValueError("P66 plugin or native test host changed during case")
                 entry["status"] = "PASS"
                 entry["verified_actions"] = case["expected_actions"]
             except (ValueError, OSError, TypeError, KeyError, IndexError) as exc:
