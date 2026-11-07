@@ -14,6 +14,40 @@ or Python edits in the Test Lab core.
 - `gesture_sweep`: repeatable multi-point physical drag and expected
   normalized values in both directions using P51/P52.
 
+- `technical_quickcheck` (P66): executes the existing native real VST3
+  playback, state save/load and multiple sample-rate/buffer matrix tests,
+  using separately SHA-256-pinned `hosts.audio` and `hosts.stress`
+  in the same JSON plan. The case must explicitly list one or more of:
+  `api_playback_save`, `sample_rate_buffer_matrix`,
+  `native_audio_state_capture`, `fresh_process_project_recall`
+  under `contract.required_coverage`. Each listed coverage result must
+  equal `PASS`; unlisted product-specific MIDI/export semantics are
+  never inferred.
+
+Example technical case and required extra host records (add to the
+same `hosts`/ `cases` sections of the complete plan):
+
+```json
+{
+  "audio": {"path": "C:/QA/125A_Test_Lab_Host.exe", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+  "stress": {"path": "C:/QA/125A_Test_Lab_State_Stress.exe", "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}
+}
+```
+
+```json
+{
+  "id": "audio_save_recall",
+  "kind": "technical_quickcheck",
+  "contract": {
+    "required_coverage": [
+      "api_playback_save",
+      "sample_rate_buffer_matrix",
+      "native_audio_state_capture"
+    ]
+  }
+}
+```
+
 Each case uses its **existing complete adapter contract**, nested below
 `contract`. The product plan validates *all cases* before sending any
 click and pins module/GUI-host SHA-256 once across the execution.
@@ -83,8 +117,7 @@ Creator controls; AWE may describe Bank/Program controls; future
 plugins can declare their own contracts. P65 does not automatically know
 what an unlabeled button means.
 
-**Scope and safety:** P65 initially dispatches the two stable native
-GUI adapters. It does not automatically test Drumator's exports, AWE
+**Scope and safety:** P65/P66 dispatch stable native GUI adapters and an existing\ntechnical native audio/save/recall quickcheck. It does not automatically test Drumator's exports, AWE
 PCM reference matching, preset-file round trips, ASIO hardware or
 commercial DAW save/reopen through a common plan. These require more
 registered adapter types and independently defined oracles in later
