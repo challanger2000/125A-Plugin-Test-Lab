@@ -57,6 +57,8 @@ def run(chain, out, *, gui_runner=run_gui, export_verifier=verify_export, timeou
         "expected_actions": count, "verified_actions": 0,
         "expected_outputs": len(paths), "verified_outputs": 0,
         "actual_plugin_export_tested": False,
+        "export_origin": "NOT ESTABLISHED",
+        "provenance_verified": False,
         "release_approved": False, "faults": []
     }
     try:
