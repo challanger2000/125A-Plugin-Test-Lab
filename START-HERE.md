@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P76 — universal, independently referenced WAV and MIDI export checks
+
+Approved P65/P66 JSON plans may include an `export_artifact` case declaring one or more actual output WAV/SMF MIDI filenames, independently specified exact SHA-256 and format expectations, including PCM frames or note-on timelines. The generic P65 runner verifies files and P67 required feature links; missing/incorrect artifacts fail closed. This verifier **does not produce files or prove a plugin triggered its own exporter**—that requires a separately approved preceding GUI/host workflow. See `docs/P76-WAV-MIDI-ORACLES.md`.
+
+
 ## P75 — many plugins in one QA run, independent reports
 
 Run `python tests/run_vst3_batch_qa.py --plugins-root <VST3-test-folder> --gui-host <125A_Test_Lab_GUI.exe> --out <results>` for bounded read-only P74 inventory of 1–32 plugins with isolated child runs and a single `BATCH-QA-REPORT.json`. Alternatively, supply `--selection <selection.json>` and the native audio/stress hosts to activate technical baseline checks for selected products only. Failures do not prevent later selected plugins from running. See `docs/P75-UNIVERSAL-BATCH-QA.md`; a batch technical PASS does not certify complete product behavior.

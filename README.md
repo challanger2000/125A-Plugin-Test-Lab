@@ -1,5 +1,8 @@
 # 125A Plugin Test Lab
 
+**P76 universal WAV/MIDI export evidence:** P65/P67 test plans may now include a generic `export_artifact` case checking real WAV PCM frame format, SMF MIDI note-on timeline and independently approved exact output SHA256. Any missing, truncated or mismatching file blocks required coverage. A standalone oracle cannot itself trigger the plugin's exporter, and CI distinguishes independently generated fixture files from genuine product output. [P76 scope](docs/P76-WAV-MIDI-ORACLES.md).
+
+
 **P75 universal multi-VST3 batch QA:** Read-only inventory of up to 32 real VST3s in separate bounded processes, or a single per-plugin selection file activating the native technical audio baseline only for reviewed plugins. Defective/timeout child results remain FAIL while later plugins continue. One aggregate report, no product-specific QA code or release approval. [P75 usage](docs/P75-UNIVERSAL-BATCH-QA.md).
 
 
