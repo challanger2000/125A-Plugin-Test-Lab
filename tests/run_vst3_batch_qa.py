@@ -27,7 +27,8 @@ ALLOWED = {"INVENTORY_COMPLETE", "TECHNICAL_BASELINE_PASS",
 
 def validate_exploration_spec(item):
     """Explicit opt-in is mandatory for every plugin; never infer it from a directory scan."""
-    permitted = {"explore_unknown_gui", "exploration_points", "exploration_max_points"}
+    permitted = {"explore_unknown_gui", "exploration_points",
+                 "exploration_max_points", "exploration_repeats"}
     if not permitted.intersection(item):
         return {}
     if item.get("explore_unknown_gui") is not True:
@@ -35,7 +36,11 @@ def validate_exploration_spec(item):
     count = item.get("exploration_max_points", 4)
     if type(count) is not int or not 1 <= count <= 16:
         raise ValueError("P83 GUI exploration budget must be 1..16")
-    result = {"explore_unknown_gui": True, "exploration_max_points": count}
+    repeats = item.get("exploration_repeats", 1)
+    if type(repeats) is not int or not 1 <= repeats <= 5:
+        raise ValueError("P84 invalid fresh-instance GUI repetition count")
+    result = {"explore_unknown_gui": True, "exploration_max_points": count,
+              "exploration_repeats": repeats}
     if "exploration_points" in item:
         points = item["exploration_points"]
         if (type(points) is not str or
@@ -76,7 +81,8 @@ def load_selection(selection=None, root=None, *, technical_all=False):
     for item in items:
         if not isinstance(item, dict) or not {"id", "bundle", "run_technical_baseline"} <= set(item) or (
                 set(item) - {"id", "bundle", "run_technical_baseline", "approved_plan", "feature_matrix",
-                             "explore_unknown_gui", "exploration_points", "exploration_max_points"}):
+                             "explore_unknown_gui", "exploration_points", "exploration_max_points",
+                             "exploration_repeats"}):
             raise ValueError("P75 unsupported plugin batch selection fields")
         ident = item["id"]
         if type(ident) is not str or not ID.fullmatch(ident) or ident in ids:
@@ -140,7 +146,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                 set(entry) - {"id", "bundle", "module", "sha256",
                               "run_technical_baseline", "approved_plan",
                               "feature_matrix", "explore_unknown_gui",
-                              "exploration_points", "exploration_max_points"} or
+                              "exploration_points", "exploration_max_points",
+                              "exploration_repeats"} or
                 ("approved_plan" in entry) != ("feature_matrix" in entry) or
                 type(entry["id"]) is not str or not ID.fullmatch(entry["id"]) or
                 entry["id"] in observed_ids or
@@ -207,7 +214,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                 cmd += ["--approved-plan", str(pp), "--feature-matrix", str(mp)]
             if entry.get("explore_unknown_gui", False):
                 cmd += ["--explore-unknown-gui", "--exploration-max-points",
-                        str(entry["exploration_max_points"])]
+                        str(entry["exploration_max_points"]),
+                        "--exploration-repeats", str(entry["exploration_repeats"])]
                 if "exploration_points" in entry:
                     cmd += ["--exploration-points", entry["exploration_points"]]
             process = runner(cmd, capture_output=True, text=True,
@@ -246,6 +254,11 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                      (outcome.get("unknown_gui_exploration") not in (
                          "OBSERVATIONS_COMPLETE", "NOT APPLICABLE - NO EDITOR") or
                       type(outcome.get("exploratory_clicks_performed")) is not int or
+                      (entry.get("exploration_repeats", 1) > 1 and (
+                          outcome.get("unknown_gui_repeatability") not in (
+                              "REPRODUCIBLE_OBSERVATIONS", "NOT RUN") or
+                          outcome.get("unknown_gui_completed_repetitions") not in (
+                              entry["exploration_repeats"], 0))) or
                       (outcome["unknown_gui_exploration"] == "OBSERVATIONS_COMPLETE" and
                        (outcome["exploratory_clicks_performed"] < 1 or
                         outcome.get("unknown_gui_semantics") != "UNAPPROVED OBSERVATIONS ONLY")) or
