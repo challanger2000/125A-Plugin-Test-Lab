@@ -42,12 +42,15 @@ local function setup()
   check(take ~= nil and reaper.TakeIsMIDI(take), "MIDI take missing")
   local start_tick = reaper.MIDI_GetPPQPosFromProjTime(take, 0.1)
   local end_tick = reaper.MIDI_GetPPQPosFromProjTime(take, 0.75)
-  check(reaper.MIDI_InsertNote(take, false, false, start_tick, end_tick,
-                              0, TEST_NOTE, TEST_VELOCITY, false),
-        "MIDI note insertion failed")
+  if TEST_INSERT_NOTE then
+    check(reaper.MIDI_InsertNote(take, false, false, start_tick, end_tick,
+                                0, TEST_NOTE, TEST_VELOCITY, false),
+          "MIDI note insertion failed")
+  end
   reaper.MIDI_Sort(take)
   local _, note_count = reaper.MIDI_CountEvts(take)
-  check(note_count == 1, "generated MIDI note not found")
+  check(note_count == (TEST_INSERT_NOTE and 1 or 0),
+        "unexpected generated MIDI note count")
   reaper.GetSetProjectInfo(0, "RENDER_SETTINGS", 0, true)
   reaper.GetSetProjectInfo(0, "RENDER_BOUNDSFLAG", 0, true)
   reaper.GetSetProjectInfo(0, "RENDER_STARTPOS", 0, true)
@@ -81,11 +84,15 @@ local function verify()
   local take = reaper.GetActiveTake(item)
   check(take ~= nil and reaper.TakeIsMIDI(take), "reloaded MIDI take missing")
   local _, notes = reaper.MIDI_CountEvts(take)
-  check(notes == 1, "saved note count changed")
-  local found, _, _, begin_tick, stop_tick, channel, pitch, velocity =
-    reaper.MIDI_GetNote(take, 0)
-  check(found and pitch == TEST_NOTE and velocity == TEST_VELOCITY
-        and channel == 0 and stop_tick > begin_tick, "saved MIDI changed")
+  check(notes == (TEST_INSERT_NOTE and 1 or 0), "saved note count changed")
+  local pitch, velocity = -1, -1
+  if TEST_INSERT_NOTE then
+    local found, _, _, begin_tick, stop_tick, channel, p, v =
+      reaper.MIDI_GetNote(take, 0)
+    check(found and p == TEST_NOTE and v == TEST_VELOCITY
+          and channel == 0 and stop_tick > begin_tick, "saved MIDI changed")
+    pitch, velocity = p, v
+  end
   marker(TEST_STATUS, "phase=reload\nfx_name=" .. safe_line(name)
     .. "\nnote_count=" .. tostring(notes)
     .. "\npitch=" .. tostring(pitch)
