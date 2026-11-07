@@ -18,12 +18,13 @@ from run_gui_gesture_sweep import run as sweep_run, compile_contract
 from run_plugin_quickcheck import run as quick_run
 from product_feature_coverage import validate_matrix, evaluate
 from run_export_artifact_oracle import validate as validate_export, verify as verify_export
+from run_export_action_chain import validate as validate_chain, run as run_chain
 
 SCHEMA = "125a-product-test-plan-v1"
 RESULT = "125a-product-test-plan-result-v1"
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 HEX = re.compile(r"^[a-f0-9]{64}$")
-KINDS = {"gui_workflow", "gesture_sweep", "technical_quickcheck", "export_artifact"}
+KINDS = {"gui_workflow", "gesture_sweep", "technical_quickcheck", "export_artifact", "export_action_chain"}
 QUICK_COVERAGE = {"api_playback_save", "sample_rate_buffer_matrix",
                   "native_audio_state_capture", "fresh_process_project_recall"}
 
@@ -82,6 +83,16 @@ def validate(plan):
         ids.add(cid)
         if kind not in KINDS or not isinstance(contract, dict):
             raise ValueError("P65 unknown or unapproved adapter kind")
+        if kind == "export_action_chain":
+            chain_host, chain_module, action_count, output_paths = validate_chain(contract)
+            if chain_host != host or chain_module != module:
+                raise ValueError("P77 action chain belongs to a different host or plugin")
+            if (contract["workflow"]["product"]["sha256"] != product["sha256"]
+                    or contract["export"]["module_sha256"] != product["sha256"]):
+                raise ValueError("P77 action chain does not match pinned product")
+            compiled.append({"id": cid, "kind": kind, "contract": contract,
+                             "expected_actions": action_count + len(output_paths)})
+            continue
         if kind == "export_artifact":
             file_entries = validate_export(contract, product["sha256"])
             compiled.append({"id": cid, "kind": kind, "contract": contract,
@@ -117,7 +128,7 @@ def validate(plan):
 
 
 def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run,
-            quick_runner=quick_run, timeout=90, coverage_matrix=None):
+            quick_runner=quick_run, chain_runner=run_chain, timeout=90, coverage_matrix=None):
     # Validate the ENTIRE plan before doing a single real GUI click.
     module, hosts, cases = validate(plan)
     # P67 validates ALL feature declarations and case links before performing
@@ -162,7 +173,22 @@ def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run,
                             for name, path in hosts.items())):
                     raise ValueError("P66 executable or VST3 module changed before case")
                 folder = out / ("%02d-%s" % (idx + 1, cid))
-                if kind == "export_artifact":
+                if kind == "export_action_chain":
+                    observed = chain_runner(case["contract"], folder, timeout=timeout)
+                    if (not isinstance(observed, dict)
+                            or observed.get("schema") != "125a-export-action-chain-result-v1"
+                            or observed.get("status") != "ACTION_AND_ARTIFACT_PASS"
+                            or observed.get("verified_module_sha256") != fingerprint
+                            or observed.get("verified_gui_host_sha256") != hostprint
+                            or observed.get("release_approved") is not False
+                            or observed.get("actual_plugin_export_tested") is not True
+                            or type(observed.get("verified_actions")) is not int
+                            or type(observed.get("verified_outputs")) is not int
+                            or observed.get("expected_actions") != observed.get("verified_actions")
+                            or observed.get("expected_outputs") != observed.get("verified_outputs")
+                            or observed["verified_actions"] + observed["verified_outputs"] != case["expected_actions"]):
+                        raise ValueError("P77 native action/export chain evidence incomplete")
+                elif kind == "export_artifact":
                     observed = verify_export(case["contract"], folder,
                                              module_sha=fingerprint)
                     if (not isinstance(observed, dict)
