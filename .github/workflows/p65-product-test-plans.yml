@@ -1,0 +1,108 @@
+name: P65 universal plugin-specific test plans across native VST3 binaries
+
+on:
+  pull_request:
+    paths:
+      - 'tests/run_product_test_plan.py'
+      - 'tests/test_product_test_plan.py'
+      - '.github/workflows/p65-product-test-plans.yml'
+      - 'docs/P65-PRODUCT-TEST-PLANS.md'
+      - 'CMakeLists.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject wrong product, host, fake success and unsafe test commands
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_product_test_plan.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P65 general product plan security and regression failed' }
+          python -m py_compile tests/run_product_test_plan.py tests/test_product_test_plan.py
+          if ($LASTEXITCODE -ne 0) { throw 'P65 Python syntax failed' }
+
+  native-multi-product-contract:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build two genuinely different Windows VST3 audio plugins and GUI host
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P65 configure failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiAnalogGood QAGuiAnalogBad
+          if ($LASTEXITCODE -ne 0) { throw 'P65 native VST3 compilation failed' }
+      - name: Verify product plans run original P51 native drag adapters without Test Lab modifications
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          if ($exe.Count -ne 1) { throw 'P65 native test host missing' }
+          foreach ($variant in @('Good','Bad')) {
+            $bundle = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_GUI_Analog$variant.vst3")
+            if ($bundle.Count -ne 1) { throw "P65 $variant native VST3 missing" }
+            $dll = @(Get-ChildItem $bundle[0].FullName -Recurse -File -Filter '*.vst3')
+            if ($dll.Count -ne 1) { throw "P65 $variant VST3 module ambiguous" }
+            $module = $dll[0].FullName
+            $fingerprint = (Get-FileHash $module -Algorithm SHA256).Hash.ToLowerInvariant()
+            $hostSha = (Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $checkpoints = @(
+              @{start_x=40;start_y=90;end_x=100;end_y=90;expected_normalized=0.25},
+              @{start_x=100;start_y=90;end_x=160;end_y=90;expected_normalized=0.5},
+              @{start_x=160;start_y=90;end_x=220;end_y=90;expected_normalized=0.75},
+              @{start_x=220;start_y=90;end_x=280;end_y=90;expected_normalized=1.0},
+              @{start_x=280;start_y=90;end_x=40;end_y=90;expected_normalized=0.0}
+            )
+            $plan = @{
+              schema = '125a-product-test-plan-v1'
+              product = @{id="analog_$($variant.ToLowerInvariant())";module=$module;sha256=$fingerprint}
+              hosts = @{gui=@{path=$exe[0].FullName;sha256=$hostSha}}
+              cases = @(
+                @{
+                  id='analog_bidirectional'
+                  kind='gesture_sweep'
+                  contract=@{
+                    schema='125a-gui-gesture-sweep-v1'
+                    product=@{binary=$module;sha256=$fingerprint}
+                    gui_host=$exe[0].FullName
+                    param_id=9001
+                    initial_normalized=0.0
+                    checkpoints=$checkpoints
+                  }
+                }
+              )
+            }
+            New-Item -ItemType Directory -Force build/p65 | Out-Null
+            $file = "build/p65/$variant-plan.json"
+            $plan | ConvertTo-Json -Depth 12 | Set-Content -Encoding utf8 $file
+            $PSNativeCommandUseErrorActionPreference = $false
+            python tests/run_product_test_plan.py --plan $file --out "build/p65/$variant"
+            $code = $LASTEXITCODE
+            $result = Get-Content "build/p65/$variant/PRODUCT-TEST-PLAN-RESULT.json" -Raw | ConvertFrom-Json
+            if ($variant -eq 'Good') {
+              if ($code -ne 0 -or $result.status -ne 'CONTRACT_PASS' -or $result.passed_cases -ne 1 -or $result.cases[0].verified_actions -ne 5) {
+                throw 'P65 actual good VST3 product plan did not pass its independent 5-step native contract'
+              }
+            } else {
+              if ($code -ne 1 -or $result.status -ne 'FAIL' -or $result.failed_cases -ne 1) {
+                throw 'P65 real defective VST3 plugin falsely passed its generic product plan'
+              }
+            }
+            if ($result.release_approved -ne $false -or $result.physical_asio_hardware -ne 'NOT RUN') {
+              throw 'P65 improperly certified physical hardware or commercial release'
+            }
+          }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P65-universal-product-plans-real-VST3-positive-negative
+          path: build/p65/
+          if-no-files-found: warn
