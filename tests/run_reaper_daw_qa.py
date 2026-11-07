@@ -187,6 +187,21 @@ def _windows_for_process(pid):
                 user32.GetWindowTextW(hwnd, buf, length + 1)
                 if buf.value:
                     titles.append(buf.value[:240])
+                if "EVALUATION LICENSE" in buf.value.upper():
+                    def inspect(child, _arg):
+                        if len(titles) >= 80:
+                            return False
+                        chars = user32.GetWindowTextLengthW(child)
+                        value = ctypes.create_unicode_buffer(min(1025, chars + 1))
+                        if chars:
+                            user32.GetWindowTextW(child, value, min(1025, chars + 1))
+                        cls = ctypes.create_unicode_buffer(128)
+                        user32.GetClassNameW(child, cls, 128)
+                        titles.append("child:%s:%s:enabled=%s" % (
+                            cls.value, value.value[:100], bool(user32.IsWindowEnabled(child))))
+                        return True
+                    cb2 = fn_type(inspect)
+                    user32.EnumChildWindows(hwnd, cb2, 0)
         return True
 
     callback = fn_type(inspect)
