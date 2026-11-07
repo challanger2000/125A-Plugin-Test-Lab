@@ -14,7 +14,8 @@ def evidence(root, module_sha, host_sha):
     abi={"schema":"125a-vst3-discovery-v1","status":"DISCOVERY_COMPLETE",
          "verified_module_sha256":module_sha,
          "verified_gui_host_sha256":host_sha,
-         "release_approved":False,"parameter_count":2,"bus_count":2}
+         "release_approved":False,"parameter_count":2,"bus_count":2,
+         "reported_editor_available":True}
     gui={"schema":"125a-unified-gui-discovery-v1","status":"CANDIDATES_COMPLETE",
          "verified_module_sha256":module_sha,
          "verified_gui_host_sha256":host_sha,
