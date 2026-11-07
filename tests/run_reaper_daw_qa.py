@@ -194,14 +194,69 @@ def _windows_for_process(pid):
     return titles[:20]
 
 
+def _accept_visible_evaluation_dialog(pid):
+    """Click only REAPER's ordinary, enabled evaluation-continue button.
+
+    No license is modified or timing restrictions bypassed.
+    """
+    if os.name != "nt":
+        return False
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    callback_t = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    clicked = [False]
+    callbacks = []
+
+    def title(hwnd):
+        count = user32.GetWindowTextLengthW(hwnd)
+        if not 0 < count <= 1024:
+            return ""
+        buf = ctypes.create_unicode_buffer(count + 1)
+        user32.GetWindowTextW(hwnd, buf, count + 1)
+        return buf.value
+
+    def inspect_top(hwnd, _unused):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value != pid or "EVALUATION LICENSE" not in title(hwnd).upper():
+            return True
+
+        def inspect_child(child, _unused2):
+            caption = title(child).lower()
+            kind = ctypes.create_unicode_buffer(128)
+            user32.GetClassNameW(child, kind, 128)
+            if (kind.value.lower() == "button" and
+                    ("still evaluating" in caption or
+                     "continue evaluating" in caption) and
+                    user32.IsWindowEnabled(child)):
+                user32.SendMessageW(child, 0x00F5, 0, 0)  # BM_CLICK
+                clicked[0] = True
+                return False
+            return True
+
+        cb = callback_t(inspect_child)
+        callbacks.append(cb)
+        user32.EnumChildWindows(hwnd, cb, 0)
+        return not clicked[0]
+
+    cb_top = callback_t(inspect_top)
+    callbacks.append(cb_top)
+    user32.EnumWindows(cb_top, 0)
+    return clicked[0]
+
+
 def run_process(command, status_file=None, timeout=90):
     """A fresh process per phase. Existing user REAPER session is untouched."""
     process = subprocess.Popen(command, stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL)
     try:
+        accepted_eval_dialog = False
         if status_file is not None:
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
+                if not accepted_eval_dialog:
+                    accepted_eval_dialog = _accept_visible_evaluation_dialog(process.pid)
                 status = read_status(status_file)
                 if status:
                     if status.get("phase") == "FAIL":
