@@ -50,7 +50,7 @@ class NativeExportAdapterTests(unittest.TestCase):
                     "declared_gui_actions": 1, "expected_export_count": 1,
                     "verified_export_count": 1, "gui_declared_action_oracles": "PASS",
                     "approved_independent_file_oracles": "PASS",
-                    "verified_exports": {"gui-export.wav": {"sha256": "x"}},
+                    "verified_exports": {"gui-export.wav": {"sha256": "3c548b8ac23f3be44063b4afce2609137a6e274e409af17f2397f0c95172741b", "format": "wav", "metadata": {"channels": 1, "sample_rate": 44100, "sample_width_bits": 16, "frames": 16}}},
                     "release_approved": False
                 }
             result = execute(plan, root / "reports", gui_export_runner=fake_runner)
