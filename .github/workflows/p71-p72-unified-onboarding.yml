@@ -1,0 +1,100 @@
+name: P71-P72 universal GUI convergence and one-command plugin onboarding
+
+on:
+  pull_request:
+    paths:
+      - 'tests/run_gui_unified_discovery.py'
+      - 'tests/run_plugin_onboarding.py'
+      - 'tests/test_gui_unified_discovery.py'
+      - 'tests/test_plugin_onboarding.py'
+      - '.github/workflows/p71-p72-unified-onboarding.yml'
+      - 'docs/P71-P72-UNIVERSAL-ONBOARDING.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  negative-contracts:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject mismatched HWNDs, forged visual targets and false onboarding approvals
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_gui_unified_discovery.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P71 independent negative contracts failed' }
+          python -m unittest discover -s tests -p test_plugin_onboarding.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P72 onboarding negative contracts failed' }
+          python -m py_compile tests/run_gui_unified_discovery.py tests/run_plugin_onboarding.py
+          if ($LASTEXITCODE -ne 0) { throw 'P71/P72 syntax failed' }
+          python -m unittest discover -s tests -p test_gui_hwnd_guided.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P69 backwards compatibility failed' }
+          python -m unittest discover -s tests -p test_gui_painted_candidates.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P70 backwards compatibility failed' }
+
+  actual-native-vst3:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build VST3 GUI host and two genuinely different Windows test plugins
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P71/P72 configure failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiNested QAGuiPaintedOnly
+          if ($LASTEXITCODE -ne 0) { throw 'P71/P72 actual Windows fixture compile failed' }
+      - name: Verify one entry point discovers independent native and painted candidates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          if ($hostExe.Count -ne 1) { throw 'Native GUI host absent' }
+          foreach ($variant in @('Nested', 'PaintedOnly')) {
+            $plugin = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_GUI_$variant.vst3")
+            if ($plugin.Count -ne 1) { throw "Actual $variant VST3 missing" }
+            $PSNativeCommandUseErrorActionPreference = $false
+            python tests/run_gui_unified_discovery.py --plugin $plugin[0].FullName --gui-host $hostExe[0].FullName --out "build/p71/$variant"
+            if ($LASTEXITCODE -ne 0) { throw "P71 combined discovery rejected actual $variant VST3" }
+            $result = Get-Content "build/p71/$variant/UNIFIED-GUI-DISCOVERY.json" -Raw | ConvertFrom-Json
+            if ($result.status -ne 'CANDIDATES_COMPLETE' -or
+                $result.click_observation -ne 'NOT RUN' -or
+                $result.release_approved -ne $false -or
+                $result.review_required -ne $true -or
+                @($result.proposed_candidates).Count -lt 1) {
+              throw 'P71 incorrectly certified, clicked or omitted genuine GUI controls'
+            }
+            if ($variant -eq 'Nested') {
+              if ($result.native_candidates -lt 1 -or
+                  @($result.proposed_candidates | Where-Object { $_.source -eq 'NATIVE_HWND' -and $_.x -eq 160 -and $_.y -eq 90 }).Count -ne 1) {
+                throw 'P71 nested genuine HWND control not located'
+              }
+            } else {
+              if ($result.native_candidates -ne 0 -or
+                  @($result.proposed_candidates | Where-Object { $_.source -eq 'PAINTED_VISUAL_REGION' -and $_.x -eq 160 -and $_.y -eq 90 }).Count -ne 1) {
+                throw 'P71 self-painted VST3 region not found'
+              }
+            }
+            python tests/run_plugin_onboarding.py --plugin $plugin[0].FullName --gui-host $hostExe[0].FullName --out "build/p72/$variant"
+            if ($LASTEXITCODE -ne 0) { throw "P72 one-command discovery failed $variant" }
+            $onboard = Get-Content "build/p72/$variant/PLUGIN-ONBOARDING-RESULT.json" -Raw | ConvertFrom-Json
+            if ($onboard.status -ne 'REVIEW_PACK_COMPLETE' -or
+                $onboard.executable_p65_plan -ne $false -or
+                $onboard.clicks_performed -ne 0 -or
+                $onboard.required_feature_coverage -ne 'NOT DECLARED' -or
+                $onboard.release_approved -ne $false -or
+                $onboard.verified_module_sha256 -ne $result.verified_module_sha256) {
+              throw 'P72 falsified or omitted immutable VST3 review evidence'
+            }
+          }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P71-P72-real-native-painted-plugin-onboarding-evidence
+          path: |
+            build/p71/
+            build/p72/
+          if-no-files-found: warn
