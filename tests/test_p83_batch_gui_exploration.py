@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """P83 per-plugin sham-controlled GUI probing in isolated batch runners."""
+import copy
 import json
 from pathlib import Path
 import tempfile
@@ -63,18 +64,17 @@ class P83BatchUnknownGuiTests(unittest.TestCase):
             load_selection(selection=self.selection)
 
     def test_probe_budget_and_format_checked_in_preflight(self):
+        original = json.loads(self.selection.read_text())
         for points, limit in (("160,90;240,90",1), ("a,b",1),
                               ("160,90;160,90",2)):
             with self.subTest(points=points):
-                spec = json.loads(self.selection.read_text())
+                spec = copy.deepcopy(original)
                 spec["plugins"][0].update(
                     explore_unknown_gui=True, exploration_points=points,
                     exploration_max_points=limit)
                 self.selection.write_text(json.dumps(spec))
                 with self.assertRaises(ValueError):
                     load_selection(selection=self.selection)
-                # Restore pristine data for next subtest.
-                _,_ = setup(self.root)
 
     def test_false_exploration_evidence_blocks_one_plugin_not_next(self):
         items = self.select_exploration()
