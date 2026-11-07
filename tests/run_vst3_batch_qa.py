@@ -28,7 +28,8 @@ ALLOWED = {"INVENTORY_COMPLETE", "TECHNICAL_BASELINE_PASS",
 def validate_exploration_spec(item):
     """Explicit opt-in is mandatory for every plugin; never infer it from a directory scan."""
     permitted = {"explore_unknown_gui", "exploration_points",
-                 "exploration_max_points", "exploration_repeats", "dense_gui_grid"}
+                 "exploration_max_points", "exploration_repeats", "dense_gui_grid",
+                 "crosscheck_abi_gui"}
     if not permitted.intersection(item):
         return {}
     if item.get("explore_unknown_gui") is not True:
@@ -41,6 +42,12 @@ def validate_exploration_spec(item):
         raise ValueError("P84 invalid fresh-instance GUI repetition count")
     result = {"explore_unknown_gui": True, "exploration_max_points": count,
               "exploration_repeats": repeats}
+    if "crosscheck_abi_gui" in item:
+        if type(item["crosscheck_abi_gui"]) is not bool or item["crosscheck_abi_gui"] is not True:
+            raise ValueError("P87 crosscheck requires explicit true opt-in")
+        if "dense_gui_grid" not in item:
+            raise ValueError("P87 crosscheck requires opted-in dense grid")
+        result["crosscheck_abi_gui"] = True
     if "dense_gui_grid" in item:
         side = item["dense_gui_grid"]
         if (type(side) is not int or side not in (3, 5)
@@ -89,7 +96,8 @@ def load_selection(selection=None, root=None, *, technical_all=False):
         if not isinstance(item, dict) or not {"id", "bundle", "run_technical_baseline"} <= set(item) or (
                 set(item) - {"id", "bundle", "run_technical_baseline", "approved_plan", "feature_matrix",
                              "explore_unknown_gui", "exploration_points", "exploration_max_points",
-                             "exploration_repeats", "dense_gui_grid"}):
+                             "exploration_repeats", "dense_gui_grid",
+                             "crosscheck_abi_gui"}):
             raise ValueError("P75 unsupported plugin batch selection fields")
         ident = item["id"]
         if type(ident) is not str or not ID.fullmatch(ident) or ident in ids:
@@ -154,7 +162,7 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                               "run_technical_baseline", "approved_plan",
                               "feature_matrix", "explore_unknown_gui",
                               "exploration_points", "exploration_max_points",
-                              "exploration_repeats", "dense_gui_grid"} or
+                              "exploration_repeats", "dense_gui_grid", "crosscheck_abi_gui"} or
                 ("approved_plan" in entry) != ("feature_matrix" in entry) or
                 type(entry["id"]) is not str or not ID.fullmatch(entry["id"]) or
                 entry["id"] in observed_ids or
@@ -227,6 +235,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                     cmd += ["--exploration-points", entry["exploration_points"]]
                 if "dense_gui_grid" in entry:
                     cmd += ["--dense-gui-grid", str(entry["dense_gui_grid"])]
+                if entry.get("crosscheck_abi_gui", False):
+                    cmd += ["--crosscheck-abi-gui"]
             process = runner(cmd, capture_output=True, text=True,
                              errors="replace", check=False,
                              timeout=per_plugin_timeout)
@@ -259,6 +269,11 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                      outcome.get("approved_product_cases") != "CONTRACT_PASS") or
                     (entry["run_technical_baseline"] and
                      outcome.get("native_technical") != "PASS") or
+                    (entry.get("crosscheck_abi_gui", False) and
+                     (outcome.get("abi_gui_parameter_crosscheck") !=
+                          "ABI_AND_SAMPLED_GUI_RECONCILED" or
+                      type(outcome.get("abi_parameters_without_sampled_gui_transition"))
+                          is not int)) or
                     (entry.get("dense_gui_grid") is not None and (
                          outcome.get("unknown_gui_dense_grid") != entry["dense_gui_grid"] or
                          outcome.get("unknown_gui_grid_coverage") != "SAMPLED POINTS ONLY" or
@@ -294,6 +309,7 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
             row["required_feature_coverage"] = outcome["required_feature_coverage"]
             row["exploratory_clicks_performed"] = outcome.get("exploratory_clicks_performed", 0)
             row["unknown_gui_exploration"] = outcome.get("unknown_gui_exploration", "NOT RUN")
+            row["abi_gui_parameter_crosscheck"] = outcome.get("abi_gui_parameter_crosscheck", "NOT RUN")
         except (OSError, ValueError, TypeError, KeyError,
                 json.JSONDecodeError, subprocess.TimeoutExpired) as error:
             row["faults"].append(str(error))
