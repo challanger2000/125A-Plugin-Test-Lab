@@ -114,7 +114,7 @@ class Integration(unittest.TestCase):
             path = root / "future.wav"
             plan["cases"] = [chain_case(plan, path)]
             path.write_bytes(b"old")
-            with self.assertRaisesRegex(ValueError, "already exists"):
+            with self.assertRaisesRegex(ValueError, "occupied"):
                 validate(plan)
 
 
