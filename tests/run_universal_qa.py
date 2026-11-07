@@ -207,6 +207,7 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
         report["status"] = (
             "DECLARED_COVERAGE_PASS" if plan is not None
             else "TECHNICAL_BASELINE_PASS" if run_technical
+            else "INVENTORY_WITH_EXPLORATORY_OBSERVATIONS" if explore_unknown_gui
             else "INVENTORY_COMPLETE"
         )
     except (OSError, ValueError, KeyError, TypeError) as error:
@@ -257,7 +258,8 @@ def main():
             json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result, indent=2))
     return 0 if result["status"] in (
-        "INVENTORY_COMPLETE", "TECHNICAL_BASELINE_PASS",
+        "INVENTORY_COMPLETE", "INVENTORY_WITH_EXPLORATORY_OBSERVATIONS",
+        "TECHNICAL_BASELINE_PASS",
         "DECLARED_COVERAGE_PASS") else 1
 
 
