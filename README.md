@@ -1,5 +1,8 @@
 # 125A Plugin Test Lab
 
+**P70 universal custom-painted GUI candidates:** Static native editor BMP foreground-region discovery proposes possible click targets even for one-HWND painted UIs, with **no click by default**. Explicit opt-in can feed candidates into existing sham-controlled P42 native GUI exploration. The detector cannot know control semantics or certify complete coverage. [P70 limitations and tests](docs/P70-PAINTED-CANDIDATES.md).
+
+
 **P69 native HWND-guided GUI exploration:** Discover visible/enabled standard button HWNDs in the real VST3 editor, suggest native center click points without using a generic grid, and optionally run the existing P42 sham-controlled real-click analyzer only after explicit opt-in. Default remains read-only. [P69 scope](docs/P69-HWND-GUIDED-EXPLORATION.md).
 
 
