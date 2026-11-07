@@ -1,0 +1,53 @@
+name: P96 Windows virtual ASIO machine boot/driver readiness
+on:
+  pull_request:
+    paths:
+      - 'tests/Prepare-VirtualASIO.ps1'
+      - '.github/workflows/p96-virtual-audio-readiness.yml'
+      - 'docs/P96-VIRTUAL-AUDIO-PROVISIONING.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p96-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  safe-windows-preflight:
+    runs-on: windows-2022
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Actual Windows registry and PnP preflight (NO drivers installed)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests/Prepare-VirtualASIO.ps1 -Mode Preflight -OutputFolder artifacts/P96
+          if ($LASTEXITCODE -ne 0) { throw 'P96 read-only preflight failed on Windows' }
+          $report = Get-Content artifacts/P96/P96-VIRTUAL-DRIVER-READINESS.json -Raw | ConvertFrom-Json
+          if ($report.schema -ne '125a-virtual-asio-machine-readiness-v1' -or
+              $report.mode -ne 'Preflight' -or
+              $report.physical_hardware_verified -ne $false -or
+              $report.commercial_daw_verified -ne $false -or
+              $report.release_approved -ne $false -or
+              $report.virtual_pcm_loopback -ne 'NOT_RUN' -or
+              $report.real_asio4all_audio_callbacks -ne 'NOT_RUN' -or
+              $report.status -notin @('NOT_READY','DRIVERS_AND_ENDPOINTS_READY')) {
+            throw 'P96 ungrounded driver evidence in Windows preflight'
+          }
+          Write-Output "P96 actual Windows preflight status: $($report.status)"
+      - name: Reject unapproved driver installation
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests/Prepare-VirtualASIO.ps1 -Mode Install -OutputFolder artifacts/P96-blocked 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw 'P96 allowed unapproved kernel driver installation' }
+          if (Test-Path artifacts/P96-blocked/P96-VIRTUAL-DRIVER-READINESS.json) {
+            throw 'P96 unapproved installation produced a readiness proof'
+          }
+          Write-Output 'P96 missing administrator opt-in correctly rejected'
+          exit 0 # Clear intentionally rejected native exit status after checking it
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P96-cloud-preflight-NOT-a-driver-session
+          path: artifacts/P96/P96-VIRTUAL-DRIVER-READINESS.json
+          if-no-files-found: warn

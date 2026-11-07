@@ -1,3 +1,16 @@
+## P96 — Windows virtual ASIO test-machine provisioning gate
+
+P96 provides an attended, explicit-UAC vendor installer launcher and an
+independent post-reboot **real Windows ASIO4ALL registry + VB-CABLE WDM**
+endpoint readiness gate. This does NOT prove either driver was exercised.
+Read-only Windows cloud CI is a safety/contract test only. Genuine
+input/output PCM validation is P95, still requiring an isolated Windows
+machine with both audio drivers installed, rebooted and selected in ASIO4ALL.
+Never report `DRIVERS_AND_ENDPOINTS_READY` as a P95 loopback PASS. Never
+register an unprotected personal Windows workstation as a public
+self-hosted Actions runner.
+See [docs/P96-VIRTUAL-AUDIO-PROVISIONING.md](docs/P96-VIRTUAL-AUDIO-PROVISIONING.md).
+
 ## P95 — Genuine virtual ASIO4ALL audio return, not just driver callbacks
 
 P94 validated only the virtual driver handshake/callback path. P95 builds
