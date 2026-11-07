@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """P77 contract/dispatch regression; mocked I/O is NOT a real plugin-export test."""
 import hashlib
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -53,14 +54,47 @@ class P77Tests(unittest.TestCase):
                          gui_runner=gui,
                          export_verifier=lambda *_args, **_kw: self.artifact_result())
         self.assertEqual(result["status"], "ACTION_AND_ARTIFACT_PASS")
-        self.assertTrue(result["actual_plugin_export_tested"])
+        self.assertFalse(result["actual_plugin_export_tested"])
+        self.assertEqual(result["export_origin"], "UNATTRIBUTED_AFTER_NATIVE_GUI_ACTION")
+        self.assertFalse(result["provenance_verified"])
         self.assertFalse(result["release_approved"])
 
     def test_stale_file_rejected_before_action(self):
         self.output.write_bytes(b"stale")
-        with self.assertRaisesRegex(ValueError, "already exists"):
+        with self.assertRaisesRegex(ValueError, "occupied"):
             p77.run(self.chain, self.root / "report",
                     gui_runner=lambda *_a, **_k: self.fail("must not run"))
+
+    def test_stale_timestamp_fails_even_if_file_appears_after_action(self):
+        def gui(_workflow, _out, timeout):
+            self.output.write_bytes(b"stale contents")
+            os.utime(self.output, ns=(1_000_000_000, 1_000_000_000))
+            return self.gui_result()
+        result = p77.run(self.chain, self.root / "report",
+                         gui_runner=gui,
+                         export_verifier=lambda *_a, **_k: self.fail("must not verify"))
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("predates", result["faults"][0])
+
+    def test_broken_symlink_rejected_before_action(self):
+        try:
+            self.output.symlink_to(self.root / "missing.wav")
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks unavailable on this Windows runner")
+        with self.assertRaisesRegex(ValueError, "occupied"):
+            p77.validate(self.chain)
+
+    def test_hardlink_export_rejected(self):
+        original = self.root / "other.bin"
+        original.write_bytes(b"hardlinked bytes")
+        def gui(_workflow, _out, timeout):
+            os.link(original, self.output)
+            return self.gui_result()
+        result = p77.run(self.chain, self.root / "report",
+                         gui_runner=gui,
+                         export_verifier=lambda *_a, **_k: self.fail("must not verify"))
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("nonlinked", result["faults"][0])
 
     def test_missing_output_fails(self):
         result = p77.run(self.chain, self.root / "report",

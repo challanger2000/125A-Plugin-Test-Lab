@@ -1,4 +1,4 @@
-name: P77 approved GUI-to-export chain regression
+name: P77-P78 approved GUI-to-export evidence regression
 on:
   pull_request:
     paths:
