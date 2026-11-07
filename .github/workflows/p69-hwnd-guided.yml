@@ -1,0 +1,79 @@
+name: P69 native HWND-guided universal GUI candidate exploration
+
+on:
+  pull_request:
+    paths:
+      - 'tests/run_gui_hwnd_guided.py'
+      - 'tests/test_gui_hwnd_guided.py'
+      - '.github/workflows/p69-hwnd-guided.yml'
+      - 'docs/P69-HWND-GUIDED-EXPLORATION.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail closed on fake native HWND trees and opt-in GUI click results
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_gui_hwnd_guided.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P69 HWND guidance contract regressed' }
+          python -m py_compile tests/run_gui_hwnd_guided.py
+          if ($LASTEXITCODE -ne 0) { throw 'P69 syntax error' }
+
+  real-source-built-vst3:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build generic native GUI host and nested Win32 control VST3 fixture
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P69 configure failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiNested
+          if ($LASTEXITCODE -ne 0) { throw 'P69 real VST3 nested editor fixture build failed' }
+      - name: Derive real button midpoint and run explicitly acknowledged sham-controlled probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $bundle = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Nested.vst3')
+          if ($hostExe.Count -ne 1 -or $bundle.Count -ne 1) {
+            throw 'P69 actual native nested GUI fixture missing'
+          }
+          $PSNativeCommandUseErrorActionPreference = $false
+          python tests/run_gui_hwnd_guided.py --plugin $bundle[0].FullName --gui-host $hostExe[0].FullName --out build/p69-read-only
+          if ($LASTEXITCODE -ne 0) { throw 'P69 real HWND read-only discovery failed' }
+          $first = Get-Content build/p69-read-only/HWND-GUIDED-RESULT.json -Raw | ConvertFrom-Json
+          if ($first.status -ne 'CANDIDATES_COMPLETE' -or $first.actual_exploration_status -ne 'NOT RUN' -or
+              @($first.proposed_candidates).Count -ne 1 -or
+              $first.proposed_candidates[0].x -ne 160 -or
+              $first.proposed_candidates[0].y -ne 90 -or
+              $first.proposed_candidates[0].control_id -ne 43001) {
+            throw 'P69 native HWND candidate was not derived correctly'
+          }
+          python tests/run_gui_hwnd_guided.py --plugin $bundle[0].FullName --gui-host $hostExe[0].FullName --out build/p69-optin --acknowledge-ui-clicks --max-points 9
+          if ($LASTEXITCODE -ne 0) { throw 'P69 real sham-controlled click probe failed' }
+          $second = Get-Content build/p69-optin/HWND-GUIDED-RESULT.json -Raw | ConvertFrom-Json
+          $probe = Get-Content build/p69-optin/native-probes/GUI-EXPLORATION-RESULT.json -Raw | ConvertFrom-Json
+          if ($second.status -ne 'CANDIDATES_COMPLETE' -or
+              $second.actual_exploration_status -ne 'OBSERVATIONS_COMPLETE' -or
+              $probe.status -ne 'OBSERVATIONS_COMPLETE' -or $probe.sham_verified_points -ne 1 -or
+              $second.release_approved -ne $false -or $probe.release_approved -ne $false) {
+            throw 'P69 native GUI click cannot be independently attributed to real button'
+          }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P69-real-nested-VST3-HWND-guided-opt-in-probe-evidence
+          path: |
+            build/p69-read-only/
+            build/p69-optin/
+          if-no-files-found: warn
