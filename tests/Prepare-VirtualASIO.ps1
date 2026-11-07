@@ -28,7 +28,17 @@ function Test-IsAdministrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 function Get-AudioEndpoints {
-    $devices = @(Get-PnpDevice -Class AudioEndpoint -ErrorAction Stop)
+    # Fresh GitHub-hosted Windows instances may have NO AudioEndpoint PnP
+    # class entries at all. That is NOT_READY, not a PowerShell exception.
+    try {
+        $devices = @(Get-PnpDevice -Class AudioEndpoint -ErrorAction Stop)
+    } catch {
+        if ($_.FullyQualifiedErrorId -like 'CmdletizationQuery_NotFound_PNPClass*') {
+            $devices = @()
+        } else {
+            throw
+        }
+    }
     $valid = @($devices | Where-Object { $_.Status -eq 'OK' })
     $playback = @($valid | Where-Object {
         $_.FriendlyName -match '(?i)CABLE Input' -and
