@@ -192,7 +192,7 @@ const FUID kProcessorCID(0x125A2026, 0x11070001, 0xA0000D21, 0xB0000D21);
 const FUID kControllerCID(0x125A2026, 0x11070001, 0xA0000D22, 0xB0000D22);
 constexpr const char* kName = "125A Real Popup Menu Wrong Command Fixture";
 #elif QA_GUI_MENU_GOOD
- kProcessorCID(0x125A2026, 0x11060004, 0xA0000C11, 0xB0000C11);
+const FUID kProcessorCID(0x125A2026, 0x11060004, 0xA0000C11, 0xB0000C11);
 const FUID kControllerCID(0x125A2026, 0x11060004, 0xA0000C12, 0xB0000C12);
 constexpr const char* kName = "125A Native Dialog Menu Correct Fixture";
 #elif QA_GUI_MENU_BAD
