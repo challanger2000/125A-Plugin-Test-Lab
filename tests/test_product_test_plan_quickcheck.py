@@ -13,7 +13,7 @@ def digest(file):
 
 def fixture(root):
     dll = root / "Real.vst3" / "Contents" / "x86_64-win" / "Real.vst3"
-    dll.parent.mkdir(parents=True)
+    dll.parent.mkdir(parents=True, exist_ok=True)
     dll.write_bytes(b"real-native-vst3")
     hosts = {}
     for name in ("gui", "audio", "stress"):
