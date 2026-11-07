@@ -41,3 +41,20 @@ The JSON output includes measured sample offset, gain, correlation, RMS error, f
 **Security:** Run locally; do not upload sensitive audio or proprietary plugin binaries. Textual declarations are not independent driver provenance. External objective ASIO/DAW certification must be provided by an appropriately equipped Windows machine and its trusted capture adapter.
 
 Windows CI deliberately uses generated WAV fixtures to exercise the comparison algorithm (including capture delay, different gain and deliberately bad PCM). No CI-generated audio is presented as a real hardware recording.
+
+## Optional P89 consolidated QA integration
+
+The same source-pinned external comparison can be checked automatically while
+generating the multi-plugin P89 summary. Supply the **original** P90 manifest
+for each selected plugin, not a manually edited result. The comparator runs
+again and must match the selected module SHA-256.
+
+```powershell
+python tests/run_unified_qa_gaps.py --batch C:\QA\Batch --out C:\QA\Summary --external-capture reviewed_plugin=C:\QA\capture-contract.json
+```
+
+Each plugin's section reports `externally_supplied_audio_comparison` as
+`NOT PROVIDED`, `FAIL` or `AUDIO_COMPARISON_PASS_SOURCE_UNATTESTED`.
+The report never drops the `PHYSICAL_ASIO_HARDWARE_NOT_TESTED` or
+`COMMERCIAL_DAW_SESSION_NOT_TESTED` gaps: metadata and supplied WAVs do not
+independently prove a particular DAW or driver generated them.
