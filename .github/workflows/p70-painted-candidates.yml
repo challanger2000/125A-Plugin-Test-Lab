@@ -1,0 +1,81 @@
+name: P70 universal painted VST3 visual candidate discovery
+
+on:
+  pull_request:
+    paths:
+      - 'tests/run_gui_painted_candidates.py'
+      - 'tests/test_gui_painted_candidates.py'
+      - '.github/workflows/p70-painted-candidates.yml'
+      - 'docs/P70-PAINTED-CANDIDATES.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enforce no guessed semantics, no unapproved clicks and sham verification
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_gui_painted_candidates.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P70 visual proposal and negative controls failed' }
+          python -m py_compile tests/run_gui_painted_candidates.py tests/test_gui_painted_candidates.py
+          if ($LASTEXITCODE -ne 0) { throw 'P70 Python compile failed' }
+
+  real-painted-vst3:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build existing real source-defined custom-painted VST3 and native Win32 host
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P70 Windows native configuration failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiPaintedOnly
+          if ($LASTEXITCODE -ne 0) { throw 'P70 actual VST3 fixture failed to build' }
+      - name: Locate custom-painted control from untouched image and prove click only on opt-in
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $bundle = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_PaintedOnly.vst3')
+          if ($hostExe.Count -ne 1 -or $bundle.Count -ne 1) {
+            throw 'P70 real painted-only fixture or native GUI host missing'
+          }
+          $PSNativeCommandUseErrorActionPreference = $false
+          python tests/run_gui_painted_candidates.py --plugin $bundle[0].FullName --gui-host $hostExe[0].FullName --out build/p70-read-only
+          if ($LASTEXITCODE -ne 0) { throw 'P70 real painted VST3 image scanning failed' }
+          $a = Get-Content build/p70-read-only/PAINTED-CANDIDATES.json -Raw | ConvertFrom-Json
+          if ($a.status -ne 'CANDIDATES_COMPLETE' -or $a.segmentation -ne 'FOREGROUND_CANDIDATES' -or
+              $a.exploration -ne 'NOT RUN' -or @($a.visual_candidates).Count -ne 1 -or
+              $a.visual_candidates[0].x -ne 160 -or $a.visual_candidates[0].y -ne 90 -or
+              $a.visual_candidates[0].approved_to_click -ne $false) {
+            throw 'P70 failed to discover single custom-painted toggle without clicking'
+          }
+          python tests/run_gui_painted_candidates.py --plugin $bundle[0].FullName --gui-host $hostExe[0].FullName --out build/p70-optin --acknowledge-ui-clicks
+          if ($LASTEXITCODE -ne 0) { throw 'P70 genuine sham-controlled painted control click failed' }
+          $b = Get-Content build/p70-optin/PAINTED-CANDIDATES.json -Raw | ConvertFrom-Json
+          $probe = Get-Content build/p70-optin/sham-controlled-probes/GUI-EXPLORATION-RESULT.json -Raw | ConvertFrom-Json
+          if ($b.status -ne 'CANDIDATES_COMPLETE' -or
+              $b.exploration -ne 'OBSERVATIONS_COMPLETE' -or
+              $probe.status -ne 'OBSERVATIONS_COMPLETE' -or
+              $probe.sham_verified_points -ne 1 -or
+              $probe.probes[0].classification -ne 'VISUAL_CHANGE' -or
+              $probe.probes[0].sham_control_attribution -ne 'SUPPORTED' -or
+              $b.release_approved -ne $false) {
+            throw 'P70 real custom-painted VST3 candidate not independently sham-confirmed'
+          }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P70-real-VST3-painted-control-evidence
+          path: |
+            build/p70-read-only/
+            build/p70-optin/
+          if-no-files-found: warn
