@@ -1,0 +1,130 @@
+name: P95 real virtual ASIO input-output PCM loopback oracle
+on:
+  pull_request:
+    paths:
+      - 'src/physical_asio.cpp'
+      - 'tests/virtual_asio_signal_fixture.cpp'
+      - 'tests/run_virtual_asio_loopback.py'
+      - 'tests/verify_virtual_asio_loopback.py'
+      - 'tests/test_p95_virtual_asio_loopback.py'
+      - '.github/workflows/p95-virtual-loopback.yml'
+      - 'docs/P95-VIRTUAL-ASIO-LOOPBACK.md'
+  workflow_dispatch:
+    inputs:
+      acknowledge_virtual_drivers:
+        description: 'I approve real ASIO4ALL/VB-CABLE device capture on isolated Windows'
+        type: boolean
+        required: true
+        default: false
+      asio_driver_name:
+        type: string
+        required: true
+        default: 'ASIO4ALL v2'
+        description: 'Registered, enabled ASIO4ALL driver'
+      sample_rate:
+        type: choice
+        required: true
+        default: '44100'
+        options: ['44100', '48000']
+      buffer_frames:
+        type: choice
+        required: true
+        default: '512'
+        options: ['256', '512']
+permissions:
+  contents: read
+concurrency:
+  group: p95-loopback-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  negative-and-oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test strict PCM correlation, wrong-channel and false hardware proofs
+        run: |
+          python -m unittest discover -s tests -p test_p95_virtual_asio_loopback.py -v
+          python -m py_compile tests/run_virtual_asio_loopback.py tests/verify_virtual_asio_loopback.py
+  compile-real-native-loopback:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Acquire exact approved external reference ASIO headers
+        shell: pwsh
+        run: |
+          git clone --no-checkout https://github.com/audiosdk/asio.git asio-sdk
+          if ($LASTEXITCODE -ne 0) { throw 'Reference ASIO SDK unavailable' }
+          git -C asio-sdk checkout --detach 496a0765b8bb9c26f764f22f9a9712a937177db2
+          if ($LASTEXITCODE -ne 0 -or (git -C asio-sdk rev-parse HEAD).Trim() -cne '496a0765b8bb9c26f764f22f9a9712a937177db2') {
+            throw 'ASIO SDK exact reference commit mismatch'
+          }
+      - name: Compile actual virtual 2-in 2-out ASIO host and real VST3 signal fixture
+        shell: pwsh
+        run: |
+          cmake -S . -B build-p95 -G "Visual Studio 17 2022" -A x64 "-DASIO_SDK_DIR=$env:GITHUB_WORKSPACE/asio-sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'P95 native configure failed' }
+          cmake --build build-p95 --config Release --parallel 4 --target TestLabVirtualASIOLoopback QAVirtualASIOReturn
+          if ($LASTEXITCODE -ne 0) { throw 'P95 source-built VST3 and real ASIO host build failed' }
+          $exe = @(Get-ChildItem build-p95 -Recurse -File -Filter '125A_Test_Lab_Virtual_ASIO_Loopback.exe')
+          $fx = @(Get-ChildItem build-p95 -Recurse -File -Filter '125A_QA_Virtual_ASIO_Return.vst3')
+          if ($exe.Count -ne 1 -or $fx.Count -ne 1) {
+            throw 'P95 native compiled executable and VST3 DLL not unique'
+          }
+          Write-Output 'P95 real C++ host built: actual ASIO4ALL drivers NOT RUN on cloud CI'
+  real-asio4all-loopback:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && vars.VIRTUAL_ASIO_RUNNER_ENABLED == 'YES_ISOLATED' && inputs.acknowledge_virtual_drivers == true }}
+    runs-on: [self-hosted, Windows, X64, 125A-VIRTUAL-ASIO]
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin reference ASIO SDK and compile dedicated VST3 plus virtual loopback recorder
+        shell: pwsh
+        run: |
+          git clone --no-checkout https://github.com/audiosdk/asio.git asio-sdk
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot obtain reference ASIO SDK' }
+          git -C asio-sdk checkout --detach 496a0765b8bb9c26f764f22f9a9712a937177db2
+          if ($LASTEXITCODE -ne 0 -or (git -C asio-sdk rev-parse HEAD).Trim() -cne '496a0765b8bb9c26f764f22f9a9712a937177db2') {
+            throw 'Reference ASIO SDK differs from approved version'
+          }
+          cmake -S . -B build-p95-live -G "Visual Studio 17 2022" -A x64 "-DASIO_SDK_DIR=$env:GITHUB_WORKSPACE/asio-sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'P95 live ASIO configure failure' }
+          cmake --build build-p95-live --config Release --parallel 4 --target TestLabVirtualASIOLoopback QAVirtualASIOReturn
+          if ($LASTEXITCODE -ne 0) { throw 'P95 live ASIO build failure' }
+      - name: Real virtual ASIO4ALL/VB-CABLE stereo return and measured audio latency
+        shell: pwsh
+        env:
+          P95_DRIVER: ${{ inputs.asio_driver_name }}
+          P95_RATE: ${{ inputs.sample_rate }}
+          P95_FRAMES: ${{ inputs.buffer_frames }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build-p95-live -Recurse -File -Filter '125A_Test_Lab_Virtual_ASIO_Loopback.exe')
+          $fx = @(Get-ChildItem build-p95-live -Recurse -File -Filter '125A_QA_Virtual_ASIO_Return.vst3')
+          if ($exe.Count -ne 1 -or $fx.Count -ne 1) { throw 'P95 real native VST3 and ASIO loopback executor missing' }
+          New-Item -ItemType Directory -Force artifacts/P95-private | Out-Null
+          python tests/run_virtual_asio4all.py plan --plugin "$($fx[0].FullName)" --executor "$($exe[0].FullName)" --driver-name "$env:P95_DRIVER" --rate $env:P95_RATE --frames $env:P95_FRAMES --callbacks 500 --out artifacts/P95-private/plan.json
+          if ($LASTEXITCODE -ne 0) { throw 'Actual local ASIO4ALL plan unavailable' }
+          python tests/run_virtual_asio_loopback.py --plan artifacts/P95-private/plan.json --out artifacts/P95-private/measurement --timeout 125 --acknowledge-virtual-drivers
+          if ($LASTEXITCODE -ne 0) { throw 'Actual ASIO4ALL -> VB-CABLE -> ASIO input output PCM loopback failed' }
+          $report = Get-Content artifacts/P95-private/measurement/P95-VIRTUAL-LOOPBACK-RUN.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'VIRTUAL_ASIO_LOOPBACK_PASS' -or
+              $report.physical_asio_hardware_verified -ne $false -or
+              $report.commercial_daw_verified -ne $false -or
+              $report.release_approved -ne $false) { throw 'P95 virtual pass or trust boundary failed' }
+          New-Item -ItemType Directory -Force artifacts/P95-public | Out-Null
+          @{
+            schema = '125a-p95-public-virtual-loopback-v1'
+            status = $report.status
+            metrics = $report.metrics
+            physical_asio_hardware_verified = $false
+            commercial_daw_verified = $false
+            release_approved = $false
+          } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 artifacts/P95-public/LOOPBACK-SUMMARY.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P95-virtual-ASIO-PCM-loopback-only-redacted
+          path: artifacts/P95-public/LOOPBACK-SUMMARY.json
+          if-no-files-found: warn
