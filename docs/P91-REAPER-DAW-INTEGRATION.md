@@ -9,7 +9,7 @@ P91 adds a **real REAPER-invoked DAW stage**, rather than just expanding our own
 - Invokes REAPER's documented `-renderproject` command. Checks real output WAV header, duration, sample rate, RMS and clipping.
 - Preserves project, scripts, REAPER status reports, output WAV and machine-readable `REAPER-DAW-ACCEPTANCE.json`.
 
-These are genuine DAW process operations only if the script runs on an equipped Windows machine with installed REAPER and the approved plugin. The public GitHub Actions job tests the **adapter logic with mocked processes**, explicitly reports DAW NOT RUN and never pretends it installed or executed REAPER.
+P91 includes **two deliberately separate cloud checks**: contract regression with mocked processes (never DAW evidence), and a real REAPER 7.83 Windows-2022 smoke job using the official SHA-256-pinned evaluation installer plus a source-built 125A VST3. The latter actually creates, saves, reloads and renders a REAPER project; the evidence is published under the Actions run. This evaluates basic DAW integration, not hardware ASIO.
 
 ## Pre-approved, explicit JSON contract
 
@@ -51,14 +51,14 @@ A *clean empty output directory* is required. No preexisting user REAPER session
 
 ## CI and licensing
 
-The cloud CI runs contract regression and safe failure tests only; it does not download or package REAPER, pirate licenses, or claim that mocked DAW process execution proves REAPER behavior. A separately licensed REAPER installation can be exercised on a **dedicated, isolated self-hosted Windows runner** with labels `self-hosted, Windows, X64, 125A-REAPER`. Explicitly configure repository variables `REAPER_LAB_ENABLED=YES_ISOLATED` and `REAPER_LAB_PLAN_PATH` pointing to a reviewed local manifest before manually dispatching the P91 workflow. Do not attach a personal Windows workstation with private documents to a public GitHub Actions runner.
+The P91 contract job runs regression and safe failure tests only. A distinct real Windows smoke job downloads the official SHA-256-pinned REAPER evaluation installer (no third-party binary is stored in our repository), builds the VST3 source fixture, and requires real REAPER process evidence. The installer is used only for its ordinary evaluation period; no license keys, dialog timers, or licensing checks are bypassed. A separately licensed REAPER installation can be exercised on a **dedicated, isolated self-hosted Windows runner** with labels `self-hosted, Windows, X64, 125A-REAPER`. Explicitly configure repository variables `REAPER_LAB_ENABLED=YES_ISOLATED` and `REAPER_LAB_PLAN_PATH` pointing to a reviewed local manifest before manually dispatching the P91 workflow. Do not attach a personal Windows workstation with private documents to a public GitHub Actions runner.
 
 ## Limits that are not hidden
 
 - This does not verify the installed binary **origin** from FX name alone: the manifest SHA-256 pins a plugin module, but REAPER's FX name does not cryptographically tie its loaded module to that path. The report records `loaded_module_file_provenance=NOT INDEPENDENTLY VERIFIED`.
 - REAPER's offline rendering works without ASIO hardware. A real DAW test is **not** a physical device test. `physical_asio_hardware=NOT RUN`.
 - A successful MIDI-triggered render checks essential loading, note persistence and audio production. It does not validate every plugin-specific UI, DAW audio input routing, musical correctness, preset recall, automation or real-time ASIO performance.
-- No REAPER/DAW session has been run merely because the adapter is committed and cloud CI is green. An actual self-hosted run and preserved evidence are mandatory for any real DAW PASS claim.
+- Real REAPER 7.83 has been exercised in the dedicated Windows cloud smoke job, including project save/reload and 24-bit stereo 44.1 kHz WAV rendering, using the source-built **GUI Click Fixture**. Its output is intentionally silent; this **does not prove audible MIDI synthesis or any real production plugin's sonic correctness**. On other plugins, a separate live execution with a reviewed test plan and preserved evidence remains necessary.
 - The independent generic test lab remains separate from product repositories: no VST3 product source is changed.
  
-Official API used: [REAPER ReaScript documentation](https://www.reaper.fm/sdk/reascript/reascripthelp) and [REAPER command line](https://github.com/ReaTeam/Doc/blob/master/REAPER-CLI.md).
+**Verified Windows REAPER smoke:** [Actions run #42391164169](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42391164169). The recorded result is `REAL_REAPER_DAW_PIPELINE_PASS`, MIDI note count 1, saved and independently reloaded project, actual 88,200-frame stereo 24-bit / 44,100 Hz REAPER-generated WAV; RMS is intentionally 0 because the chosen GUI fixture is not a synth. `physical_asio_hardware=NOT RUN` and `loaded_module_file_provenance=NOT INDEPENDENTLY VERIFIED` remain explicit.\n\nOfficial API used: [REAPER ReaScript documentation](https://www.reaper.fm/sdk/reascript/reascripthelp) and [REAPER command line](https://github.com/ReaTeam/Doc/blob/master/REAPER-CLI.md).
