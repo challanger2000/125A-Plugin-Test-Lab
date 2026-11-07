@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P74 — single universal VST3 test command
+
+Use `python tests/run_universal_qa.py --plugin <Plugin.vst3> --gui-host <125A_Test_Lab_GUI.exe> --out <results>` to execute the combined P68-P73 read-only onboarding and receive one main JSON report. Add `--audio-host <Test_Lab_Host.exe> --stress-host <State_Stress.exe> --run-technical-baseline` for native playback/save/stress tests. Add `--approved-plan <P65-plan.json> --feature-matrix <P67-features.json>` together to run independent product assertions, always with explicit qualified test data. See `docs/P74-UNIVERSAL-QA-PIPELINE.md`. A green inventory is not full QA coverage, and release approval remains false.
+
+
 ## P73 — universal onboarding for VST3 without GUI, plus technical baseline
 
 The P72 onboarding command now **skips GUI probing for real no-editor VST3** based on independently reported P68 capability metadata, instead of failing or inventing controls. Supply `--audio-host <125A_Test_Lab_Host.exe> --stress-host <125A_Test_Lab_State_Stress.exe> --run-technical-baseline` to run existing generic VST3 technical audio/save tests in the same command, producing genuine PASS/FAIL results while retaining NOT RUN for physical ASIO and DAW. Details: `docs/P73-HEADLESS-AUTOCHECK.md`.
