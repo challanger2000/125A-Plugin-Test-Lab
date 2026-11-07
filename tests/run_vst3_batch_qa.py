@@ -21,7 +21,31 @@ SCHEMA = "125a-vst3-batch-selection-v1"
 RESULT = "125a-vst3-batch-report-v1"
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 MAX_PLUGINS = 32
-ALLOWED = {"INVENTORY_COMPLETE", "TECHNICAL_BASELINE_PASS"}
+ALLOWED = {"INVENTORY_COMPLETE", "TECHNICAL_BASELINE_PASS",
+           "INVENTORY_WITH_EXPLORATORY_OBSERVATIONS"}
+
+
+def validate_exploration_spec(item):
+    """Explicit opt-in is mandatory for every plugin; never infer it from a directory scan."""
+    permitted = {"explore_unknown_gui", "exploration_points", "exploration_max_points"}
+    if not permitted.intersection(item):
+        return {}
+    if item.get("explore_unknown_gui") is not True:
+        raise ValueError("P83 unknown GUI probing requires explicit true opt-in")
+    count = item.get("exploration_max_points", 4)
+    if type(count) is not int or not 1 <= count <= 16:
+        raise ValueError("P83 GUI exploration budget must be 1..16")
+    result = {"explore_unknown_gui": True, "exploration_max_points": count}
+    if "exploration_points" in item:
+        points = item["exploration_points"]
+        if (type(points) is not str or
+                not 1 <= len(points.split(";")) <= count or
+                any(not re.fullmatch(r"[0-9]{1,4},[0-9]{1,4}", part)
+                    for part in points.split(";")) or
+                len(set(points.split(";"))) != len(points.split(";"))):
+            raise ValueError("P83 invalid bounded GUI probe coordinates")
+        result["exploration_points"] = points
+    return result
 
 
 def load_selection(selection=None, root=None, *, technical_all=False):
@@ -51,7 +75,8 @@ def load_selection(selection=None, root=None, *, technical_all=False):
     selected, ids, paths = [], set(), set()
     for item in items:
         if not isinstance(item, dict) or not {"id", "bundle", "run_technical_baseline"} <= set(item) or (
-                set(item) - {"id", "bundle", "run_technical_baseline", "approved_plan", "feature_matrix"}):
+                set(item) - {"id", "bundle", "run_technical_baseline", "approved_plan", "feature_matrix",
+                             "explore_unknown_gui", "exploration_points", "exploration_max_points"}):
             raise ValueError("P75 unsupported plugin batch selection fields")
         ident = item["id"]
         if type(ident) is not str or not ID.fullmatch(ident) or ident in ids:
@@ -65,6 +90,7 @@ def load_selection(selection=None, root=None, *, technical_all=False):
                 type(item["feature_matrix"]) is not str or
                 not item["approved_plan"] or not item["feature_matrix"]):
             raise ValueError("P80 invalid approved plan/matrix reference")
+        exploration = validate_exploration_spec(item)
         bundle, module = verify_bundle(item["bundle"])
         if bundle in paths:
             raise ValueError("P75 duplicate VST3 bundle in selection")
@@ -76,7 +102,8 @@ def load_selection(selection=None, root=None, *, technical_all=False):
                 item["run_technical_baseline"],
             **({"approved_plan": str(Path(item["approved_plan"]).resolve(strict=True)),
                 "feature_matrix": str(Path(item["feature_matrix"]).resolve(strict=True))}
-               if "approved_plan" in item else {})
+               if "approved_plan" in item else {}),
+            **exploration
         })
     return selected
 
@@ -112,12 +139,14 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                      "run_technical_baseline"} <= set(entry) or
                 set(entry) - {"id", "bundle", "module", "sha256",
                               "run_technical_baseline", "approved_plan",
-                              "feature_matrix"} or
+                              "feature_matrix", "explore_unknown_gui",
+                              "exploration_points", "exploration_max_points"} or
                 ("approved_plan" in entry) != ("feature_matrix" in entry) or
                 type(entry["id"]) is not str or not ID.fullmatch(entry["id"]) or
                 entry["id"] in observed_ids or
                 type(entry["run_technical_baseline"]) is not bool):
             raise ValueError("P75 invalid duplicated selected plugin record")
+        validate_exploration_spec(entry)
         bundle, module = verify_bundle(entry["bundle"])
         if bundle in observed_paths or module != entry["module"] or (
                 digest(module) != entry["sha256"]):
@@ -157,7 +186,9 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
         row = {"id": ident, "bundle": str(entry["bundle"]),
                "verified_module_sha256": entry["sha256"],
                "status": "FAIL", "technical_requested":
-                   entry["run_technical_baseline"], "faults": []}
+                   entry["run_technical_baseline"],
+               "exploration_requested": entry.get("explore_unknown_gui", False),
+               "faults": []}
         try:
             if (digest(entry["module"]) != entry["sha256"] or
                     any(digest(path) != value for path, value in identities.items())):
@@ -174,6 +205,11 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                 if digest(pp) != ph or digest(mp) != mh:
                     raise ValueError("P80 reviewed product plan changed before run")
                 cmd += ["--approved-plan", str(pp), "--feature-matrix", str(mp)]
+            if entry.get("explore_unknown_gui", False):
+                cmd += ["--explore-unknown-gui", "--exploration-max-points",
+                        str(entry["exploration_max_points"])]
+                if "exploration_points" in entry:
+                    cmd += ["--exploration-points", entry["exploration_points"]]
             process = runner(cmd, capture_output=True, text=True,
                              errors="replace", check=False,
                              timeout=per_plugin_timeout)
@@ -186,7 +222,10 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
             outcome = json.loads(result_path.read_text(encoding="utf-8"))
             expected = ("DECLARED_COVERAGE_PASS" if ident in pinned_contracts else
                         "TECHNICAL_BASELINE_PASS" if
-                        entry["run_technical_baseline"] else "INVENTORY_COMPLETE")
+                        entry["run_technical_baseline"] else
+                        "INVENTORY_WITH_EXPLORATORY_OBSERVATIONS"
+                        if entry.get("explore_unknown_gui", False)
+                        else "INVENTORY_COMPLETE")
             if (process.returncode != 0 or
                     not isinstance(outcome, dict) or
                     outcome.get("schema") != "125a-universal-vst3-qa-pipeline-v1" or
@@ -202,7 +241,20 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                     (ident in pinned_contracts and
                      outcome.get("approved_product_cases") != "CONTRACT_PASS") or
                     (entry["run_technical_baseline"] and
-                     outcome.get("native_technical") != "PASS")):
+                     outcome.get("native_technical") != "PASS") or
+                    (entry.get("explore_unknown_gui", False) and
+                     (outcome.get("unknown_gui_exploration") not in (
+                         "OBSERVATIONS_COMPLETE", "NOT APPLICABLE - NO EDITOR") or
+                      type(outcome.get("exploratory_clicks_performed")) is not int or
+                      (outcome["unknown_gui_exploration"] == "OBSERVATIONS_COMPLETE" and
+                       (outcome["exploratory_clicks_performed"] < 1 or
+                        outcome.get("unknown_gui_semantics") != "UNAPPROVED OBSERVATIONS ONLY")) or
+                      (outcome["unknown_gui_exploration"] == "NOT APPLICABLE - NO EDITOR" and
+                       outcome["exploratory_clicks_performed"] != 0))) or
+                    (not entry.get("explore_unknown_gui", False) and
+                     (outcome.get("unknown_gui_exploration") != "NOT RUN" or
+                      outcome.get("exploratory_clicks_performed") != 0))):
+                
                 raise ValueError("P75 child failed or returned forged/incomplete actual VST3 QA")
             if digest(entry["module"]) != entry["sha256"] or any(
                     digest(path) != value for path, value in identities.items()):
@@ -214,6 +266,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
             row["status"] = "PASS"
             row["verified_stage"] = expected
             row["required_feature_coverage"] = outcome["required_feature_coverage"]
+            row["exploratory_clicks_performed"] = outcome["exploratory_clicks_performed"]
+            row["unknown_gui_exploration"] = outcome["unknown_gui_exploration"]
         except (OSError, ValueError, TypeError, KeyError,
                 json.JSONDecodeError, subprocess.TimeoutExpired) as error:
             row["faults"].append(str(error))
@@ -224,6 +278,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
         report["status"] = (
             "BATCH_DECLARED_COVERAGE_PASS" if len(pinned_contracts) == len(selected)
             else "BATCH_MIXED_QA_PASS" if pinned_contracts
+            else "BATCH_EXPLORATORY_OBSERVATIONS_COMPLETE" if any(
+                e.get("explore_unknown_gui", False) for e in selected)
             else "BATCH_TECHNICAL_PASS")
     target.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
@@ -259,7 +315,8 @@ def main():
             json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
     return 0 if report["status"] in (
-        "BATCH_TECHNICAL_PASS", "BATCH_DECLARED_COVERAGE_PASS", "BATCH_MIXED_QA_PASS") else 1
+        "BATCH_TECHNICAL_PASS", "BATCH_DECLARED_COVERAGE_PASS",
+        "BATCH_MIXED_QA_PASS", "BATCH_EXPLORATORY_OBSERVATIONS_COMPLETE") else 1
 
 
 if __name__ == "__main__":
