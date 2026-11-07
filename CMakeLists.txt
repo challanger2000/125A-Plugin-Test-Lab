@@ -62,6 +62,13 @@ smtg_add_vst3plugin(QASignalBad
 target_link_libraries(QASignalBad PRIVATE sdk)
 target_compile_definitions(QASignalBad PRIVATE NOMINMAX QA_DELIBERATE_NAN=1)
 
+# P95 independent virtual ASIO stereo output/input loopback signature plugin.
+smtg_add_vst3plugin(QAVirtualASIOReturn
+    PACKAGE_NAME "125A_QA_Virtual_ASIO_Return"
+    SOURCES_LIST tests/virtual_asio_signal_fixture.cpp)
+target_link_libraries(QAVirtualASIOReturn PRIVATE sdk)
+target_compile_definitions(QAVirtualASIOReturn PRIVATE NOMINMAX)
+
 # P92 isolated audible/negative MIDI-to-PCM REAPER DAW oracle.
 smtg_add_vst3plugin(QAReaperMidiTone
     PACKAGE_NAME "125A_QA_REAPER_MIDI"
