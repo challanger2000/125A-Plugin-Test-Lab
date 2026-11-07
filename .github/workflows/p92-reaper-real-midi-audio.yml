@@ -6,11 +6,24 @@ on:
       - 'tests/reaper_qa_driver.lua'
       - 'tests/reaper_midi_audible_fixture.cpp'
       - 'CMakeLists.txt'
+      - 'tests/test_p92_reaper_midi_audio.py'
       - '.github/workflows/p92-reaper-real-midi-audio.yml'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
+  midi-oracle-regression:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test safe MIDI-positive and no-MIDI negative contract
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_p92_reaper_midi_audio.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P92 independent MIDI audio regression failed' }
+          python -m unittest discover -s tests -p test_p91_reaper_daw_qa.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P91 backwards compatibility failed' }
   genuine-reaper:
     runs-on: windows-2022
     timeout-minutes: 35
