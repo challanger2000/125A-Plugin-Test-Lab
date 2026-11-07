@@ -17,7 +17,7 @@ SCHEMA = "125a-plugin-onboarding-v1"
 
 
 def combine(abi, gui, draft, module_sha, host_sha):
-    if (not isinstance(abi, dict) or not isinstance(gui, dict)
+    if (not isinstance(abi, dict)
             or not isinstance(draft, dict)
             or abi.get("schema") != "125a-vst3-discovery-v1"
             or abi.get("status") != "DISCOVERY_COMPLETE"
