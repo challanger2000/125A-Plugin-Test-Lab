@@ -120,6 +120,10 @@ Die Original-Tests für Stille, Swap, Trunkierung, Rate, Nonce und GitHub Window
 9. **P2:** Zweiter unabhängiger Auditdurchgang, Abhängigkeits-/Lizenzen-/Binary-SHA-Paketnachweis und Korrektur widersprüchlicher historischer Dokumentation.
 10. **Abnahme:** Nach jeder Korrektur neue reale Windows-CI/CTest/Validator/125A-Tester-Belege auf exakt gepinntem Commit. Physische ASIO-Hardware, tatsächlicher VB-CABLE-Treiber und Produkt-DAW-Abnahme dürfen bei fehlendem Gerät **niemals PASS** erhalten.
 
+## Zentraler wiederkehrender Auditfehler (Engineering-Guardrail)
+
+Das verbindliche Engineering-Handbuch erhielt einen **separaten vorgeschlagenen P99-Zusatz**: [125A-Engineering PR #43](https://github.com/challanger2000/125A-Engineering/pull/43). Er schreibt nach dem ausgeführten F01/F02/F03-Gegenbeweis unabhängige Quellsignal-, Pegel-, Laufzeitgrenzen- und ProcessContext-Validitäts-Gegenproben vor. **Auch diese Änderung liegt nur auf einem Reviewbranch und ist nicht als übernommener Standard auf main ausgegeben.** Historische grüne Tests behalten ihren begrenzten Geltungsbereich.
+
 ## 7. Verbindliches Schlussurteil – getrennte Gates
 
 | Tor | Ergebnis |
