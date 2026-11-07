@@ -354,6 +354,17 @@ endforeach()
 target_compile_definitions(QAGuiPopupGood PRIVATE NOMINMAX QA_GUI_POPUP_GOOD=1)
 target_compile_definitions(QAGuiPopupBad PRIVATE NOMINMAX QA_GUI_POPUP_BAD=1)
 
+# P64: genuinely custom-painted single-HWND popup with selected action,
+# plus visually identical but inert menu-item defect.
+foreach(kind IN ITEMS Good Bad)
+  smtg_add_vst3plugin(QAGuiPaintedMenu${kind}
+      PACKAGE_NAME "125A_QA_GUI_PaintedMenu${kind}"
+      SOURCES_LIST tests/gui_fixture.cpp)
+  target_link_libraries(QAGuiPaintedMenu${kind} PRIVATE sdk user32 gdi32)
+endforeach()
+target_compile_definitions(QAGuiPaintedMenuGood PRIVATE NOMINMAX QA_GUI_PAINTED_MENU_GOOD=1)
+target_compile_definitions(QAGuiPaintedMenuBad PRIVATE NOMINMAX QA_GUI_PAINTED_MENU_BAD=1)
+
 # P58: optional actual Windows ASIO driver host. The ASIO SDK is NOT shipped
 # in the Test Lab; supply separately under its applicable license.
 set(ASIO_SDK_DIR "" CACHE PATH "Path containing Steinberg ASIO SDK common/asio.h")
