@@ -338,10 +338,21 @@ def run_process(command, status_file=None, timeout=90):
                     raise ValueError("P91 REAPER exited without actual in-DAW evidence")
                 time.sleep(.1)
             raise ValueError("P91 REAPER ReaScript timed out; windows=" + repr(_windows_for_process(process.pid)))
-        code = process.wait(timeout=timeout)
-        if code != 0:
-            raise ValueError("P91 REAPER render process failed")
-        return {"exit_code": code}
+        # A real REAPER CLI render is also a fresh REAPER process. On the
+        # first launch it can show the same device-setup/evaluation prompts
+        # as an interactive ReaScript; wait without hiding their failures.
+        deadline = time.monotonic() + timeout
+        while process.poll() is None and time.monotonic() < deadline:
+            _dismiss_unconfigured_audio_device_prompt(process.pid)
+            _accept_visible_evaluation_dialog(process.pid)
+            time.sleep(.1)
+        if process.poll() is None:
+            raise ValueError("P91 native REAPER CLI render timed out; windows=" +
+                             repr(_windows_for_process(process.pid)))
+        if process.returncode != 0:
+            raise ValueError("P91 REAPER CLI render exited with code " +
+                             str(process.returncode))
+        return {"exit_code": process.returncode}
     finally:
         if process.poll() is None:
             process.terminate()
@@ -405,7 +416,7 @@ def execute(plan, out, *, timeout=90, script_template=None, process_runner=run_p
         if digest(project) != report["saved_project_sha256"]:
             raise ValueError("P91 project changed unexpectedly during reload")
         # CLI documented by ReaTeam; REAPER, not our host, renders the FX.
-        process_runner([str(exe), "-renderproject", str(project)], None, timeout)
+        process_runner([str(exe), "-nosplash", "-renderproject", str(project)], None, timeout)
         if not rendered.is_file():
             raise ValueError("P91 real REAPER CLI render did not produce WAV")
         report["rendered_by_reaper_process"] = True
