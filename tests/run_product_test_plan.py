@@ -79,8 +79,8 @@ def validate(plan):
         if gui_host != host or gui_module != module:
             raise ValueError("P65 case references a different host or plugin")
         if (workflow["product"]["sha256"] != product["sha256"] or
-                workflow["product"]["binary"] != str(module) or
-                workflow["gui_host"] != str(host)):
+                Path(workflow["product"]["binary"]).resolve(strict=True) != module or
+                Path(workflow["gui_host"]).resolve(strict=True) != host):
             raise ValueError("P65 each case must share the pinned binary and host")
         compiled.append({"id": cid, "kind": kind, "contract": contract,
                          "expected_actions": len(steps)})
