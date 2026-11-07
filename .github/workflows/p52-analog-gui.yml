@@ -4,9 +4,12 @@ on:
   pull_request:
     paths:
       - 'tests/gui_fixture.cpp'
-      - 'CMakeLists.txt'
       - '.github/workflows/p52-analog-gui.yml'
   workflow_dispatch:
+
+concurrency:
+  group: p93-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

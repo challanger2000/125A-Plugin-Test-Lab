@@ -7,9 +7,12 @@ on:
       - 'tests/gui_fixture.cpp'
       - 'tests/run_gui_owned_dialog.py'
       - 'tests/test_gui_owned_dialog.py'
-      - 'CMakeLists.txt'
       - '.github/workflows/p60-owned-dialog.yml'
   workflow_dispatch:
+
+concurrency:
+  group: p93-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

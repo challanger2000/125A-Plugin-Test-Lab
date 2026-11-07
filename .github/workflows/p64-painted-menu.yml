@@ -4,11 +4,14 @@ on:
   pull_request:
     paths:
       - 'tests/gui_fixture.cpp'
-      - 'CMakeLists.txt'
       - 'tests/run_gui_painted_menu.py'
       - 'tests/test_gui_painted_menu.py'
       - '.github/workflows/p64-painted-menu.yml'
   workflow_dispatch:
+
+concurrency:
+  group: p93-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

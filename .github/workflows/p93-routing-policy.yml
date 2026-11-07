@@ -1,0 +1,20 @@
+name: P93 selective GitHub Actions routing policy
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'tests/test_p93_ci_routing.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p93-routing-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  routes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify scoped PR triggers and intact manual full-suite dispatch
+        run: python -m unittest discover -s tests -p test_p93_ci_routing.py -v

@@ -28,7 +28,6 @@ on:
       - 'tests/build_release_report.py'
       - 'tests/test_release_evidence_gate.py'
       - '.github/workflows/drumator-p03.yml'
-      - 'CMakeLists.txt'
   workflow_dispatch:
     inputs:
       drumator_ref:
