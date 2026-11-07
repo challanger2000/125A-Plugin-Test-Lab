@@ -1,0 +1,135 @@
+name: P94 virtual ASIO4ALL and VB-CABLE driver bridge
+on:
+  pull_request:
+    paths:
+      - 'tests/run_virtual_asio4all.py'
+      - 'tests/test_p94_virtual_asio4all.py'
+      - '.github/workflows/p94-virtual-asio4all.yml'
+      - 'docs/P94-VIRTUAL-ASIO4ALL.md'
+  workflow_dispatch:
+    inputs:
+      plugin_dll:
+        description: 'Existing x64 VST3 module DLL on dedicated virtual-audio runner'
+        required: true
+        type: string
+      asio_driver_name:
+        description: 'Registered ASIO4ALL driver name (check HKLM SOFTWARE ASIO)'
+        required: true
+        default: 'ASIO4ALL v2'
+        type: string
+      sample_rate:
+        description: 'Virtual endpoint sample rate'
+        required: true
+        default: '44100'
+        type: choice
+        options: ['44100', '48000']
+      buffer_frames:
+        description: 'ASIO4ALL buffer size supported by configured WDM endpoint'
+        required: true
+        default: '512'
+        type: choice
+        options: ['128', '256', '512', '1024']
+      acknowledge_virtual_drivers:
+        description: 'I confirm isolated rebooted Windows, installed ASIO4ALL and VB-CABLE, and approve use'
+        required: true
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: p94-virtual-asio4all-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  fail-closed-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regression checks, virtual-only labels, fake driver and no-endpoint negatives
+        run: |
+          python -m unittest discover -s tests -p test_p94_virtual_asio4all.py -v
+          python -m py_compile tests/run_virtual_asio4all.py
+  real-virtual-asio-driver:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && vars.VIRTUAL_ASIO_RUNNER_ENABLED == 'YES_ISOLATED' && inputs.acknowledge_virtual_drivers == true }}
+    runs-on: [self-hosted, Windows, X64, 125A-VIRTUAL-ASIO]
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm local virtual-driver setup before native ASIO execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $keys = Get-ChildItem 'HKLM:\SOFTWARE\ASIO' -ErrorAction Stop |
+            Where-Object { $_.PSChildName -like 'ASIO4ALL*' }
+          if (-not $keys) { throw 'No actual ASIO4ALL registration' }
+          $endpoints = @(Get-PnpDevice -Class AudioEndpoint -ErrorAction Stop |
+            Where-Object { $_.Status -eq 'OK' } |
+            Select-Object -ExpandProperty FriendlyName)
+          $input = @($endpoints | Where-Object { $_ -match 'CABLE Input' -and $_ -match 'VB-Audio|VB-CABLE|Virtual Cable' })
+          $output = @($endpoints | Where-Object { $_ -match 'CABLE Output' -and $_ -match 'VB-Audio|VB-CABLE|Virtual Cable' })
+          if ($input.Count -lt 1 -or $output.Count -lt 1) {
+            throw 'VB-CABLE active WDM playback and recording endpoints not both detected'
+          }
+          Write-Output 'ASIO4ALL registration and VB-CABLE active endpoint pair found; driver routing NOT yet proven'
+      - name: Get exact reference ASIO SDK for isolated private build
+        shell: pwsh
+        run: |
+          git clone --no-checkout https://github.com/audiosdk/asio.git asio-sdk
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO SDK unavailable' }
+          git -C asio-sdk checkout --detach 496a0765b8bb9c26f764f22f9a9712a937177db2
+          if ($LASTEXITCODE -ne 0) { throw 'Unpinned reference SDK' }
+          if ((git -C asio-sdk rev-parse HEAD).Trim() -cne '496a0765b8bb9c26f764f22f9a9712a937177db2') {
+            throw 'Incorrect reference ASIO SDK commit'
+          }
+      - name: Build actual native VST3-to-ASIO4ALL callback host
+        shell: pwsh
+        run: |
+          cmake -S . -B build-p94 -G "Visual Studio 17 2022" -A x64 "-DASIO_SDK_DIR=$env:GITHUB_WORKSPACE/asio-sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'P94 native host configuration FAILED' }
+          cmake --build build-p94 --config Release --parallel 4 --target TestLabPhysicalASIO
+          if ($LASTEXITCODE -ne 0) { throw 'P94 native ASIO host compilation FAILED' }
+      - name: Verify actual virtual driver callbacks, never claim physical ASIO
+        shell: pwsh
+        env:
+          P94_PLUGIN: ${{ inputs.plugin_dll }}
+          P94_DRIVER: ${{ inputs.asio_driver_name }}
+          P94_RATE: ${{ inputs.sample_rate }}
+          P94_FRAMES: ${{ inputs.buffer_frames }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build-p94 -Recurse -File -Filter '125A_Test_Lab_Physical_ASIO.exe')
+          if ($exe.Count -ne 1) { throw 'Unique native ASIO4ALL host missing' }
+          if (-not (Test-Path -LiteralPath $env:P94_PLUGIN -PathType Leaf)) {
+            throw 'Approved local VST3 module missing'
+          }
+          New-Item -ItemType Directory -Force artifacts/P94-private | Out-Null
+          python tests/run_virtual_asio4all.py plan --plugin "$env:P94_PLUGIN" --executor "$($exe[0].FullName)" --driver-name "$env:P94_DRIVER" --rate $env:P94_RATE --frames $env:P94_FRAMES --callbacks 500 --out artifacts/P94-private/plan.json
+          if ($LASTEXITCODE -ne 0) { throw 'P94 actual virtual ASIO driver plan failed' }
+          python tests/run_virtual_asio4all.py run --plan artifacts/P94-private/plan.json --out artifacts/P94-private/result --timeout 120 --acknowledge-virtual-drivers
+          if ($LASTEXITCODE -ne 0) { throw 'P94 actual virtual ASIO4ALL callbacks NOT VERIFIED' }
+          $report = Get-Content artifacts/P94-private/result/VIRTUAL-ASIO4ALL-RESULT.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'VIRTUAL_ASIO_CALLBACK_PASS' -or
+              $report.actual_asio_callbacks -lt 500 -or
+              $report.physical_hardware_verified -ne $false -or
+              $report.release_approved -ne $false -or
+              $report.daw_session_verified -ne $false) {
+            throw 'P94 result failed or made an invalid physical or DAW approval claim'
+          }
+          New-Item -ItemType Directory -Force artifacts/P94-public | Out-Null
+          @{
+            schema = '125a-virtual-asio4all-public-summary-v1'
+            status = $report.status
+            scenarios = $report.scenarios
+            actual_asio_callbacks = $report.actual_asio_callbacks
+            physical_hardware_verified = $false
+            daw_session_verified = $false
+            release_approved = $false
+            vb_cable_active_pair = $true
+            asio4all_to_vb_cable_routing_proven = $false
+          } | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 artifacts/P94-public/SUMMARY.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P94-virtual-ASIO4ALL-only-redacted-summary
+          path: artifacts/P94-public/SUMMARY.json
+          if-no-files-found: warn
