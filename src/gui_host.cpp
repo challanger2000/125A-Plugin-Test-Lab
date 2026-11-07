@@ -1063,6 +1063,7 @@ P63MouseSelection selectRealPopupMouse(HWND owner, HMENU submenu) {
     (void)SetForegroundWindow(owner);
     (void)SetActiveWindow(owner);
     std::atomic<int> clickResult{0};
+    std::atomic<bool> trackingEnded{false};
     std::thread mouse([&] {
         const auto cutoff = std::chrono::steady_clock::now() +
                             std::chrono::seconds(5);
@@ -1079,6 +1080,7 @@ P63MouseSelection selectRealPopupMouse(HWND owner, HMENU submenu) {
                     POINT prior{};
                     (void)GetCursorPos(&prior);
                     (void)SetCursorPos(target.x, target.y);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(45));
                     INPUT input[2]{};
                     input[0].type = INPUT_MOUSE;
                     input[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
@@ -1091,6 +1093,16 @@ P63MouseSelection selectRealPopupMouse(HWND owner, HMENU submenu) {
                     // have had a chance to dispatch to the real menu.
                     std::this_thread::sleep_for(std::chrono::milliseconds(75));
                     (void)SetCursorPos(prior.x, prior.y);
+                    const auto closeDeadline = std::chrono::steady_clock::now() +
+                                               std::chrono::seconds(2);
+                    while (!trackingEnded.load(std::memory_order_acquire) &&
+                           std::chrono::steady_clock::now() < closeDeadline)
+                        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                    if (!trackingEnded.load(std::memory_order_acquire)) {
+                        clickResult.store(-3, std::memory_order_release);
+                        (void)PostMessageW(owner, WM_CANCELMODE, 0, 0);
+                        (void)EndMenu();
+                    }
                     return;
                 }
             }
@@ -1105,6 +1117,7 @@ P63MouseSelection selectRealPopupMouse(HWND owner, HMENU submenu) {
     const UINT selection = TrackPopupMenuEx(
         submenu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN | TPM_TOPALIGN,
         x, y, owner, nullptr);
+    trackingEnded.store(true, std::memory_order_release);
     mouse.join();
     return {clickResult.load(std::memory_order_acquire), selection};
 }
