@@ -1,0 +1,24 @@
+name: P89 consolidated actual VST3 QA gap reporting
+on:
+  pull_request:
+    paths:
+      - 'tests/run_unified_qa_gaps.py'
+      - 'tests/test_p89_unified_qa_gaps.py'
+      - '.github/workflows/p89-unified-qa-gaps.yml'
+      - 'docs/P89-UNIFIED-QA-GAPS.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  aggregate:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconcile mixed pass, failed plugins, missing, forged and false ASIO claims
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_p89_unified_qa_gaps.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P89 combined native evidence reconciliation FAILED' }
+          python -m py_compile tests/run_unified_qa_gaps.py
+          if ($LASTEXITCODE -ne 0) { throw 'P89 Python syntax FAILED' }
