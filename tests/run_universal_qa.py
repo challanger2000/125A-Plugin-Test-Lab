@@ -183,8 +183,8 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
                         points=coordinates,
                         max_points=exploration_max_points,
                         timeout=min(timeout, 35))
-                expected_count = (len(coordinates.split(";")) if coordinates is not None
-                                  else exploration_max_points)
+                    expected_count = (len(coordinates.split(";")) if coordinates is not None
+                                      else exploration_max_points)
                     if (not isinstance(observed, dict)
                             or observed.get("schema") != "125a-gui-exploration-result-v1"
                             or observed.get("status") != "OBSERVATIONS_COMPLETE"
@@ -204,7 +204,7 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
                     report["exploratory_clicks_performed"] = expected_count
                     report["exploratory_candidates_observed"] = len(observed["candidates"])
                     report["unknown_gui_semantics"] = "UNAPPROVED OBSERVATIONS ONLY"
-                else:
+            else:
                 raise ValueError("P82 GUI editor availability not reliably established")
         if run_technical:
             if (onboarding_result.get("native_technical_status") != "TECHNICAL_PASS"
