@@ -15,6 +15,7 @@ from run_plugin_onboarding import run as onboarding_run
 from run_gui_exploration import run as exploration_run
 from run_gui_probe_repeatability import run as repeatability_run
 from run_gui_dense_audit import run as dense_run
+from run_gui_parameter_coverage import run as coverage_gap_run
 from run_product_test_plan import execute as contract_execute, validate as validate_contract
 from product_feature_coverage import validate_matrix
 
@@ -45,13 +46,18 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
             explore_unknown_gui=False, exploration_points=None, exploration_max_points=4,
             explorer=exploration_run, exploration_repeats=1,
             repeatability_runner=repeatability_run,
-            dense_grid=None, dense_runner=dense_run):
+            dense_grid=None, dense_runner=dense_run,
+            crosscheck_abi_gui=False, coverage_gap_runner=coverage_gap_run):
     bundle, dll = verify_bundle(plugin)
     gui = Path(gui_host).resolve(strict=True)
     if not gui.is_file():
         raise ValueError("P74 actual native GUI test host required")
     if type(timeout) is not int or not 5 <= timeout <= 120:
         raise ValueError("P74 timeout must be 5..120 seconds")
+    if type(crosscheck_abi_gui) is not bool:
+        raise ValueError("P87 ABI-to-GUI audit opt-in must be boolean")
+    if crosscheck_abi_gui and dense_grid is None:
+        raise ValueError("P87 ABI-to-GUI audit requires dense native GUI survey")
     if dense_grid is not None:
         if type(dense_grid) is not int or dense_grid not in (3, 5):
             raise ValueError("P86 dense GUI scan supports grid sides 3/5 only")
@@ -110,6 +116,8 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
         "unknown_gui_semantics": "NOT ESTABLISHED",
         "unknown_gui_repeatability": "NOT RUN",
         "unknown_gui_completed_repetitions": 0,
+        "abi_gui_parameter_crosscheck": "NOT RUN",
+        "abi_parameters_without_sampled_gui_transition": None,
         "all_product_features_automatically_discovered": False,
         "real_asio_hardware": "NOT RUN",
         "commercial_daw_session": "NOT RUN",
@@ -196,6 +204,29 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
                         "REPRODUCIBLE_OBSERVATIONS" if exploration_repeats == 2
                         else "NOT RUN")
                     report["unknown_gui_completed_repetitions"] = exploration_repeats
+                    if crosscheck_abi_gui:
+                        p68 = out / "discovery" / "vst3-inventory"
+                        coverage = coverage_gap_runner(
+                            p68 / "native-capabilities.tsv",
+                            p68 / "native-parameters.tsv",
+                            out / "unknown-gui-dense-sweep" / "DENSE-GUI-AUDIT-RESULT.json",
+                            out / "parameter-coverage")
+                        if (not isinstance(coverage, dict)
+                                or coverage.get("schema") != "125a-abi-gui-observation-gap-v1"
+                                or coverage.get("status") != "ABI_AND_SAMPLED_GUI_RECONCILED"
+                                or coverage.get("verified_module_sha256") != hashes[dll]
+                                or coverage.get("verified_gui_host_sha256") != hashes[gui]
+                                or coverage.get("sampled_grid_points") != dense_grid*dense_grid
+                                or coverage.get("sampled_grid_observed_parameter_ids") !=
+                                   dense["observed_parameter_ids"]
+                                or coverage.get("complete_gui_control_inventory") is not False
+                                or coverage.get("musical_correctness") != "NOT ESTABLISHED"
+                                or coverage.get("release_approved") is not False
+                                or not isinstance(coverage.get("abi_parameters_without_sampled_gui_transition"), list)):
+                            raise ValueError("P87 source-attributed ABI/GUI parameter reconciliation incomplete")
+                        report["abi_gui_parameter_crosscheck"] = "ABI_AND_SAMPLED_GUI_RECONCILED"
+                        report["abi_parameters_without_sampled_gui_transition"] = len(
+                            coverage["abi_parameters_without_sampled_gui_transition"])
                 elif exploration_repeats > 1:
                     stable = repeatability_runner(
                         bundle, gui, out / "unknown-gui-probes",
@@ -319,6 +350,8 @@ def main():
                    help="Optional semicolon-separated approved test-environment probe coordinates")
     p.add_argument("--exploration-max-points", type=int, default=4)
     p.add_argument("--exploration-repeats", type=int, default=1)
+    p.add_argument("--crosscheck-abi-gui", action="store_true",
+                   help="Reconcile native ABI parameters against actual sampled GUI transitions")
     p.add_argument("--dense-gui-grid", type=int, choices=(3, 5),
                    help="Explicitly opt in to dense 3x3/5x5 unknown control survey")
     p.add_argument("--approved-plan", type=Path)
@@ -339,7 +372,8 @@ def main():
             exploration_points=a.exploration_points,
             exploration_max_points=a.exploration_max_points,
             exploration_repeats=a.exploration_repeats,
-            dense_grid=a.dense_gui_grid)
+            dense_grid=a.dense_gui_grid,
+            crosscheck_abi_gui=a.crosscheck_abi_gui)
     except (OSError, ValueError, TypeError, KeyError,
             json.JSONDecodeError) as error:
         a.out.mkdir(parents=True, exist_ok=True)
