@@ -1,5 +1,8 @@
 # 125A Plugin Test Lab
 
+**P75 universal multi-VST3 batch QA:** Read-only inventory of up to 32 real VST3s in separate bounded processes, or a single per-plugin selection file activating the native technical audio baseline only for reviewed plugins. Defective/timeout child results remain FAIL while later plugins continue. One aggregate report, no product-specific QA code or release approval. [P75 usage](docs/P75-UNIVERSAL-BATCH-QA.md).
+
+
 **P74 single-command universal VST3 QA:** Run `tests/run_universal_qa.py` to combine automatic ABI/GUI inventory, optional real audio/state stress tests, and strictly approved P65/P66 + P67 feature verification in one fail-closed report. The report distinguishes `INVENTORY_COMPLETE`, `TECHNICAL_BASELINE_PASS`, `DECLARED_COVERAGE_PASS`, and `FAIL`; never asserts full commercial release. [Details](docs/P74-UNIVERSAL-QA-PIPELINE.md).
 
 
