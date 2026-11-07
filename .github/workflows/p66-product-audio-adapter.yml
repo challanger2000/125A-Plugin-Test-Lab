@@ -38,9 +38,9 @@ jobs:
         run: |
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64
           if ($LASTEXITCODE -ne 0) { throw 'P66 configure failed' }
-          cmake --build build --config Release --parallel 4 --target TestLabHost TestLabStateStress TestLabGUI QASignalGood QASignalBad
+          cmake --build build --config Release --parallel 4 --target TestLabHost TestLabStateStress TestLabGUI QAStateMode0 QAStateMode2
           if ($LASTEXITCODE -ne 0) { throw 'P66 real native test fixtures failed to compile' }
-      - name: Run same universal plan type on real audio-good and NaN-defective VST3
+      - name: Run same universal plan type on real audio-good and save-defective VST3
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -56,8 +56,8 @@ jobs:
             stress=@{path=$stress[0].FullName;sha256=(Get-FileHash $stress[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
           }
           New-Item -ItemType Directory -Force build/p66 | Out-Null
-          foreach ($variant in @('Good','Bad')) {
-            $bundle = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_Signal$variant.vst3")
+          foreach ($variant in @('0','2')) {
+            $bundle = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_State_$variant.vst3")
             if ($bundle.Count -ne 1) { throw "P66 missing native $variant VST3" }
             $dll = @(Get-ChildItem $bundle[0].FullName -Recurse -File -Filter '*.vst3')
             if ($dll.Count -ne 1) { throw 'Ambiguous real native VST3 DLL' }
@@ -80,13 +80,13 @@ jobs:
             python tests/run_product_test_plan.py --plan $file --out "build/p66/$variant" --timeout 120
             $code = $LASTEXITCODE
             $report = Get-Content "build/p66/$variant/PRODUCT-TEST-PLAN-RESULT.json" -Raw | ConvertFrom-Json
-            if ($variant -eq 'Good') {
+            if ($variant -eq '0') {
               if ($code -ne 0 -or $report.status -ne 'CONTRACT_PASS' -or $report.passed_cases -ne 1) {
                 throw 'P66 independent real VST3 native technical audio/save case did not pass'
               }
             } else {
               if ($code -ne 1 -or $report.status -ne 'FAIL' -or $report.failed_cases -ne 1) {
-                throw 'P66 deliberately NaN-corrupt real VST3 audio was not rejected'
+                throw 'P66 deliberately broken concurrent-save real VST3 was not rejected'
               }
             }
             if ($report.release_approved -ne $false -or $report.physical_asio_hardware -ne 'NOT RUN' -or $report.real_commercial_daw_session -ne 'NOT RUN') {
