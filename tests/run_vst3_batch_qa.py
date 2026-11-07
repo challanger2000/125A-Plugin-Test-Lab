@@ -259,8 +259,7 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                      outcome.get("approved_product_cases") != "CONTRACT_PASS") or
                     (entry["run_technical_baseline"] and
                      outcome.get("native_technical") != "PASS") or
-                    (entry.get("explore_unknown_gui", False) and
-                     ((entry.get("dense_gui_grid") is not None) and (
+                    (entry.get("dense_gui_grid") is not None and (
                          outcome.get("unknown_gui_dense_grid") != entry["dense_gui_grid"] or
                          outcome.get("unknown_gui_grid_coverage") != "SAMPLED POINTS ONLY" or
                          outcome.get("exploratory_clicks_performed") !=
