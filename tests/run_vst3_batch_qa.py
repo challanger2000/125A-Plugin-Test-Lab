@@ -221,8 +221,10 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
     report["passed_plugins"] = sum(x["status"] == "PASS" for x in report["plugins"])
     report["failed_plugins"] = sum(x["status"] == "FAIL" for x in report["plugins"])
     if report["passed_plugins"] == report["declared_plugins"]:
-        report["status"] = ("BATCH_DECLARED_COVERAGE_PASS" if
-                            pinned_contracts else "BATCH_TECHNICAL_PASS")
+        report["status"] = (
+            "BATCH_DECLARED_COVERAGE_PASS" if len(pinned_contracts) == len(selected)
+            else "BATCH_MIXED_QA_PASS" if pinned_contracts
+            else "BATCH_TECHNICAL_PASS")
     target.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
 
@@ -257,7 +259,7 @@ def main():
             json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
     return 0 if report["status"] in (
-        "BATCH_TECHNICAL_PASS", "BATCH_DECLARED_COVERAGE_PASS") else 1
+        "BATCH_TECHNICAL_PASS", "BATCH_DECLARED_COVERAGE_PASS", "BATCH_MIXED_QA_PASS") else 1
 
 
 if __name__ == "__main__":
