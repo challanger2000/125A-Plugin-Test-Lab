@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'tests/audit_p99_oracle_counterproof.py'
+      - 'tests/audit_p99_host_context_challenge.py'
       - '.github/workflows/p99-audit-oracle.yml'
   workflow_dispatch:
 permissions:
@@ -16,9 +17,10 @@ jobs:
       - name: Execute real P95 Python verifier with independent wrong-frequency stimulus
         run: |
           python tests/audit_p99_oracle_counterproof.py
+          python tests/audit_p99_host_context_challenge.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: P99-AUDIT-KNOWN-ORACLE-GAP-NOT-RELEASE-APPROVAL
-          path: artifacts/P99-audit/ORACLE-COUNTERPROOF.json
+          path: artifacts/P99-audit/*.json
           if-no-files-found: error
