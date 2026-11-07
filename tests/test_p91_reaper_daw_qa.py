@@ -87,7 +87,7 @@ class ReaperQATests(unittest.TestCase):
                        process_runner=fake_process)
         self.assertEqual(result["status"],"REAL_REAPER_DAW_PIPELINE_PASS")
         self.assertEqual(len(issued),3)
-        self.assertEqual(issued[0][0][1:3],["-newinst","-new"])
+        self.assertEqual(issued[0][0][1:4],["-newinst","-nosplash","-new"])
         self.assertEqual(issued[1][0][1],"-newinst")
         self.assertEqual(issued[2][0][1],"-renderproject")
         self.assertEqual(result["render"]["channels"],2)
