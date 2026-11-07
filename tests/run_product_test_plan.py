@@ -16,6 +16,7 @@ import sys
 from run_gui_workflow import run as gui_run, validate as validate_gui
 from run_gui_gesture_sweep import run as sweep_run, compile_contract
 from run_plugin_quickcheck import run as quick_run
+from product_feature_coverage import validate_matrix, evaluate
 
 SCHEMA = "125a-product-test-plan-v1"
 RESULT = "125a-product-test-plan-result-v1"
@@ -110,9 +111,13 @@ def validate(plan):
 
 
 def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run,
-            quick_runner=quick_run, timeout=90):
+            quick_runner=quick_run, timeout=90, coverage_matrix=None):
     # Validate the ENTIRE plan before doing a single real GUI click.
     module, hosts, cases = validate(plan)
+    # P67 validates ALL feature declarations and case links before performing
+    # any GUI click or native audio operation.
+    if coverage_matrix is not None:
+        validate_matrix(coverage_matrix, plan)
     host = hosts["gui"]
     if type(timeout) is not int or not 5 <= timeout <= 300:
         raise ValueError("P65 invalid bounded native test timeout")
@@ -132,6 +137,8 @@ def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run,
         "physical_asio_hardware": "NOT RUN",
         "real_commercial_daw_session": "NOT RUN",
         "full_product_functional_coverage": "NOT COVERED",
+        "required_feature_coverage": "NOT DECLARED",
+        "required_feature_gaps": [],
         "release_approved": False
     }
     fail_closed = False
@@ -201,6 +208,12 @@ def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run,
     report["not_run_cases"] = sum(c["status"] == "NOT RUN" for c in report["cases"])
     if report["passed_cases"] == report["declared_cases"]:
         report["status"] = "CONTRACT_PASS"
+    if coverage_matrix is not None:
+        covered = evaluate(coverage_matrix, plan, report)
+        report["required_feature_coverage"] = covered["status"]
+        report["required_feature_gaps"] = covered["required_unverified"]
+        (out / "PRODUCT-FEATURE-COVERAGE.json").write_text(
+            json.dumps(covered, indent=2) + "\\n", encoding="utf-8")
     result_file.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
 
@@ -210,20 +223,29 @@ def main():
     ap.add_argument("--plan", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--timeout", type=int, default=90)
+    ap.add_argument("--coverage-matrix", type=Path,
+                    help="P67 independent required product feature inventory")
     args = ap.parse_args()
     try:
         plan = json.loads(args.plan.read_text(encoding="utf-8"))
-        report = execute(plan, args.out, timeout=args.timeout)
+        matrix = (json.loads(args.coverage_matrix.read_text(encoding="utf-8"))
+                  if args.coverage_matrix is not None else None)
+        report = execute(plan, args.out, timeout=args.timeout,
+                         coverage_matrix=matrix)
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         args.out.mkdir(parents=True, exist_ok=True)
         report = {"schema": RESULT, "status": "FAIL", "faults": [str(exc)],
                   "physical_asio_hardware": "NOT RUN",
                   "real_commercial_daw_session": "NOT RUN",
+                  "required_feature_coverage": "INVALID OR NOT DECLARED",
                   "release_approved": False}
         (args.out / "PRODUCT-TEST-PLAN-RESULT.json").write_text(
             json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
-    return 0 if report["status"] == "CONTRACT_PASS" else 1
+    return 0 if (report["status"] == "CONTRACT_PASS" and
+                 (args.coverage_matrix is None or
+                  report.get("required_feature_coverage") ==
+                  "REQUIRED_COVERAGE_COMPLETE")) else 1
 
 
 if __name__ == "__main__":
