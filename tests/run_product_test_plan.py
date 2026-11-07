@@ -19,12 +19,13 @@ from run_plugin_quickcheck import run as quick_run
 from product_feature_coverage import validate_matrix, evaluate
 from run_export_artifact_oracle import validate as validate_export, verify as verify_export
 from run_export_action_chain import validate as validate_chain, run as run_chain
+from run_gui_export_contract import validate as validate_gui_export, run as run_gui_export
 
 SCHEMA = "125a-product-test-plan-v1"
 RESULT = "125a-product-test-plan-result-v1"
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 HEX = re.compile(r"^[a-f0-9]{64}$")
-KINDS = {"gui_workflow", "gesture_sweep", "technical_quickcheck", "export_artifact", "export_action_chain"}
+KINDS = {"gui_workflow", "gesture_sweep", "technical_quickcheck", "export_artifact", "export_action_chain", "gui_export_contract"}
 QUICK_COVERAGE = {"api_playback_save", "sample_rate_buffer_matrix",
                   "native_audio_state_capture", "fresh_process_project_recall"}
 
@@ -83,6 +84,15 @@ def validate(plan):
         ids.add(cid)
         if kind not in KINDS or not isinstance(contract, dict):
             raise ValueError("P65 unknown or unapproved adapter kind")
+        if kind == "gui_export_contract":
+            export_host, _, export_module, actions, outputs = validate_gui_export(contract)
+            if export_host != host or export_module != module:
+                raise ValueError("P79 native GUI export references another host or module")
+            if contract["workflow"]["product"]["sha256"] != product["sha256"]:
+                raise ValueError("P79 GUI export references another module SHA")
+            compiled.append({"id": cid, "kind": kind, "contract": contract,
+                             "expected_actions": len(actions) + len(outputs)})
+            continue
         if kind == "export_action_chain":
             chain_host, chain_module, action_count, output_paths = validate_chain(contract)
             if chain_host != host or chain_module != module:
@@ -128,7 +138,8 @@ def validate(plan):
 
 
 def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run,
-            quick_runner=quick_run, chain_runner=run_chain, timeout=90, coverage_matrix=None):
+            quick_runner=quick_run, chain_runner=run_chain,
+            gui_export_runner=run_gui_export, timeout=90, coverage_matrix=None):
     # Validate the ENTIRE plan before doing a single real GUI click.
     module, hosts, cases = validate(plan)
     # P67 validates ALL feature declarations and case links before performing
@@ -173,7 +184,28 @@ def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run,
                             for name, path in hosts.items())):
                     raise ValueError("P66 executable or VST3 module changed before case")
                 folder = out / ("%02d-%s" % (idx + 1, cid))
-                if kind == "export_action_chain":
+                if kind == "gui_export_contract":
+                    observed = gui_export_runner(case["contract"], folder, timeout=timeout)
+                    expected_files = len(case["contract"]["expected_exports"])
+                    expected_actions = len(case["contract"]["workflow"]["steps"])
+                    if (not isinstance(observed, dict)
+                            or observed.get("schema") != "125a-gui-export-contract-result-v1"
+                            or observed.get("status") != "CONTRACT_PASS"
+                            or observed.get("verified_module_sha256") != fingerprint
+                            or observed.get("verified_gui_host_sha256") != hostprint
+                            or observed.get("declared_gui_actions") != expected_actions
+                            or observed.get("expected_export_count") != expected_files
+                            or observed.get("verified_export_count") != expected_files
+                            or observed.get("gui_declared_action_oracles") != "PASS"
+                            or observed.get("approved_independent_file_oracles") != "PASS"
+                            or observed.get("release_approved") is not False
+                            or not isinstance(observed.get("verified_exports"), dict)
+                            or set(observed["verified_exports"]) != {
+                                item["filename"] for item in case["contract"]["expected_exports"]
+                            }
+                            or expected_actions + expected_files != case["expected_actions"]):
+                        raise ValueError("P79 native GUI-driven independent export contract incomplete")
+                elif kind == "export_action_chain":
                     observed = chain_runner(case["contract"], folder, timeout=timeout)
                     if (not isinstance(observed, dict)
                             or observed.get("schema") != "125a-export-action-chain-result-v1"
