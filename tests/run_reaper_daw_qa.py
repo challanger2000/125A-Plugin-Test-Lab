@@ -63,9 +63,12 @@ def verify_plan(plan):
     if (not isinstance(reaper, dict) or set(reaper) != {"exe", "sha256"}
             or not isinstance(plugin, dict) or set(plugin) != {
                 "module", "sha256", "reaper_fx_name"}
-            or not isinstance(config, dict) or set(config) != {
-                "sample_rate", "tempo_bpm", "note", "velocity", "seconds",
-                "expect_audio", "minimum_rms"}):
+            or not isinstance(config, dict)
+            or not {"sample_rate", "tempo_bpm", "note", "velocity", "seconds",
+                    "expect_audio", "minimum_rms"} <= set(config)
+            or not set(config) <= {"sample_rate", "tempo_bpm", "note", "velocity",
+                                   "seconds", "expect_audio", "minimum_rms",
+                                   "insert_note", "expect_silence"}):
         raise ValueError("P91 unknown or missing DAW/FX/test fields")
     executable = verified_file(reaper["exe"], reaper["sha256"], "REAPER")
     binary = verified_file(plugin["module"], plugin["sha256"], "VST3")
@@ -85,6 +88,10 @@ def verify_plan(plan):
             or type(velocity) is not int or not 1 <= velocity <= 127
             or type(secs) is not int or not 2 <= secs <= 8
             or type(config["expect_audio"]) is not bool
+            or type(config.get("insert_note", True)) is not bool
+            or type(config.get("expect_silence", False)) is not bool
+            or (config["expect_audio"] and config.get("expect_silence", False))
+            or (config["expect_audio"] and not config.get("insert_note", True))
             or type(minimum_rms) not in (int, float)
             or not 0 < minimum_rms <= 0.2):
         raise ValueError("P91 invalid bounded musical/PCM oracle")
@@ -125,7 +132,8 @@ def generate_script(template, plan, target, status_file, project_file, phase):
         "TEST_BPM": str(config["tempo_bpm"]),
         "TEST_DURATION": str(config["seconds"]),
         "TEST_NOTE": str(config["note"]),
-        "TEST_VELOCITY": str(config["velocity"])
+        "TEST_VELOCITY": str(config["velocity"]),
+        "TEST_INSERT_NOTE": "true" if config.get("insert_note", True) else "false"
     }
     script = "\n".join("local %s = %s" % item for item in values.items())
     script += "\n" + Path(template).read_text(encoding="utf-8")
@@ -134,7 +142,8 @@ def generate_script(template, plan, target, status_file, project_file, phase):
     return output
 
 
-def check_pcm(path, rate, seconds, minimum_rms, expect_audio):
+def check_pcm(path, rate, seconds, minimum_rms, expect_audio,
+              expect_silence=False):
     if not path.is_file() or not 46 <= path.stat().st_size <= MAX_WAV_BYTES:
         raise ValueError("P91 genuine REAPER render WAV missing or abnormal size")
     with wave.open(str(path), "rb") as wav:
@@ -161,6 +170,8 @@ def check_pcm(path, rate, seconds, minimum_rms, expect_audio):
     rms = (total / count) ** 0.5
     if expect_audio and (rms < minimum_rms or peak >= 0.99999):
         raise ValueError("P91 actual REAPER render silent or clipped")
+    if expect_silence and (rms > .0001 or peak > .001):
+        raise ValueError("P92 negative MIDI control produced unexpected audio")
     return {"sha256": digest(path), "frames": frames, "channels": channels,
             "sample_rate": sample_rate, "bits": width * 8,
             "rms": round(rms, 7), "peak": round(peak, 7),
@@ -395,7 +406,8 @@ def execute(plan, out, *, timeout=90, script_template=None, process_runner=run_p
         cmd = [str(exe), "-newinst", "-nosplash", "-new", str(setup_script)]
         setup = process_runner(cmd, status_setup, timeout)
         report["genuine_reaper_process_launched"] = True
-        if (setup.get("phase") != "setup" or setup.get("note_count") != "1"
+        expected_count = "1" if plan["test"].get("insert_note", True) else "0"
+        if (setup.get("phase") != "setup" or setup.get("note_count") != expected_count
                 or not setup.get("fx_name") or not setup.get("reaper_version")
                 or not project.is_file()):
             raise ValueError("P91 REAPER setup/save evidence incomplete")
@@ -407,9 +419,10 @@ def execute(plan, out, *, timeout=90, script_template=None, process_runner=run_p
         reload_cmd = [str(exe), "-newinst", "-nosplash", str(project), str(reload_script)]
         loaded = process_runner(reload_cmd, status_reload, timeout)
         if (loaded.get("phase") != "reload" or
-                loaded.get("note_count") != "1" or
-                loaded.get("pitch") != str(plan["test"]["note"]) or
-                loaded.get("velocity") != str(plan["test"]["velocity"]) or
+                loaded.get("note_count") != expected_count or
+                (plan["test"].get("insert_note", True) and (
+                    loaded.get("pitch") != str(plan["test"]["note"]) or
+                    loaded.get("velocity") != str(plan["test"]["velocity"]))) or
                 loaded.get("fx_name") != setup["fx_name"]):
             raise ValueError("P91 real DAW reload changed stored instrument/MIDI")
         report["reloaded_project_verified"] = True
@@ -422,7 +435,8 @@ def execute(plan, out, *, timeout=90, script_template=None, process_runner=run_p
         report["rendered_by_reaper_process"] = True
         report["render"] = check_pcm(
             rendered, plan["test"]["sample_rate"], plan["test"]["seconds"],
-            plan["test"]["minimum_rms"], plan["test"]["expect_audio"])
+            plan["test"]["minimum_rms"], plan["test"]["expect_audio"],
+            plan["test"].get("expect_silence", False))
         if digest(exe) != report["verified_reaper_sha256"] or (
                 digest(module) != report["verified_module_sha256"]):
             raise ValueError("P91 REAPER or plugin module changed during live DAW run")

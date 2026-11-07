@@ -62,6 +62,13 @@ smtg_add_vst3plugin(QASignalBad
 target_link_libraries(QASignalBad PRIVATE sdk)
 target_compile_definitions(QASignalBad PRIVATE NOMINMAX QA_DELIBERATE_NAN=1)
 
+# P92 isolated audible/negative MIDI-to-PCM REAPER DAW oracle.
+smtg_add_vst3plugin(QAReaperMidiTone
+    PACKAGE_NAME "125A_QA_REAPER_MIDI"
+    SOURCES_LIST tests/reaper_midi_audible_fixture.cpp)
+target_link_libraries(QAReaperMidiTone PRIVATE sdk)
+target_compile_definitions(QAReaperMidiTone PRIVATE NOMINMAX)
+
 # P04: native Win32 editor host; real mouse-to-VST3-parameter assertion is
 # verified by two independent, source-built synthetic UI fixtures in Actions.
 add_executable(TestLabGUI src/gui_host.cpp)
