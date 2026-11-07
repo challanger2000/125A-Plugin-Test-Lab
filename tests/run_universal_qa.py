@@ -165,7 +165,12 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
                             or stable.get("identical_fresh_instance_observations") is not True
                             or stable.get("semantic_correctness") != "NOT ESTABLISHED"
                             or stable.get("release_approved") is not False
-                            or not isinstance(stable.get("reproduced_control_signatures"), list)):
+                            or stable.get("requested_points_per_repetition") != (
+                                len(coordinates.split(";")) if coordinates is not None
+                                else exploration_max_points)
+                            or not isinstance(stable.get("reproduced_control_signatures"), list)
+                            or len(stable["reproduced_control_signatures"]) !=
+                               stable["requested_points_per_repetition"]):
                         raise ValueError("P84 independent native GUI repetitions disagree or incomplete")
                     report["unknown_gui_repeatability"] = "REPRODUCIBLE_OBSERVATIONS"
                     report["unknown_gui_completed_repetitions"] = exploration_repeats
