@@ -1,3 +1,18 @@
+## P89 — One consolidated independent QA/gap report
+
+After testing many VST3 plugins through P75/P80, create a single
+per-plugin result and missing-acceptance summary:
+
+```powershell
+python tests/run_unified_qa_gaps.py --batch C:\\QA\\batch --out C:\\QA\\summary
+```
+
+Review `UNIFIED-QA-GAPS.md` and `UNIFIED-QA-GAPS.json`.
+The reporter cross-checks module SHA-256, actual child evidence and
+declared P65/P67 feature coverage. It does **not** claim commercial DAW
+sessions or physical ASIO hardware were tested. See
+[docs/P89-UNIFIED-QA-GAPS.md](docs/P89-UNIFIED-QA-GAPS.md).
+
 ## P88 — GUI parameter review queue for unknown plugins
 
 After opting in to a sandboxed P86/P87 GUI survey, create a review-only
