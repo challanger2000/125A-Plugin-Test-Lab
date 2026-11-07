@@ -1,0 +1,83 @@
+name: P64 custom-painted popup menu visual and semantic test
+
+on:
+  pull_request:
+    paths:
+      - 'tests/gui_fixture.cpp'
+      - 'CMakeLists.txt'
+      - 'tests/run_gui_painted_menu.py'
+      - 'tests/test_gui_painted_menu.py'
+      - '.github/workflows/p64-painted-menu.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove forged BMP/GUI parameter oracle cannot pass
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_gui_painted_menu.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P64 independently validated painted menu regression failed' }
+          python -m py_compile tests/run_gui_painted_menu.py tests/test_gui_painted_menu.py
+          if ($LASTEXITCODE -ne 0) { throw 'P64 Python syntax failed' }
+
+  native-painted-vst3:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build genuine painted popup VST3s and native GUI host
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P64 configure failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiPaintedMenuGood QAGuiPaintedMenuBad
+          if ($LASTEXITCODE -ne 0) { throw 'P64 real VST3 GUI fixture build failed' }
+      - name: Detect painted popup pixels and exact VST3 selection; reject inert item
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          if ($hostExe.Count -ne 1) { throw 'P64 actual VST3 GUI host missing' }
+          foreach ($variant in @('Good','Bad')) {
+            $plugin = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_GUI_PaintedMenu$variant.vst3")
+            if ($plugin.Count -ne 1) { throw "P64 $variant plugin missing" }
+            $PSNativeCommandUseErrorActionPreference = $false
+            python tests/run_gui_painted_menu.py --plugin $plugin[0].FullName --gui-host $hostExe[0].FullName --out "build/p64-$variant"
+            $code = $LASTEXITCODE
+            $report = Get-Content "build/p64-$variant/PAINTED-MENU-RESULT.json" -Raw | ConvertFrom-Json
+            if (Test-Path "build/p64-$variant/gui-workflow/native-workflow.log") {
+              Get-Content "build/p64-$variant/gui-workflow/native-workflow.log" | ForEach-Object { Write-Host "P64 NATIVE: $_" }
+            }
+            if ($variant -eq 'Good') {
+              $rect = @($report.detected_visual_popup_bounds)
+              if ($code -ne 0 -or $report.status -ne 'CONTRACT_PASS' -or
+                  $report.verified_clicks -ne 3 -or $report.verified_visual_open_actions -ne 2 -or
+                  $report.native_child_controls -ne 'ZERO_NATIVE_CHILD_HWND' -or
+                  ($rect -join ',') -ne '90,82,230,135') {
+                throw 'P64 genuine custom-painted dropdown did not satisfy independent screenshot and parameter oracles'
+              }
+            } else {
+              if ($code -ne 1 -or $report.status -ne 'FAIL' -or $report.verified_clicks -ne 0) {
+                throw 'P64 deliberately inert painted menu selection not rejected'
+              }
+            }
+            if ($report.release_approved -ne $false -or $report.arbitrary_commercial_painted_menus -ne 'NOT COVERED') {
+              throw 'P64 falsely certified universal painted-menu discovery/release'
+            }
+          }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P64-real-single-HWND-painted-popup-menu-positive-negative
+          path: |
+            build/p64-Good/
+            build/p64-Bad/
+          if-no-files-found: warn
