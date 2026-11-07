@@ -22,6 +22,7 @@ def main():
     a=p.parse_args()
     bundle,module=verify_bundle(a.plugin)
     host=a.gui_host.resolve(strict=True)
+    a.out=a.out.resolve()
     a.out.mkdir(parents=True,exist_ok=True)
     checks=contract(a.out,digest(module))
     plan={
