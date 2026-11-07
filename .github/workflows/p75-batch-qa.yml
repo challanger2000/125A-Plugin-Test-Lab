@@ -1,0 +1,100 @@
+name: P75 crash-isolated universal multi-VST3 QA batch
+
+on:
+  pull_request:
+    paths:
+      - 'tests/run_vst3_batch_qa.py'
+      - 'tests/test_vst3_batch_qa.py'
+      - '.github/workflows/p75-batch-qa.yml'
+      - 'docs/P75-UNIVERSAL-BATCH-QA.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject fake PASS, duplicate modules, changed DLL and bound each child timeout
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_vst3_batch_qa.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P75 general batch isolation regressions failed' }
+          python -m py_compile tests/run_vst3_batch_qa.py
+          if ($LASTEXITCODE -ne 0) { throw 'P75 syntax validation failed' }
+
+  real-multiple-vst3:
+    runs-on: windows-2022
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build two independent GUI styles, good and bad headless VST3 and all native hosts
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P75 CMake configuration failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI TestLabHost TestLabStateStress QAGuiNested QAGuiPaintedOnly QAStateMode0 QAStateMode2
+          if ($LASTEXITCODE -ne 0) { throw 'P75 native VST3 compilation failed' }
+      - name: Inventory all four unrelated native VST3s in crash-isolated processes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $audio = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Host.exe')
+          $stress = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
+          if ($gui.Count -ne 1 -or $audio.Count -ne 1 -or $stress.Count -ne 1) { throw 'P75 native host missing' }
+          $plugins = @(Get-ChildItem build/VST3/Release -Directory -Filter '*.vst3')
+          if ($plugins.Count -ne 4) { throw "P75 expected four native fixtures; discovered $($plugins.Count)" }
+          $PSNativeCommandUseErrorActionPreference = $false
+          python tests/run_vst3_batch_qa.py --plugins-root build/VST3/Release --gui-host $gui[0].FullName --out build/p75-all --per-plugin-timeout 600 --native-timeout 110
+          if ($LASTEXITCODE -ne 0) { throw 'P75 four real VST3s did not complete generic read-only inspection' }
+          $report = Get-Content build/p75-all/BATCH-QA-REPORT.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'BATCH_TECHNICAL_PASS' -or
+              $report.declared_plugins -ne 4 -or $report.passed_plugins -ne 4 -or
+              $report.failed_plugins -ne 0 -or $report.release_approved -ne $false -or
+              $report.gui_clicks_automatically_authorized -ne 0) {
+            throw 'P75 batch invented acceptance or omitted real VST3'
+          }
+          exit 0
+      - name: Deliberately bad native VST3 must fail independently without blocking good VST3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $audio = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Host.exe')
+          $stress = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
+          $bad = @(Get-ChildItem build/VST3/Release -Directory -Filter '125A_QA_State_2.vst3')
+          $good = @(Get-ChildItem build/VST3/Release -Directory -Filter '125A_QA_State_0.vst3')
+          if ($bad.Count -ne 1 -or $good.Count -ne 1) { throw 'P75 bad/good VST3 fixtures missing' }
+          New-Item -ItemType Directory -Force build/p75-selected | Out-Null
+          $selection = @{
+            schema='125a-vst3-batch-selection-v1'
+            plugins=@(
+              @{id='bad_first';bundle=$bad[0].FullName;run_technical_baseline=$true},
+              @{id='good_second';bundle=$good[0].FullName;run_technical_baseline=$true}
+            )
+          }
+          $selection | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 build/p75-selected/selection.json
+          $PSNativeCommandUseErrorActionPreference = $false
+          python tests/run_vst3_batch_qa.py --selection build/p75-selected/selection.json --gui-host $gui[0].FullName --audio-host $audio[0].FullName --stress-host $stress[0].FullName --out build/p75-selected/results --per-plugin-timeout 600 --native-timeout 110
+          if ($LASTEXITCODE -ne 1) { throw 'P75 deliberately defective real native VST3 was not rejected' }
+          $report = Get-Content build/p75-selected/results/BATCH-QA-REPORT.json -Raw | ConvertFrom-Json
+          if ($report.status -ne 'FAIL' -or $report.failed_plugins -ne 1 -or
+              $report.passed_plugins -ne 1 -or
+              $report.plugins[0].status -ne 'FAIL' -or
+              $report.plugins[1].status -ne 'PASS' -or
+              $report.release_approved -ne $false) {
+            throw 'P75 real defective native module incorrectly blocked following good plugin or falsely passed'
+          }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P75-real-four-VST3-batch-and-bad-first-isolation-evidence
+          path: |
+            build/p75-all/
+            build/p75-selected/
+          if-no-files-found: warn

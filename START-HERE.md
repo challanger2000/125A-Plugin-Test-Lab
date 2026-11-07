@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P75 — many plugins in one QA run, independent reports
+
+Run `python tests/run_vst3_batch_qa.py --plugins-root <VST3-test-folder> --gui-host <125A_Test_Lab_GUI.exe> --out <results>` for bounded read-only P74 inventory of 1–32 plugins with isolated child runs and a single `BATCH-QA-REPORT.json`. Alternatively, supply `--selection <selection.json>` and the native audio/stress hosts to activate technical baseline checks for selected products only. Failures do not prevent later selected plugins from running. See `docs/P75-UNIVERSAL-BATCH-QA.md`; a batch technical PASS does not certify complete product behavior.
+
+
 ## P74 — single universal VST3 test command
 
 Use `python tests/run_universal_qa.py --plugin <Plugin.vst3> --gui-host <125A_Test_Lab_GUI.exe> --out <results>` to execute the combined P68-P73 read-only onboarding and receive one main JSON report. Add `--audio-host <Test_Lab_Host.exe> --stress-host <State_Stress.exe> --run-technical-baseline` for native playback/save/stress tests. Add `--approved-plan <P65-plan.json> --feature-matrix <P67-features.json>` together to run independent product assertions, always with explicit qualified test data. See `docs/P74-UNIVERSAL-QA-PIPELINE.md`. A green inventory is not full QA coverage, and release approval remains false.
