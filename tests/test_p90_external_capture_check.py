@@ -24,6 +24,22 @@ def save_wav(path, values, sample_rate=44100, channels=1):
         handle.writeframes(struct.pack("<%dh" % len(interleaved), *interleaved))
 
 
+
+def save_stereo(path, left, right):
+    if len(left) != len(right):
+        raise ValueError("Test stereo source lengths differ")
+    interleaved = []
+    for lv,rv in zip(left,right):
+        interleaved.extend((
+            max(-32000,min(32000,int(lv*32768))),
+            max(-32000,min(32000,int(rv*32768)))
+        ))
+    with wave.open(str(path),"wb") as handle:
+        handle.setnchannels(2)
+        handle.setsampwidth(2)
+        handle.setframerate(44100)
+        handle.writeframes(struct.pack("<%dh"%len(interleaved),*interleaved))
+
 class ExternalCaptureTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -71,6 +87,26 @@ class ExternalCaptureTests(unittest.TestCase):
         self.assertFalse(observed["hardware_asio_verified"])
         self.assertFalse(observed["daw_session_verified"])
         self.assertFalse(observed["release_approved"])
+
+    def test_stereo_both_channels_must_pass(self):
+        shifted = [0.0]*21 + [x*.88 for x in self.samples]
+        save_stereo(self.ref, self.samples, self.samples)
+        save_stereo(self.recording, shifted, shifted)
+        self.contract["reference"]["sha256"] = digest(self.ref)
+        self.fresh()
+        good=run(self.contract,self.root/"stereo_good")
+        self.assertEqual(good["status"],"AUDIO_COMPARISON_PASS_SOURCE_UNATTESTED")
+        self.assertEqual(good["comparison"]["channels_compared"],2)
+        self.assertTrue(all(x["matches_reference"]
+                            for x in good["comparison"]["channel_results"]))
+        save_stereo(self.recording, shifted,
+                    [0.0]*21 + [x*.88 for x in reversed(self.samples)])
+        self.fresh()
+        bad=run(self.contract,self.root/"stereo_bad")
+        self.assertEqual(bad["status"],"FAIL")
+        self.assertEqual(bad["comparison"]["channels_compared"],2)
+        self.assertTrue(bad["comparison"]["channel_results"][0]["matches_reference"])
+        self.assertFalse(bad["comparison"]["channel_results"][1]["matches_reference"])
 
     def test_silence_is_never_valid_evidence(self):
         save_wav(self.recording, [0.0]*22050)
