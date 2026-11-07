@@ -1,0 +1,71 @@
+name: P84 repeatable native unknown-GUI observations
+on:
+  pull_request:
+    paths:
+      - 'tests/run_gui_probe_repeatability.py'
+      - 'tests/run_universal_qa.py'
+      - 'tests/run_vst3_batch_qa.py'
+      - 'tests/test_p84_probe_repeatability.py'
+      - '.github/workflows/p84-gui-repeatability.yml'
+      - 'docs/P84-REPEATABLE-GUI-OBSERVATIONS.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  repeatability:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: P84 fresh-instance regression and legacy P74/P83 compatibility
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_p84_probe_repeatability.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P84 repeatability regression FAILED' }
+          python -m unittest discover -s tests -p test_universal_qa.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P74 compatibility FAILED' }
+          python -m unittest discover -s tests -p test_p83_batch_gui_exploration.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P83 compatibility FAILED' }
+          python -m py_compile tests/run_gui_probe_repeatability.py tests/run_universal_qa.py tests/run_vst3_batch_qa.py
+          if ($LASTEXITCODE -ne 0) { throw 'P84 syntax FAILED' }
+      - name: Build real Win32 VST3 GUI editor and interactive/inert plugins
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P84 configure FAILED' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiClick QAGuiInert
+          if ($LASTEXITCODE -ne 0) { throw 'P84 real VST3 compile FAILED' }
+      - name: Repeat actual GUI click/sham controls with fresh plugin instances
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $active = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Click.vst3')
+          $inert = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Inert.vst3')
+          if ($gui.Count -ne 1 -or $active.Count -ne 1 -or $inert.Count -ne 1) { throw 'P84 native fixtures missing' }
+          foreach ($scenario in @(
+            @{name='interactive';bundle=$active[0].FullName;classification='PARAMETER_AND_VISUAL_CHANGE'},
+            @{name='inert';bundle=$inert[0].FullName;classification='NO_OBSERVED_CHANGE'}
+          )) {
+            $out = "build/p84/$($scenario.name)"
+            python tests/run_universal_qa.py --plugin $scenario.bundle --gui-host $gui[0].FullName --out $out --explore-unknown-gui --exploration-points '160,90' --exploration-max-points 1 --exploration-repeats 2
+            if ($LASTEXITCODE -ne 0) { throw "P84 native repeatability FAIL: $($scenario.name)" }
+            $r = Get-Content "$out/UNIVERSAL-QA-RESULT.json" -Raw | ConvertFrom-Json
+            $sub = Get-Content "$out/unknown-gui-probes/GUI-REPEATABILITY-RESULT.json" -Raw | ConvertFrom-Json
+            if ($r.status -ne 'INVENTORY_WITH_EXPLORATORY_OBSERVATIONS' -or
+                $r.unknown_gui_repeatability -ne 'REPRODUCIBLE_OBSERVATIONS' -or
+                $r.unknown_gui_completed_repetitions -ne 2 -or
+                $r.exploratory_clicks_performed -ne 2 -or
+                $r.release_approved -ne $false -or
+                $sub.reproduced_control_signatures.Count -ne 1 -or
+                $sub.reproduced_control_signatures[0].classification -ne $scenario.classification -or
+                $sub.semantic_correctness -ne 'NOT ESTABLISHED') {
+              throw "P84 wrong native observation/repeat evidence: $($scenario.name)"
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P84-actual-independent-VST3-sham-repeatability-evidence
+          path: build/p84/
+          if-no-files-found: warn
