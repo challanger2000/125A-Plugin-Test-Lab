@@ -15,6 +15,7 @@ import subprocess
 import sys
 
 from run_vst3_auto_discovery import verify_bundle, digest
+from run_universal_qa import preflight as preflight_product
 
 SCHEMA = "125a-vst3-batch-selection-v1"
 RESULT = "125a-vst3-batch-report-v1"
@@ -49,14 +50,21 @@ def load_selection(selection=None, root=None, *, technical_all=False):
         } for index, bundle in enumerate(found, 1)]
     selected, ids, paths = [], set(), set()
     for item in items:
-        if not isinstance(item, dict) or set(item) != {
-                "id", "bundle", "run_technical_baseline"}:
+        if not isinstance(item, dict) or not {"id", "bundle", "run_technical_baseline"} <= set(item) or (
+                set(item) - {"id", "bundle", "run_technical_baseline", "approved_plan", "feature_matrix"}):
             raise ValueError("P75 unsupported plugin batch selection fields")
         ident = item["id"]
         if type(ident) is not str or not ID.fullmatch(ident) or ident in ids:
             raise ValueError("P75 invalid or duplicate plugin id")
         if type(item["run_technical_baseline"]) is not bool:
             raise ValueError("P75 technical option must be an explicit boolean")
+        if ("approved_plan" in item) != ("feature_matrix" in item):
+            raise ValueError("P80 approved plan and matrix must be paired")
+        if "approved_plan" in item and (
+                type(item["approved_plan"]) is not str or
+                type(item["feature_matrix"]) is not str or
+                not item["approved_plan"] or not item["feature_matrix"]):
+            raise ValueError("P80 invalid approved plan/matrix reference")
         bundle, module = verify_bundle(item["bundle"])
         if bundle in paths:
             raise ValueError("P75 duplicate VST3 bundle in selection")
@@ -65,7 +73,10 @@ def load_selection(selection=None, root=None, *, technical_all=False):
         selected.append({
             "id": ident, "bundle": bundle, "module": module,
             "sha256": digest(module), "run_technical_baseline":
-                item["run_technical_baseline"]
+                item["run_technical_baseline"],
+            **({"approved_plan": str(Path(item["approved_plan"]).resolve(strict=True)),
+                "feature_matrix": str(Path(item["feature_matrix"]).resolve(strict=True))}
+               if "approved_plan" in item else {})
         })
     return selected
 
@@ -97,8 +108,12 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
     observed_ids, observed_paths = set(), set()
     for entry in selected:
         if (not isinstance(entry, dict) or
-                set(entry) != {"id", "bundle", "module", "sha256",
-                               "run_technical_baseline"} or
+                not {"id", "bundle", "module", "sha256",
+                     "run_technical_baseline"} <= set(entry) or
+                set(entry) - {"id", "bundle", "module", "sha256",
+                              "run_technical_baseline", "approved_plan",
+                              "feature_matrix"} or
+                ("approved_plan" in entry) != ("feature_matrix" in entry) or
                 type(entry["id"]) is not str or not ID.fullmatch(entry["id"]) or
                 entry["id"] in observed_ids or
                 type(entry["run_technical_baseline"]) is not bool):
@@ -109,6 +124,18 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
             raise ValueError("P75 plugin selection changed before test execution")
         observed_ids.add(entry["id"])
         observed_paths.add(bundle)
+    # Validate all reviewed product plans before any VST3 execution.
+    pinned_contracts = {}
+    for entry in selected:
+        if "approved_plan" not in entry:
+            continue
+        plan_path = Path(entry["approved_plan"]).resolve(strict=True)
+        matrix_path = Path(entry["feature_matrix"]).resolve(strict=True)
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+        preflight_product(plan, matrix, entry["module"], gui, audio, stress)
+        pinned_contracts[entry["id"]] = (
+            plan_path, matrix_path, digest(plan_path), digest(matrix_path))
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     target = out / "BATCH-QA-REPORT.json"
@@ -142,6 +169,11 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                 cmd += ["--audio-host", str(audio), "--stress-host", str(stress)]
             if entry["run_technical_baseline"]:
                 cmd += ["--run-technical-baseline"]
+            if ident in pinned_contracts:
+                pp, mp, ph, mh = pinned_contracts[ident]
+                if digest(pp) != ph or digest(mp) != mh:
+                    raise ValueError("P80 reviewed product plan changed before run")
+                cmd += ["--approved-plan", str(pp), "--feature-matrix", str(mp)]
             process = runner(cmd, capture_output=True, text=True,
                              errors="replace", check=False,
                              timeout=per_plugin_timeout)
@@ -152,7 +184,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
             if not result_path.is_file() or result_path.stat().st_size > 2_000_000:
                 raise ValueError("P75 child did not produce bounded trustworthy JSON evidence")
             outcome = json.loads(result_path.read_text(encoding="utf-8"))
-            expected = ("TECHNICAL_BASELINE_PASS" if
+            expected = ("DECLARED_COVERAGE_PASS" if ident in pinned_contracts else
+                        "TECHNICAL_BASELINE_PASS" if
                         entry["run_technical_baseline"] else "INVENTORY_COMPLETE")
             if (process.returncode != 0 or
                     not isinstance(outcome, dict) or
@@ -163,15 +196,24 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                     outcome.get("discovery") != "PASS" or
                     outcome.get("gui_clicks_automatically_authorized") != 0 or
                     outcome.get("release_approved") is not False or
-                    outcome.get("required_feature_coverage") != "NOT DECLARED" or
+                    outcome.get("required_feature_coverage") != (
+                        "REQUIRED_COVERAGE_COMPLETE" if ident in pinned_contracts
+                        else "NOT DECLARED") or
+                    (ident in pinned_contracts and
+                     outcome.get("approved_product_cases") != "CONTRACT_PASS") or
                     (entry["run_technical_baseline"] and
                      outcome.get("native_technical") != "PASS")):
                 raise ValueError("P75 child failed or returned forged/incomplete actual VST3 QA")
             if digest(entry["module"]) != entry["sha256"] or any(
                     digest(path) != value for path, value in identities.items()):
                 raise ValueError("P75 native binaries were changed by child process")
+            if ident in pinned_contracts:
+                pp, mp, ph, mh = pinned_contracts[ident]
+                if digest(pp) != ph or digest(mp) != mh:
+                    raise ValueError("P80 reviewed product plan changed during run")
             row["status"] = "PASS"
             row["verified_stage"] = expected
+            row["required_feature_coverage"] = outcome["required_feature_coverage"]
         except (OSError, ValueError, TypeError, KeyError,
                 json.JSONDecodeError, subprocess.TimeoutExpired) as error:
             row["faults"].append(str(error))
@@ -179,7 +221,10 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
     report["passed_plugins"] = sum(x["status"] == "PASS" for x in report["plugins"])
     report["failed_plugins"] = sum(x["status"] == "FAIL" for x in report["plugins"])
     if report["passed_plugins"] == report["declared_plugins"]:
-        report["status"] = "BATCH_TECHNICAL_PASS"
+        report["status"] = (
+            "BATCH_DECLARED_COVERAGE_PASS" if len(pinned_contracts) == len(selected)
+            else "BATCH_MIXED_QA_PASS" if pinned_contracts
+            else "BATCH_TECHNICAL_PASS")
     target.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
 
@@ -213,7 +258,8 @@ def main():
         (args.out / "BATCH-QA-REPORT.json").write_text(
             json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
-    return 0 if report["status"] == "BATCH_TECHNICAL_PASS" else 1
+    return 0 if report["status"] in (
+        "BATCH_TECHNICAL_PASS", "BATCH_DECLARED_COVERAGE_PASS", "BATCH_MIXED_QA_PASS") else 1
 
 
 if __name__ == "__main__":

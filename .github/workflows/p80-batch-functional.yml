@@ -1,0 +1,27 @@
+name: P80 isolated multi-VST3 approved functional batch
+on:
+  pull_request:
+    paths:
+      - 'tests/run_vst3_batch_qa.py'
+      - 'tests/test_p80_batch_functional_qa.py'
+      - 'tests/test_vst3_batch_qa.py'
+      - '.github/workflows/p80-batch-functional.yml'
+      - 'docs/P80-BATCH-FUNCTIONAL-QA.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  batch-contracts:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate paired plans, mixed batch, isolated FAIL and P75 compatibility
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_p80_batch_functional_qa.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P80 batch functional FAILED' }
+          python -m unittest discover -s tests -p test_vst3_batch_qa.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P75 backward compatibility FAILED' }
+          python -m py_compile tests/run_vst3_batch_qa.py
+          if ($LASTEXITCODE -ne 0) { throw 'P80 syntax FAILED' }
