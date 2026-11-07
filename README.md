@@ -1,5 +1,8 @@
 # 125A Plugin Test Lab
 
+**P74 single-command universal VST3 QA:** Run `tests/run_universal_qa.py` to combine automatic ABI/GUI inventory, optional real audio/state stress tests, and strictly approved P65/P66 + P67 feature verification in one fail-closed report. The report distinguishes `INVENTORY_COMPLETE`, `TECHNICAL_BASELINE_PASS`, `DECLARED_COVERAGE_PASS`, and `FAIL`; never asserts full commercial release. [Details](docs/P74-UNIVERSAL-QA-PIPELINE.md).
+
+
 **P73 headless and technical onboarding:** The same P72 one-command discovery handles plugins that expose no VST3 editor without fabricating GUI controls, and an explicit `--run-technical-baseline` option runs the existing general native playback, sample-rate, state save/recall checks after accepting both audio and stress host executables. No hardware/DAW or product approval claims. [Headless/technical details](docs/P73-HEADLESS-AUTOCHECK.md).
 
 
