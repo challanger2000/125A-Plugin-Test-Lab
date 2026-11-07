@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P70 — custom-painted VSTGUI candidate discovery
+
+Run `python tests/run_gui_painted_candidates.py --plugin <Plugin.vst3> --gui-host <125A_Test_Lab_GUI.exe> --out <results>` to identify pixel-based, possibly interactive regions in an untouched native editor screenshot. The default never clicks. In a disposable, approved test environment, `--acknowledge-ui-clicks` enables sham-controlled real Win32 click observations. These are candidates, not proof that an undisclosed control exists or works. Details in `docs/P70-PAINTED-CANDIDATES.md`.
+
+
 ## P69 — automatically locate real native HWND GUI buttons
 
 Run `python tests/run_gui_hwnd_guided.py --plugin <actual.vst3> --gui-host <125A_Test_Lab_GUI.exe> --out <results>` to derive candidate clicks from actual standard Win32 child controls **without clicking**. On an isolated reviewed test machine, add `--acknowledge-ui-clicks` for bounded P42 sham-controlled probing. Custom-painted VSTGUI controls and unknown actions remain NOT COVERED. See `docs/P69-HWND-GUIDED-EXPLORATION.md`.
