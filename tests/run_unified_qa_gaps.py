@@ -9,6 +9,8 @@ import json
 from pathlib import Path
 import re
 
+from run_external_daw_capture_check import run as compare_external_capture
+
 SCHEMA = "125a-p89-unified-qa-review-v1"
 BATCH_SCHEMA = "125a-vst3-batch-report-v1"
 CHILD_SCHEMA = "125a-universal-vst3-qa-pipeline-v1"
@@ -27,7 +29,8 @@ def load(path):
     return obj
 
 
-def review(batch_directory, out):
+def review(batch_directory, out, *, capture_contracts=None,
+           capture_runner=compare_external_capture):
     source = Path(batch_directory).resolve(strict=True)
     batch = load(source / "BATCH-QA-REPORT.json")
     if (batch.get("schema") != BATCH_SCHEMA
@@ -46,6 +49,15 @@ def review(batch_directory, out):
                 "BATCH_EXPLORATORY_OBSERVATIONS_COMPLETE")):
         raise ValueError("P89 corrupted/incomplete consolidated native batch report")
 
+    capture_contracts = capture_contracts or {}
+    if (not isinstance(capture_contracts, dict)
+            or any(type(k) is not str or not IDENT.fullmatch(k)
+                   or type(v) is not str for k,v in capture_contracts.items())):
+        raise ValueError("P90 invalid plugin-to-capture contract selection")
+    known_ids = {x.get("id") for x in batch["plugins"] if isinstance(x, dict)}
+    if not set(capture_contracts) <= known_ids:
+        raise ValueError("P90 external DAW capture targets unselected plugin")
+    out = Path(out)
     rows, seen_ids = [], set()
     for index, item in enumerate(batch["plugins"], 1):
         if (not isinstance(item, dict) or type(item.get("id")) is not str
@@ -95,12 +107,28 @@ def review(batch_directory, out):
             gaps.append("PLUGIN_QA_FAILED")
         if product != "CONTRACT_PASS" or coverage != "REQUIRED_COVERAGE_COMPLETE":
             gaps.append("INDEPENDENT_PRODUCT_FEATURE_COVERAGE_NOT_PROVED")
+        external = "NOT PROVIDED"
+        if ident in capture_contracts:
+            supplied = load(capture_contracts[ident])
+            recorded = capture_runner(supplied, out / "external-capture" / ident)
+            if (not isinstance(recorded, dict)
+                    or recorded.get("schema") != "125a-external-daw-capture-comparison-v1"
+                    or recorded.get("verified_module_sha256") != item["verified_module_sha256"]
+                    or recorded.get("hardware_asio_verified") is not False
+                    or recorded.get("daw_session_verified") is not False
+                    or recorded.get("release_approved") is not False
+                    or recorded.get("status") not in (
+                        "AUDIO_COMPARISON_PASS_SOURCE_UNATTESTED", "FAIL")):
+                raise ValueError("P90 foreign/forged external PCM cannot be accepted")
+            external = recorded["status"]
         # P68 ABI discovery is not equivalent to complete product semantics.
         gaps.extend(("PHYSICAL_ASIO_HARDWARE_NOT_TESTED",
                      "COMMERCIAL_DAW_SESSION_NOT_TESTED",
                      "UNKNOWN_PRODUCT_FUNCTION_SEMANTICS_NOT_CERTIFIED"))
         if feature_gaps:
             gaps.append("DECLARED_REQUIRED_FEATURE_GAPS")
+        if external == "FAIL":
+            gaps.append("EXTERNAL_PCM_CAPTURE_COMPARISON_FAILED")
         rows.append({
             "id": ident, "module_sha256": item["verified_module_sha256"],
             "automated_qa_result": item["status"],
@@ -114,6 +142,7 @@ def review(batch_directory, out):
             "unknown_gui_exploration": (evidence.get("unknown_gui_exploration")
                                         if evidence is not None else "NOT VERIFIED"),
             "failure_details": item.get("faults", []),
+            "externally_supplied_audio_comparison": external,
             "unresolved_acceptance_gaps": gaps,
             "release_approved": False
         })
@@ -133,6 +162,13 @@ def review(batch_directory, out):
         "physical_asio_hardware": "NOT RUN",
         "commercial_daw_session": "NOT RUN",
         "universal_unknown_function_semantics": "NOT PROVEN",
+        "external_pcm_captures_compared": sum(
+            r["externally_supplied_audio_comparison"] != "NOT PROVIDED"
+            for r in rows),
+        "external_pcm_captures_matching": sum(
+            r["externally_supplied_audio_comparison"] ==
+            "AUDIO_COMPARISON_PASS_SOURCE_UNATTESTED" for r in rows),
+        "external_audio_source_provenance": "NOT ATTESTED",
         "all_products_release_approved": False,
         "plugins": rows
     }
@@ -145,13 +181,14 @@ def review(batch_directory, out):
         "",
         "Automatic batch: **%s**. %d passed, %d failed, %d submitted."
         % (batch["status"], good, bad, len(rows)), "",
-        "| Plugin | Automated check | Declared functionality | Open acceptance gaps |",
-        "| --- | --- | --- | ---: |"
+        "| Plugin | Automated check | Declared functionality | External PCM | Open acceptance gaps |",
+        "| --- | --- | --- | --- | ---: |"
     ]
     for row in rows:
-        lines.append("| `%s` | %s | %s | %d |" % (
+        lines.append("| `%s` | %s | %s | %s | %d |" % (
             row["id"], row["automated_qa_result"],
             row["required_feature_coverage"],
+            row["externally_supplied_audio_comparison"],
             len(row["unresolved_acceptance_gaps"])))
     lines.extend([
         "", "## What is not certified", "",
@@ -172,9 +209,20 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--batch",type=Path,required=True)
     parser.add_argument("--out",type=Path,required=True)
+    parser.add_argument("--external-capture", action="append", default=[],
+                        metavar="PLUGIN_ID=CONTRACT_JSON",
+                        help="External capture file and independent reference")
     args=parser.parse_args()
+    capture_contracts = {}
+    for source in args.external_capture:
+        if "=" not in source:
+            parser.error("--external-capture requires PLUGIN_ID=CONTRACT_JSON")
+        plugin_id, file_path = source.split("=", 1)
+        if plugin_id in capture_contracts:
+            parser.error("duplicate external-capture plugin id")
+        capture_contracts[plugin_id] = file_path
     try:
-        report=review(args.batch,args.out)
+        report=review(args.batch,args.out,capture_contracts=capture_contracts)
     except (OSError,ValueError,TypeError,KeyError,IndexError,
             json.JSONDecodeError) as exc:
         args.out.mkdir(parents=True,exist_ok=True)
