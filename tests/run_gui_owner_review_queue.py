@@ -115,7 +115,7 @@ def generate(capabilities, parameters, dense_report, out,
     queue = []
     for p in sorted(params, key=lambda e: e["param_id"]):
         pid = p["param_id"]
-        obs = observed_by_parameter[pid]
+        obs = observed_by_parameter.get(pid, [])
         queue.append({
             "param_id": pid,
             "native_step_count": p["step_count"],
