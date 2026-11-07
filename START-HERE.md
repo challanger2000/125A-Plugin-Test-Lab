@@ -1,3 +1,21 @@
+## P91 — REAPER real-DAW plugin testing (opt-in, hardware not claimed)
+
+P91 introduces a real REAPER process adapter, using REAPER Lua ReaScript
+and its documented `-renderproject` CLI to create a project, instantiate
+an approved VST3, add MIDI, save, **reload**, and independently inspect
+the output PCM. Supply an exact SHA-256-pinned local plan:
+
+```powershell
+python tests/run_reaper_daw_qa.py --plan C:\\QA\\approved-reaper-plan.json --out C:\\QA\\new-reaper-evidence
+```
+
+An explicit, isolated self-hosted `125A-REAPER` Windows workflow is
+provided; **public Windows CI tests only driver/plan/mock regressions,
+NOT a real REAPER installation or session.** Real DAW acceptance requires
+this actual optional live run and its evidence. ASIO hardware remains
+`NOT RUN`. No third-party REAPER binary or license is bundled.
+See [P91 documentation](docs/P91-REAPER-DAW-INTEGRATION.md).
+
 ## P90 — Real external DAW/ASIO capture PCM comparison
 
 The universal QA runner cannot touch physical ASIO hardware on a cloud
