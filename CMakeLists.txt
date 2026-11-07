@@ -344,6 +344,16 @@ endforeach()
 target_compile_definitions(QAGuiMenuGood PRIVATE NOMINMAX QA_GUI_MENU_GOOD=1)
 target_compile_definitions(QAGuiMenuBad PRIVATE NOMINMAX QA_GUI_MENU_BAD=1)
 
+# P63 real popup-mouse select in an actual Windows menu tracking loop.
+foreach(kind IN ITEMS Good Bad)
+  smtg_add_vst3plugin(QAGuiPopup${kind}
+      PACKAGE_NAME "125A_QA_GUI_Popup${kind}"
+      SOURCES_LIST tests/gui_fixture.cpp)
+  target_link_libraries(QAGuiPopup${kind} PRIVATE sdk user32 gdi32)
+endforeach()
+target_compile_definitions(QAGuiPopupGood PRIVATE NOMINMAX QA_GUI_POPUP_GOOD=1)
+target_compile_definitions(QAGuiPopupBad PRIVATE NOMINMAX QA_GUI_POPUP_BAD=1)
+
 # P58: optional actual Windows ASIO driver host. The ASIO SDK is NOT shipped
 # in the Test Lab; supply separately under its applicable license.
 set(ASIO_SDK_DIR "" CACHE PATH "Path containing Steinberg ASIO SDK common/asio.h")

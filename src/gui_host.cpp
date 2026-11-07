@@ -1019,10 +1019,114 @@ std::vector<HWND> ownedDialogs(HWND host, HWND editor) {
             "P60 dialog count exceeds strict observation bound");
     return inventory.windows;
 }
+
+// P63: a real Win32 popup (#32768) must exist in this process before
+// mouse input is injected. Never target another application's menu.
+struct P63PopupSearch {
+    DWORD pid{};
+    HWND found{};
+};
+BOOL CALLBACK findP63Popup(HWND hwnd, LPARAM context) {
+    auto& search = *reinterpret_cast<P63PopupSearch*>(context);
+    DWORD pid{};
+    (void)GetWindowThreadProcessId(hwnd, &pid);
+    if (pid != search.pid || !IsWindowVisible(hwnd)) return TRUE;
+    wchar_t cls[64]{};
+    if (GetClassNameW(hwnd, cls, 64) &&
+        wcscmp(cls, L"#32768") == 0) {
+        search.found = hwnd;
+        return FALSE;
+    }
+    return TRUE;
+}
+HWND findOwnP63Popup() {
+    P63PopupSearch search{};
+    search.pid = GetCurrentProcessId();
+    (void)EnumWindows(findP63Popup, reinterpret_cast<LPARAM>(&search));
+    return search.found;
+}
+struct P63MouseSelection {
+    int result{};
+    UINT selected{};
+};
+// TrackPopupMenuEx enters the real Win32 menu tracking loop. A second
+// thread sees the actual OS menu window and uses SendInput at the actual
+// first item rectangle. No WM_COMMAND is used to select the menu entry.
+P63MouseSelection selectRealPopupMouse(HWND owner, HMENU submenu) {
+    require(owner && IsWindow(owner) && submenu && IsMenu(submenu),
+            "P63 requires genuine window and Win32 popup menu");
+    RECT ownerRect{};
+    require(GetWindowRect(owner, &ownerRect),
+            "P63 dialog screen position cannot be read");
+    const int x = ownerRect.left + 40;
+    const int y = ownerRect.top + 58;
+    (void)SetForegroundWindow(owner);
+    (void)SetActiveWindow(owner);
+    std::atomic<int> clickResult{0};
+    std::atomic<bool> trackingEnded{false};
+    std::thread mouse([&] {
+        const auto cutoff = std::chrono::steady_clock::now() +
+                            std::chrono::seconds(5);
+        while (std::chrono::steady_clock::now() < cutoff) {
+            const HWND realPopup = findOwnP63Popup();
+            RECT item{};
+            if (realPopup && GetMenuItemRect(owner, submenu, 0, &item) &&
+                item.right > item.left + 2 && item.bottom > item.top + 2) {
+                const POINT target{(item.left + item.right) / 2,
+                                   (item.top + item.bottom) / 2};
+                RECT popupRect{};
+                if (GetWindowRect(realPopup, &popupRect) &&
+                    PtInRect(&popupRect, target)) {
+                    POINT prior{};
+                    (void)GetCursorPos(&prior);
+                    (void)SetCursorPos(target.x, target.y);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(45));
+                    INPUT input[2]{};
+                    input[0].type = INPUT_MOUSE;
+                    input[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+                    input[1].type = INPUT_MOUSE;
+                    input[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+                    const UINT sent = SendInput(2, input, sizeof(INPUT));
+                    clickResult.store(sent == 2 ? 1 : -1,
+                                      std::memory_order_release);
+                    // Restore the pre-test cursor after the click messages
+                    // have had a chance to dispatch to the real menu.
+                    std::this_thread::sleep_for(std::chrono::milliseconds(75));
+                    (void)SetCursorPos(prior.x, prior.y);
+                    const auto closeDeadline = std::chrono::steady_clock::now() +
+                                               std::chrono::seconds(2);
+                    while (!trackingEnded.load(std::memory_order_acquire) &&
+                           std::chrono::steady_clock::now() < closeDeadline)
+                        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                    if (!trackingEnded.load(std::memory_order_acquire)) {
+                        clickResult.store(-3, std::memory_order_release);
+                        (void)PostMessageW(owner, WM_CANCELMODE, 0, 0);
+                        (void)EndMenu();
+                    }
+                    return;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(15));
+        }
+        clickResult.store(-2, std::memory_order_release);
+        // Cancel real menu tracking in a bounded time if no genuine popup
+        // was displayed; never leave the test host stuck indefinitely.
+        (void)PostMessageW(owner, WM_CANCELMODE, 0, 0);
+        (void)EndMenu();
+    });
+    const UINT selection = TrackPopupMenuEx(
+        submenu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN | TPM_TOPALIGN,
+        x, y, owner, nullptr);
+    trackingEnded.store(true, std::memory_order_release);
+    mouse.join();
+    return {clickResult.load(std::memory_order_acquire), selection};
+}
+
 int observeOwnedDialog(const std::string& pluginPath, int x, int y,
                        const std::filesystem::path& reportPath,
                        bool exerciseButton = false,
-                       bool exerciseMenu = false) {
+                       bool exerciseMenu = false,
+                       bool exercisePopup = false) {
     require(x >= 0 && x < 8192 && y >= 0 && y < 8192,
             "P60 click coordinates outside approved bound");
     std::string error;
@@ -1088,6 +1192,50 @@ int observeOwnedDialog(const std::string& pluginPath, int x, int y,
                             wcscmp(clsName, L"#32770") == 0,
                             "P60 observed window is not an OS dialog");
                     out << "dialog\t" << i << "\t#32770\tvisible\towned\n";
+                }
+                if (exercisePopup) {
+                    require(after.size() == 1,
+                            "P63 exactly one owned Win32 dialog required");
+                    const HWND popup = after.front();
+                    const HMENU bar = GetMenu(popup);
+                    require(bar && IsMenu(bar) && GetMenuItemCount(bar) == 1,
+                            "P63 real dialog menu bar invalid");
+                    wchar_t section[80]{};
+                    require(GetMenuStringW(bar, 0, section, 80,
+                                           MF_BYPOSITION) > 0 &&
+                            wcscmp(section, L"Actions") == 0,
+                            "P63 expected menu section missing");
+                    const HMENU submenu = GetSubMenu(bar, 0);
+                    require(submenu && IsMenu(submenu) &&
+                            GetMenuItemCount(submenu) == 1,
+                            "P63 real Win32 popup submenu unavailable");
+                    require(GetMenuItemID(submenu, 0) == 43064,
+                            "P63 approved popup menu item ID missing");
+                    wchar_t label[80]{};
+                    require(GetMenuStringW(submenu, 0, label, 80,
+                                           MF_BYPOSITION) > 0 &&
+                            wcscmp(label, L"Apply Preset") == 0,
+                            "P63 expected popup item title missing");
+                    const UINT enabled = GetMenuState(submenu, 0, MF_BYPOSITION);
+                    require(enabled != static_cast<UINT>(-1) &&
+                            (enabled & (MF_DISABLED | MF_GRAYED)) == 0,
+                            "P63 approved popup item is disabled");
+                    const auto result = selectRealPopupMouse(popup, submenu);
+                    require(result.result == 1,
+                            "P63 actual Windows menu mouse input not confirmed");
+                    require(result.selected == 43064,
+                            "P63 real TrackPopupMenuEx selected wrong command");
+                    require(IsWindow(popup),
+                            "P63 popup dialog vanished before menu command routing");
+                    // Only after the real menu has returned its selected ID
+                    // do we dispatch that ID to the VST3-owned dialog.
+                    (void)SendMessageW(popup, WM_COMMAND,
+                                       MAKEWPARAM(result.selected, 0), 0);
+                    pump(75);
+                    require(ownedDialogs(window.get(), editor).empty(),
+                            "P63 real menu selection was not handled by plugin dialog");
+                    out << "popup\t43064\tActions/Apply Preset\tmouse_input\t"
+                           "trackpopup_selected\tcommand_handled\tdialog_closed\n";
                 }
                 if (exerciseMenu) {
                     require(after.size() == 1,
@@ -2908,6 +3056,10 @@ int main(int argc, char** argv) {
             return sweepParameters(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "--verify-parameter-text")
             return verifyParameterText(argv[2], argv[3]);
+        if (argc == 6 && std::string(argv[1]) == "--select-owned-popup-mouse")
+            return observeOwnedDialog(argv[2], std::stoi(argv[3]),
+                                      std::stoi(argv[4]), argv[5],
+                                      false, false, true);
         if (argc == 6 && std::string(argv[1]) == "--audit-owned-dialog-menu")
             return observeOwnedDialog(argv[2], std::stoi(argv[3]),
                                       std::stoi(argv[4]), argv[5], false, true);

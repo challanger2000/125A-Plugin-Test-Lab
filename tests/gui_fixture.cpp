@@ -39,6 +39,12 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_HOVER
 #define QA_GUI_HOVER 0
 #endif
+#ifndef QA_GUI_POPUP_GOOD
+#define QA_GUI_POPUP_GOOD 0
+#endif
+#ifndef QA_GUI_POPUP_BAD
+#define QA_GUI_POPUP_BAD 0
+#endif
 #ifndef QA_GUI_MENU_GOOD
 #define QA_GUI_MENU_GOOD 0
 #endif
@@ -177,7 +183,15 @@ bool writeFixtureMidi() {
 }
 #endif
 
-#if QA_GUI_MENU_GOOD
+#if QA_GUI_POPUP_GOOD
+const FUID kProcessorCID(0x125A2026, 0x11070001, 0xA0000D11, 0xB0000D11);
+const FUID kControllerCID(0x125A2026, 0x11070001, 0xA0000D12, 0xB0000D12);
+constexpr const char* kName = "125A Real Popup Menu Mouse Selection Good Fixture";
+#elif QA_GUI_POPUP_BAD
+const FUID kProcessorCID(0x125A2026, 0x11070001, 0xA0000D21, 0xB0000D21);
+const FUID kControllerCID(0x125A2026, 0x11070001, 0xA0000D22, 0xB0000D22);
+constexpr const char* kName = "125A Real Popup Menu Wrong Command Fixture";
+#elif QA_GUI_MENU_GOOD
 const FUID kProcessorCID(0x125A2026, 0x11060004, 0xA0000C11, 0xB0000C11);
 const FUID kControllerCID(0x125A2026, 0x11060004, 0xA0000C12, 0xB0000C12);
 constexpr const char* kName = "125A Native Dialog Menu Correct Fixture";
@@ -405,8 +419,14 @@ public:
     }
 };
 
-#if QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON || QA_GUI_MENU_GOOD || QA_GUI_MENU_BAD
+#if QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON || QA_GUI_MENU_GOOD || QA_GUI_MENU_BAD || QA_GUI_POPUP_GOOD || QA_GUI_POPUP_BAD
 LRESULT CALLBACK fixtureDialogProc(HWND dialog, UINT message, WPARAM w, LPARAM l) {
+#if QA_GUI_POPUP_GOOD
+    if (message == WM_COMMAND && LOWORD(w) == 43064 && HIWORD(w) == 0) {
+        (void)DestroyWindow(dialog);
+        return 0;
+    }
+#endif
 #if QA_GUI_MENU_GOOD
     if (message == WM_COMMAND && LOWORD(w) == 43062 && HIWORD(w) == 0) {
         (void)DestroyWindow(dialog);
@@ -483,7 +503,7 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
     }
 #endif
     if (message == WM_LBUTTONUP && self && self->owner_) {
-#if QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON || QA_GUI_MENU_GOOD || QA_GUI_MENU_BAD
+#if QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON || QA_GUI_MENU_GOOD || QA_GUI_MENU_BAD || QA_GUI_POPUP_GOOD || QA_GUI_POPUP_BAD
         if (!self->dialogWindow_) {
             self->dialogWindow_ = CreateWindowExW(
                 WS_EX_DLGMODALFRAME, L"#32770", L"P60 Plugin Test Dialog",
@@ -493,6 +513,28 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
             if (self->dialogWindow_) {
                 (void)SetWindowLongPtrW(self->dialogWindow_, GWLP_WNDPROC,
                                         reinterpret_cast<LONG_PTR>(&fixtureDialogProc));
+#if QA_GUI_POPUP_GOOD || QA_GUI_POPUP_BAD
+                HMENU menuBar = CreateMenu();
+                HMENU popupMenu = CreatePopupMenu();
+                if (menuBar && popupMenu) {
+#if QA_GUI_POPUP_GOOD
+                    (void)AppendMenuW(popupMenu, MF_STRING, 43064, L"Apply Preset");
+#else
+                    (void)AppendMenuW(popupMenu, MF_STRING, 43065, L"Wrong Command");
+#endif
+                    if (AppendMenuW(menuBar, MF_POPUP,
+                                    reinterpret_cast<UINT_PTR>(popupMenu), L"Actions")) {
+                        if (!SetMenu(self->dialogWindow_, menuBar))
+                            (void)DestroyMenu(menuBar);
+                    } else {
+                        (void)DestroyMenu(popupMenu);
+                        (void)DestroyMenu(menuBar);
+                    }
+                } else {
+                    if (popupMenu) (void)DestroyMenu(popupMenu);
+                    if (menuBar) (void)DestroyMenu(menuBar);
+                }
+#endif
 #if QA_GUI_MENU_GOOD || QA_GUI_MENU_BAD
                 HMENU nativeMenu = CreateMenu();
                 if (nativeMenu) {
