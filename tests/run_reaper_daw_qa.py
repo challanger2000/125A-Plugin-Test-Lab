@@ -187,7 +187,7 @@ def _windows_for_process(pid):
                 user32.GetWindowTextW(hwnd, buf, length + 1)
                 if buf.value:
                     titles.append(buf.value[:240])
-                if "REAPER" in buf.value.upper():
+                if "REAPER" in buf.value.upper() or "PROJECT LOAD WARNING" in buf.value.upper():
                     def inspect(child, _arg):
                         if len(titles) >= 80:
                             return False
