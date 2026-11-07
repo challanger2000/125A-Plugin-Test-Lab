@@ -62,8 +62,10 @@ function Find-Unique([string]$Root, [string]$Name) {
 }
 
 try {
-    if (-not $IsWindows -and $PSVersionTable.PSEdition -eq 'Core') {
-        throw 'P97 requires a real Windows host'
+    # $IsWindows is a PowerShell Core variable; Windows PowerShell 5.1
+    # does not define it (and Set-StrictMode would reject its use).
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        if (-not $IsWindows) { throw 'P97 requires a real Windows host' }
     }
     if (-not [Environment]::Is64BitOperatingSystem) {
         throw 'P97 requires 64-bit Windows'
