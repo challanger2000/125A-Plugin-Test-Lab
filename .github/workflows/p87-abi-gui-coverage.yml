@@ -1,0 +1,80 @@
+name: P87 native VST3 ABI-to-GUI sampled parameter coverage gap report
+on:
+  pull_request:
+    paths:
+      - 'tests/run_gui_parameter_coverage.py'
+      - 'tests/test_p87_parameter_coverage.py'
+      - 'tests/run_universal_qa.py'
+      - 'tests/run_vst3_batch_qa.py'
+      - '.github/workflows/p87-abi-gui-coverage.yml'
+      - 'docs/P87-ABI-GUI-COVERAGE-GAPS.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-abi-ui:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate ABI-to-GUI audit and backwards compatibility
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_p87_parameter_coverage.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P87 native-parameter mapping tests FAILED' }
+          python -m unittest discover -s tests -p test_p86_dense_gui_audit.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P86 backward compatibility FAILED' }
+          python -m unittest discover -s tests -p test_p83_batch_gui_exploration.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P83 batch compatibility FAILED' }
+          python -m py_compile tests/run_gui_parameter_coverage.py tests/run_universal_qa.py tests/run_vst3_batch_qa.py
+          if ($LASTEXITCODE -ne 0) { throw 'P87 Python syntax FAILED' }
+      - name: Compile actual VST3 ABI GUI test host and interactive/inert plugins
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P87 CMake configure FAILED' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiClick QAGuiInert
+          if ($LASTEXITCODE -ne 0) { throw 'P87 real VST3 compilation FAILED' }
+      - name: Reconcile native VST3 parameter inventories against genuine 3x3 GUI sham observations
+        shell: pwsh
+        run: |
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $good = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Click.vst3')
+          $inert = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Inert.vst3')
+          if ($gui.Count -ne 1 -or $good.Count -ne 1 -or $inert.Count -ne 1) {
+            throw 'P87 required real native Windows VST3 modules missing'
+          }
+          foreach ($c in @(
+            @{name='active';bundle=$good[0].FullName;active=$true},
+            @{name='inert';bundle=$inert[0].FullName;active=$false}
+          )) {
+            $out = "build/p87/$($c.name)"
+            python tests/run_universal_qa.py --plugin $c.bundle --gui-host $gui[0].FullName --out $out --explore-unknown-gui --dense-gui-grid 3 --crosscheck-abi-gui --exploration-repeats 1
+            if ($LASTEXITCODE -ne 0) { throw "P87 ABI GUI reconciliation failed: $($c.name)" }
+            $r = Get-Content "$out/UNIVERSAL-QA-RESULT.json" -Raw | ConvertFrom-Json
+            $gap = Get-Content "$out/parameter-coverage/ABI-GUI-COVERAGE-GAPS.json" -Raw | ConvertFrom-Json
+            if ($r.status -ne 'INVENTORY_WITH_EXPLORATORY_OBSERVATIONS' -or
+                $r.abi_gui_parameter_crosscheck -ne 'ABI_AND_SAMPLED_GUI_RECONCILED' -or
+                $gap.status -ne 'ABI_AND_SAMPLED_GUI_RECONCILED' -or
+                $gap.sampled_grid_points -ne 9 -or
+                $gap.native_parameter_count -lt 1 -or
+                $gap.complete_gui_control_inventory -ne $false -or
+                $gap.unobserved_does_not_mean_broken -ne $true -or
+                $gap.release_approved -ne $false -or
+                $r.release_approved -ne $false) {
+              throw "P87 false VST3 parameter coverage claim: $($c.name)"
+            }
+            if ($c.active) {
+              if ($gap.sampled_grid_observed_parameter_count -lt 1) {
+                throw 'P87 real VST3 active editor parameter transition not mapped'
+              }
+            } elseif ($gap.sampled_grid_observed_parameter_count -ne 0) {
+              throw 'P87 inert native editor invents parameter changes'
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P87-real-VST3-ABI-parameter-to-GUI-sample-gaps
+          path: build/p87/
+          if-no-files-found: warn
