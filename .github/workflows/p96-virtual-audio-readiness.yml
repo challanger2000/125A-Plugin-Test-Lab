@@ -44,6 +44,7 @@ jobs:
             throw 'P96 unapproved installation produced a readiness proof'
           }
           Write-Output 'P96 missing administrator opt-in correctly rejected'
+          exit 0 # Clear intentionally rejected native exit status after checking it
       - uses: actions/upload-artifact@v4
         if: always()
         with:
