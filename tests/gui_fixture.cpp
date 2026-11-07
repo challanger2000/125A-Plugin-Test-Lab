@@ -63,6 +63,12 @@ using namespace Steinberg::Vst;
 #ifndef QA_GUI_NESTED
 #define QA_GUI_NESTED 0
 #endif
+#ifndef QA_GUI_PAINTED_MENU_GOOD
+#define QA_GUI_PAINTED_MENU_GOOD 0
+#endif
+#ifndef QA_GUI_PAINTED_MENU_BAD
+#define QA_GUI_PAINTED_MENU_BAD 0
+#endif
 #ifndef QA_GUI_PAINTED_ONLY
 #define QA_GUI_PAINTED_ONLY 0
 #endif
@@ -183,7 +189,15 @@ bool writeFixtureMidi() {
 }
 #endif
 
-#if QA_GUI_POPUP_GOOD
+#if QA_GUI_PAINTED_MENU_GOOD
+const FUID kProcessorCID(0x125A2026, 0x11070002, 0xA0000E11, 0xB0000E11);
+const FUID kControllerCID(0x125A2026, 0x11070002, 0xA0000E12, 0xB0000E12);
+constexpr const char* kName = "125A Painted Popup Menu Correct Fixture";
+#elif QA_GUI_PAINTED_MENU_BAD
+const FUID kProcessorCID(0x125A2026, 0x11070002, 0xA0000E21, 0xB0000E21);
+const FUID kControllerCID(0x125A2026, 0x11070002, 0xA0000E22, 0xB0000E22);
+constexpr const char* kName = "125A Painted Popup Menu Inert Selection Fixture";
+#elif QA_GUI_POPUP_GOOD
 const FUID kProcessorCID(0x125A2026, 0x11070001, 0xA0000D11, 0xB0000D11);
 const FUID kControllerCID(0x125A2026, 0x11070001, 0xA0000D12, 0xB0000D12);
 constexpr const char* kName = "125A Real Popup Menu Mouse Selection Good Fixture";
@@ -320,6 +334,7 @@ private:
     HWND dialogWindow_{};
     bool hovered_{};
     bool paintedActive_{};
+    bool paintedMenuOpen_{};
     bool draggingAnalog_{};
 };
 
@@ -503,7 +518,23 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
     }
 #endif
     if (message == WM_LBUTTONUP && self && self->owner_) {
-#if QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON || QA_GUI_MENU_GOOD || QA_GUI_MENU_BAD || QA_GUI_POPUP_GOOD || QA_GUI_POPUP_BAD
+#if QA_GUI_PAINTED_MENU_GOOD || QA_GUI_PAINTED_MENU_BAD
+        const int x = static_cast<short>(LOWORD(l));
+        const int y = static_cast<short>(HIWORD(l));
+        if (!self->paintedMenuOpen_ &&
+            x >= 100 && x < 220 && y >= 30 && y < 70) {
+            self->paintedMenuOpen_ = true;
+            InvalidateRect(hwnd, nullptr, TRUE);
+        } else if (self->paintedMenuOpen_ &&
+                   x >= 100 && x < 220 && y >= 88 && y < 125) {
+            self->paintedMenuOpen_ = false;
+#if QA_GUI_PAINTED_MENU_GOOD
+            self->owner_->clicked();
+#endif
+            InvalidateRect(hwnd, nullptr, TRUE);
+        }
+        return 0;
+#elif QA_GUI_DIALOG_GOOD || QA_GUI_DIALOG_NO_BUTTON || QA_GUI_MENU_GOOD || QA_GUI_MENU_BAD || QA_GUI_POPUP_GOOD || QA_GUI_POPUP_BAD
         if (!self->dialogWindow_) {
             self->dialogWindow_ = CreateWindowExW(
                 WS_EX_DLGMODALFRAME, L"#32770", L"P60 Plugin Test Dialog",
@@ -592,7 +623,22 @@ LRESULT CALLBACK ClickView::clickProc(HWND hwnd, UINT message, WPARAM w, LPARAM 
                 ? RGB(12, 142, 85) : RGB(30, 36, 48));
         FillRect(dc, &rect, fill);
         DeleteObject(fill);
-#if QA_GUI_PAINTED_ONLY
+#if QA_GUI_PAINTED_MENU_GOOD || QA_GUI_PAINTED_MENU_BAD
+        RECT trigger{100, 30, 220, 70};
+        HBRUSH triggerFill = CreateSolidBrush(RGB(70, 80, 90));
+        FillRect(dc, &trigger, triggerFill);
+        DeleteObject(triggerFill);
+        if (self && self->paintedMenuOpen_) {
+            RECT frame{90, 82, 230, 135};
+            HBRUSH frameFill = CreateSolidBrush(RGB(50, 60, 75));
+            FillRect(dc, &frame, frameFill);
+            DeleteObject(frameFill);
+            RECT option{100, 88, 220, 125};
+            HBRUSH optionFill = CreateSolidBrush(RGB(210, 136, 44));
+            FillRect(dc, &option, optionFill);
+            DeleteObject(optionFill);
+        }
+#elif QA_GUI_PAINTED_ONLY
         RECT painted{120, 65, 200, 115};
         const HBRUSH patch = CreateSolidBrush(
             self && self->paintedActive_ ? RGB(12, 142, 85) : RGB(70, 80, 90));
