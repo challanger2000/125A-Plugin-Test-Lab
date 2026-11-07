@@ -213,7 +213,7 @@ def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run,
         report["required_feature_coverage"] = covered["status"]
         report["required_feature_gaps"] = covered["required_unverified"]
         (out / "PRODUCT-FEATURE-COVERAGE.json").write_text(
-            json.dumps(covered, indent=2) + "\\n", encoding="utf-8")
+            json.dumps(covered, indent=2) + "\n", encoding="utf-8")
     result_file.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
 
