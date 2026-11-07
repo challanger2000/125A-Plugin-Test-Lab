@@ -1,3 +1,21 @@
+## P94 — Real virtual ASIO4ALL + VB-CABLE (opt-in, no physical hardware approval)
+
+A registered real ASIO4ALL COM driver and rebooted VB-CABLE Windows WDM
+playback/recording pair can be checked by the existing native P58 ASIO
+callback host in a **dedicated isolated Windows test VM**. The P94 result
+checks SHA-256-pinned source/driver identity, actual callback counts,
+deadlines and xruns, and remains *virtual-only*. Green cloud unit tests
+do not mean these third-party drivers were installed or executed.
+
+The opt-in workflow `.github/workflows/p94-virtual-asio4all.yml` requires a
+preconfigured `125A-VIRTUAL-ASIO` private Windows runner and
+`VIRTUAL_ASIO_RUNNER_ENABLED=YES_ISOLATED` repository variable.
+Windows kernel drivers and their required reboot are not automatically
+installed on GitHub-hosted ephemeral machines. VB-CABLE audio loopback
+PCM capture, proof ASIO4ALL selected that endpoint, and physical ASIO
+hardware approval remain open. See
+[docs/P94-VIRTUAL-ASIO4ALL.md](docs/P94-VIRTUAL-ASIO4ALL.md).
+
 ## P92 — Verified real REAPER audible MIDI oracle
 
 P92 extends the P91 real Windows REAPER session with a source-built
