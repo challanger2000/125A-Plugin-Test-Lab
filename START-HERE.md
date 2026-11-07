@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P67 — mandatory declared-feature coverage matrix
+
+Product chats should provide **two separate files**: the P65/P66 native-test `plan.json` and an independently reviewed `features.json`. Run `python tests/run_product_test_plan.py --plan <plan.json> --coverage-matrix <features.json> --out <results>`. P67 reports each required feature as `PASS`, `FAIL`, `NOT RUN` or `NOT COVERED`; any required gap makes the coverage-gated CLI fail **even when executed native VST3 checks are green**. No matrix means `NOT DECLARED`, never full functional approval. See `docs/P67-REQUIRED-FEATURE-COVERAGE.md`. A user/product owner must still review whether the inventory contains every relevant feature; the test engine cannot infer omitted functionality.
+
+
 ## P65 — standard plugin-specific JSON test plans
 
 Use `tests/run_product_test_plan.py --plan <approved-plan.json> --out <output-dir>` on Windows with a native VST3 GUI host. Each plugin chat contributes its own expected parameter IDs, values, GUI steps and exact SHA-256 identities in a `125a-product-test-plan-v1` JSON, **without editing the universal Test Lab core**. V1 dispatches real `gui_workflow` and `gesture_sweep` adapters; it explicitly DOES NOT certify arbitrary product exports, real ASIO, DAW saves, or product release. The machine-readable report includes PASS/FAIL/NOT RUN per test case. See `docs/P65-PRODUCT-TEST-PLANS.md`.
