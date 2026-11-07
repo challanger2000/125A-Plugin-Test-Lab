@@ -386,7 +386,7 @@ struct Engine {
             ok = processor->process(p.data) == kResultOk;
             if (ok) for (size_t ch = 0; ch < 2; ++ch) {
                 auto* target = asioBuffers[ch].buffers[index];
-                ensure(target != nullptr, "ASIO output buffer unavailable");
+                if (!target) { ok = false; break; }
                 const auto& samples = p.outputs[0].channels[ch];
                 writeAsioSamples(target, sampleTypes[ch],
                                  samples.data(), frames, ok, 0.10); // -20 dBFS safety ceiling
