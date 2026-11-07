@@ -187,7 +187,7 @@ def _windows_for_process(pid):
                 user32.GetWindowTextW(hwnd, buf, length + 1)
                 if buf.value:
                     titles.append(buf.value[:240])
-                if "EVALUATION LICENSE" in buf.value.upper():
+                if "REAPER" in buf.value.upper():
                     def inspect(child, _arg):
                         if len(titles) >= 80:
                             return False
@@ -234,7 +234,7 @@ def _accept_visible_evaluation_dialog(pid):
     def inspect_top(hwnd, _unused):
         owner = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
-        if owner.value != pid or "EVALUATION LICENSE" not in title(hwnd).upper():
+        if owner.value != pid or not title(hwnd).upper().startswith("REAPER"):
             return True
 
         def inspect_child(child, _unused2):
