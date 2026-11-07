@@ -1,3 +1,21 @@
+## P90 — Real external DAW/ASIO capture PCM comparison
+
+The universal QA runner cannot touch physical ASIO hardware on a cloud
+Windows runner. P90 can **objectively compare supplied** local DAW recordings
+against independently SHA-256-pinned reference WAVs (sample alignment,
+gain, correlation, clipping and residual). This is not automatic recording
+and is deliberately **not** driver/DAW provenance verification:
+
+```powershell
+python tests/run_external_daw_capture_check.py --contract C:\QA\capture-contract.json --out C:\QA\capture-check
+python tests/run_unified_qa_gaps.py --batch C:\QA\batch --out C:\QA\summary --external-capture reviewed_plugin=C:\QA\capture-contract.json
+```
+
+Even a passing PCM comparison sets `hardware_asio_verified=false` and
+`daw_session_verified=false`. Actual equipment/DAW acceptance still needs
+a trusted, hardware-equipped Windows session. See
+[docs/P90-EXTERNAL-DAW-ASIO-CAPTURE.md](docs/P90-EXTERNAL-DAW-ASIO-CAPTURE.md).
+
 ## P89 — One consolidated independent QA/gap report
 
 After testing many VST3 plugins through P75/P80, create a single
