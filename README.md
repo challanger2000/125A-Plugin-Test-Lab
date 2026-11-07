@@ -1,5 +1,8 @@
 # 125A Plugin Test Lab
 
+**P69 native HWND-guided GUI exploration:** Discover visible/enabled standard button HWNDs in the real VST3 editor, suggest native center click points without using a generic grid, and optionally run the existing P42 sham-controlled real-click analyzer only after explicit opt-in. Default remains read-only. [P69 scope](docs/P69-HWND-GUIDED-EXPLORATION.md).
+
+
 **P68 automatic read-only VST3 inventory:** The common Windows GUI host now detects actual audio/event buses, parameter counts, automation flags and editor availability from the plugin ABI and produces a **non-executable** proposed P65/P66 plan. It does not invent GUI positions or musical reference values; each plugin chat reviews expectations before activation. See [P68 discovery](docs/P68-VST3-AUTO-DISCOVERY.md).
 
 
