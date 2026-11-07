@@ -1,3 +1,18 @@
+## P88 — GUI parameter review queue for unknown plugins
+
+After opting in to a sandboxed P86/P87 GUI survey, create a review-only
+map of every VST3 ABI ParameterID, its observed native click coordinates
+and the IDs with no observed changes:
+
+```powershell
+python tests/run_gui_owner_review_queue.py --capabilities C:\\QA\\Result\\discovery\\vst3-inventory\\native-capabilities.tsv --parameters C:\\QA\\Result\\discovery\\vst3-inventory\\native-parameters.tsv --dense-report C:\\QA\\Result\\unknown-gui-dense-sweep\\DENSE-GUI-AUDIT-RESULT.json --out C:\\QA\\Result\\review
+```
+
+Review `OWNER-GUI-REVIEW-QUEUE.json`. This is **not an executable
+product-function test**. Expected musical behavior, reference audio and
+semantic labels are deliberately unset and require independent approval
+in a P65/P67 test plan. Details: [P88](docs/P88-GUI-OWNER-REVIEW.md).
+
 ## P86–P87 — Bounded native GUI sample coverage and parameter gaps
 
 The read-only universal VST3 scan remains the default. For deliberately
