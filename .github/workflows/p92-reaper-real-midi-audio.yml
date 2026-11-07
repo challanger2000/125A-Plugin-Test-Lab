@@ -1,0 +1,131 @@
+name: P92 real REAPER audible MIDI / no-MIDI negative oracle
+on:
+  pull_request:
+    paths:
+      - 'tests/run_reaper_daw_qa.py'
+      - 'tests/reaper_qa_driver.lua'
+      - 'tests/reaper_midi_audible_fixture.cpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/p92-real-reaper-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  genuine-reaper:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download official REAPER 7.83 evaluation installer with published SHA256
+        shell: pwsh
+        run: |
+          $url = 'https://www.reaper.fm/files/7.x/reaper783_x64-install.exe'
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\reaper-installer.exe"
+          $hash = (Get-FileHash "$env:RUNNER_TEMP\reaper-installer.exe" -Algorithm SHA256).Hash
+          if ($hash -ne 'A1F0EA602806145C2648F7F678974BDA35304B178D29CF72D8255B7218A5E0C8') {
+            throw 'REAPER official installer fingerprint mismatch'
+          }
+          Start-Process -FilePath "$env:RUNNER_TEMP\reaper-installer.exe" -ArgumentList '/S' -Wait
+          $exe = 'C:\Program Files\REAPER (x64)\reaper.exe'
+          if (-not (Test-Path $exe)) { throw 'Official REAPER not installed' }
+          "P92_REAPER_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build original 125A full-controller real VST3
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P92 VST3 configure failed' }
+          cmake --build build --config Release --parallel 4 --target QAReaperMidiTone
+          if ($LASTEXITCODE -ne 0) { throw 'P92 VST3 fixture build failed' }
+          $modules = @(Get-ChildItem build -Recurse -File -Filter '125A_QA_REAPER_MIDI.vst3')
+          if ($modules.Count -ne 1) { throw 'P92 VST3 fixture module not unique' }
+          $src = $modules[0].FullName
+          $bundle = Split-Path (Split-Path (Split-Path $src -Parent) -Parent) -Parent
+          if ((Split-Path $bundle -Leaf) -ne '125A_QA_REAPER_MIDI.vst3') {
+            throw "P92 invalid source VST3 bundle: $bundle"
+          }
+          $destination = 'C:\Program Files\Common Files\VST3\125A_QA_REAPER_MIDI.vst3'
+          Copy-Item -LiteralPath $bundle -Destination $destination -Recurse
+          $dll = Join-Path $destination 'Contents\x86_64-win\125A_QA_REAPER_MIDI.vst3'
+          if (-not (Test-Path $dll)) { throw 'P92 module missing after VST3 installation' }
+          "P92_VST3_MODULE=$dll" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Invoke actual REAPER project MIDI save reload and CLI render
+        shell: pwsh
+        run: |
+          $plan = @{
+            schema = '125a-reaper-daw-test-v1'
+            reaper = @{
+              exe = $env:P92_REAPER_EXE
+              sha256 = (Get-FileHash $env:P92_REAPER_EXE -Algorithm SHA256).Hash.ToLower()
+            }
+            plugin = @{
+              module = $env:P92_VST3_MODULE
+              sha256 = (Get-FileHash $env:P92_VST3_MODULE -Algorithm SHA256).Hash.ToLower()
+              reaper_fx_name = 'VST3: 125A QA REAPER MIDI Audible'
+            }
+            test = @{
+              sample_rate = 44100
+              tempo_bpm = 120
+              note = 36
+              velocity = 102
+              seconds = 2
+              expect_audio = $true
+              minimum_rms = 0.01
+            }
+          }
+          $plan | ConvertTo-Json -Depth 8 | Out-File "$env:RUNNER_TEMP\p92-reaper-plan.json" -Encoding utf8
+          python tests/run_reaper_daw_qa.py --plan "$env:RUNNER_TEMP\p92-reaper-plan.json" --out build/p92-real-smoke --timeout 35
+          if ($LASTEXITCODE -ne 0) { throw 'P92 actual REAPER process integration failed' }
+          $report = Get-Content build/p92-real-smoke/REAPER-DAW-ACCEPTANCE.json -Raw | ConvertFrom-Json
+          if ($report.render.audible_in_render -ne $true -or
+              $report.render.rms -lt 0.01 -or $report.render.peak -lt 0.05) {
+            throw 'P92 real MIDI note did not generate actual audible PCM'
+          }
+          if ($report.status -ne 'REAL_REAPER_DAW_PIPELINE_PASS' -or
+              $report.reloaded_project_verified -ne $true -or
+              $report.rendered_by_reaper_process -ne $true -or
+              $report.physical_asio_hardware -ne 'NOT RUN' -or
+              $report.release_approved -ne $false) {
+            throw 'P92 real REAPER evidence was incomplete'
+          }
+      - name: Real REAPER negative control, identical instrument with NO MIDI note
+        shell: pwsh
+        run: |
+          $plan = Get-Content "$env:RUNNER_TEMP\p92-reaper-plan.json" -Raw | ConvertFrom-Json
+          $plan.test.insert_note = $false
+          $plan.test.expect_audio = $false
+          $plan.test.expect_silence = $true
+          $plan | ConvertTo-Json -Depth 8 | Out-File "$env:RUNNER_TEMP\p92-reaper-no-midi.json" -Encoding utf8
+          python tests/run_reaper_daw_qa.py --plan "$env:RUNNER_TEMP\p92-reaper-no-midi.json" --out build/p92-no-midi --timeout 55
+          if ($LASTEXITCODE -ne 0) { throw 'P92 no-note REAPER negative control failed' }
+          $noMidi = Get-Content build/p92-no-midi/REAPER-DAW-ACCEPTANCE.json -Raw | ConvertFrom-Json
+          if ($noMidi.status -ne 'REAL_REAPER_DAW_PIPELINE_PASS' -or
+              $noMidi.render.peak -gt 0.001 -or
+              $noMidi.render.rms -gt 0.0001 -or
+              $noMidi.release_approved -ne $false) {
+            throw 'P92 no-note real REAPER render was not silent'
+          }
+      - name: Compare independent real MIDI positive and zero-note negative
+        shell: pwsh
+        run: |
+          $yes = Get-Content build/p92-real-smoke/REAPER-DAW-ACCEPTANCE.json -Raw | ConvertFrom-Json
+          $no = Get-Content build/p92-no-midi/REAPER-DAW-ACCEPTANCE.json -Raw | ConvertFrom-Json
+          if ($yes.verified_module_sha256 -ne $no.verified_module_sha256 -or
+              $yes.verified_reaper_sha256 -ne $no.verified_reaper_sha256 -or
+              $yes.render.rms -lt 0.01 -or
+              $no.render.rms -gt 0.0001 -or
+              $yes.render.sha256 -eq $no.render.sha256) {
+            throw 'P92 real REAPER MIDI-causality comparison failed'
+          }
+          Write-Output "P92 genuine REAPER audio causality PASS; audible MIDI vs silent no-note"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P92-REAPER-7_83-genuine-windows-daw-evidence
+          path: |
+            build/p92-real-smoke/REAPER-DAW-ACCEPTANCE.json
+            build/p92-real-smoke/125A_Reaper_Project.RPP
+            build/p92-real-smoke/setup.status
+            build/p92-real-smoke/reload.status
+            build/p92-no-midi/REAPER-DAW-ACCEPTANCE.json
+            build/p92-no-midi/125A_Reaper_Project.RPP
+          if-no-files-found: warn
