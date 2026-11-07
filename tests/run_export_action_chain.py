@@ -28,7 +28,7 @@ def validate(chain):
         raise ValueError("P77 requires an approved action and independent output assertions")
     # An export action cannot be inferred from a parameter value; approval is explicit.
     # Both inputs are verified before the first click, and all output paths must be free.
-    resolved = [Path(item["path"]).resolve() for item in outputs]
+    resolved = [Path(os.path.abspath(item["path"])) for item in outputs]
     if len(set(resolved)) != len(resolved):
         raise ValueError("P77 duplicate output destinations")
     # lexists includes broken symlinks, unlike Path.exists().
