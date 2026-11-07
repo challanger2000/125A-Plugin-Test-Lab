@@ -1,5 +1,8 @@
 # 125A Plugin Test Lab
 
+**P65 standard plugin-specific test plans:** All 125A plugin development chats can now supply a single versioned JSON plan with exact VST3/host hashes, named real GUI-workflow and bidirectional knob-sweep expectations. The shared Test Lab runs the existing native Windows engines without per-plugin code changes; case-level PASS/FAIL/NOT RUN, immutable fingerprints, and explicit ASIO/DAW/whole-product NOT COVERED remain enforced. [Specification and handoff](docs/P65-PRODUCT-TEST-PLANS.md).
+
+
 **P59 hardware one-click workflow:** A protected/explicitly opted-in self-hosted Windows Actions workflow can now build P58, detect the selected installed ASIO driver's registry CLSID, hash the actual VST3/executable and run the P56 physical callback matrix without manual hash/plan entry. Only redacted callback statistics are uploaded. It requires a dedicated isolated Windows machine, secure runner configuration and explicit consent; **the public GitHub cloud CI still reports real ASIO hardware NOT RUN.** [Instructions and public-runner security caveats](docs/P59-HARDWARE-ONE-CLICK.md).
 
 

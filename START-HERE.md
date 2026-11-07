@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P65 — standard plugin-specific JSON test plans
+
+Use `tests/run_product_test_plan.py --plan <approved-plan.json> --out <output-dir>` on Windows with a native VST3 GUI host. Each plugin chat contributes its own expected parameter IDs, values, GUI steps and exact SHA-256 identities in a `125a-product-test-plan-v1` JSON, **without editing the universal Test Lab core**. V1 dispatches real `gui_workflow` and `gesture_sweep` adapters; it explicitly DOES NOT certify arbitrary product exports, real ASIO, DAW saves, or product release. The machine-readable report includes PASS/FAIL/NOT RUN per test case. See `docs/P65-PRODUCT-TEST-PLANS.md`.
+
+
 ## P59 hardware run — manual secure opt-in, not yet executed
 
 The new P59 `workflow_dispatch` builds P58 on an isolated, opted-in Windows ASIO workstation, generates the exact P56 plan from local installed driver registry and actual DLL/executor fingerprints, then records redacted callback metrics. For public repository safety it also requires `ASIO_RUNNER_ENABLED=YES_PRIVATE_ISOLATED`, the `125A-ASIO` label and explicit device approval. **The cloud regression tests are NOT a physical ASIO run.** Read `docs/P59-HARDWARE-ONE-CLICK.md` before connecting any self-hosted runner to a publicly accessible repository.
