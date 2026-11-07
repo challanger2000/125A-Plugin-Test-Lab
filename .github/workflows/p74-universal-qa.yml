@@ -1,0 +1,89 @@
+name: P74 universal end-to-end VST3 QA pipeline
+
+on:
+  pull_request:
+    paths:
+      - 'tests/run_universal_qa.py'
+      - 'tests/test_universal_qa.py'
+      - '.github/workflows/p74-universal-qa.yml'
+      - 'docs/P74-UNIVERSAL-QA-PIPELINE.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed-contract:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject forged onboarding, changed DLL, unapproved GUI and incomplete P67 features
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_universal_qa.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P74 full QA orchestration security regression' }
+          python -m py_compile tests/run_universal_qa.py tests/test_universal_qa.py
+          if ($LASTEXITCODE -ne 0) { throw 'P74 Python syntax failed' }
+
+  real-vst3-end-to-end:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build source-defined GUI and headless VST3 plus all native hosts
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P74 CMake configure failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI TestLabHost TestLabStateStress QAGuiNested QAGuiPaintedOnly QAStateMode0 QAStateMode2
+          if ($LASTEXITCODE -ne 0) { throw 'P74 actual VST3/host compilation failed' }
+      - name: Check real plugins with one command, detect bad state implementation and prohibit automatic release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gui = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $audio = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_Host.exe')
+          $stress = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
+          if ($gui.Count -ne 1 -or $audio.Count -ne 1 -or $stress.Count -ne 1) { throw 'Missing independent native host' }
+          foreach ($variant in @('Nested','PaintedOnly')) {
+            $bundle = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_GUI_$variant.vst3")
+            if ($bundle.Count -ne 1) { throw 'Missing actual VST3 GUI fixture' }
+            $PSNativeCommandUseErrorActionPreference = $false
+            python tests/run_universal_qa.py --plugin $bundle[0].FullName --gui-host $gui[0].FullName --out "build/p74/gui-$variant"
+            if ($LASTEXITCODE -ne 0) { throw "P74 real GUI VST3 failed $variant" }
+            $report = Get-Content "build/p74/gui-$variant/UNIVERSAL-QA-RESULT.json" -Raw | ConvertFrom-Json
+            if ($report.status -ne 'INVENTORY_COMPLETE' -or
+                $report.discovery -ne 'PASS' -or
+                $report.gui_clicks_automatically_authorized -ne 0 -or
+                $report.required_feature_coverage -ne 'NOT DECLARED' -or
+                $report.release_approved -ne $false) {
+              throw 'P74 accidentally certified or clicked unapproved GUI control'
+            }
+          }
+          foreach ($variant in @('0','2')) {
+            $bundle = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_State_$variant.vst3")
+            if ($bundle.Count -ne 1) { throw 'Missing actual VST3 headless fixture' }
+            $PSNativeCommandUseErrorActionPreference = $false
+            python tests/run_universal_qa.py --plugin $bundle[0].FullName --gui-host $gui[0].FullName --audio-host $audio[0].FullName --stress-host $stress[0].FullName --run-technical-baseline --timeout 110 --out "build/p74/state-$variant"
+            $code = $LASTEXITCODE
+            $report = Get-Content "build/p74/state-$variant/UNIVERSAL-QA-RESULT.json" -Raw | ConvertFrom-Json
+            if ($variant -eq '0') {
+              if ($code -ne 0 -or $report.status -ne 'TECHNICAL_BASELINE_PASS' -or
+                  $report.discovery -ne 'PASS' -or $report.native_technical -ne 'PASS') {
+                throw 'P74 genuine correct real VST3 playback/save did not pass the general pipeline'
+              }
+            } else {
+              if ($code -ne 1 -or $report.status -ne 'FAIL') {
+                throw 'P74 known defective native playback/state VST3 falsely passed'
+              }
+            }
+            if ($report.release_approved -ne $false) { throw 'P74 fabricated commercial release approval' }
+          }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P74-universal-real-VST3-GUI-audio-positive-negative-evidence
+          path: build/p74/
+          if-no-files-found: warn
