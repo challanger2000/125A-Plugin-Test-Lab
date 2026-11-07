@@ -252,9 +252,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                       (outcome["unknown_gui_exploration"] == "NOT APPLICABLE - NO EDITOR" and
                        outcome["exploratory_clicks_performed"] != 0))) or
                     (not entry.get("explore_unknown_gui", False) and
-                     (outcome.get("unknown_gui_exploration") != "NOT RUN" or
-                      outcome.get("exploratory_clicks_performed") != 0))):
-                
+                     (outcome.get("unknown_gui_exploration", "NOT RUN") != "NOT RUN" or
+                      outcome.get("exploratory_clicks_performed", 0) != 0))):
                 raise ValueError("P75 child failed or returned forged/incomplete actual VST3 QA")
             if digest(entry["module"]) != entry["sha256"] or any(
                     digest(path) != value for path, value in identities.items()):
@@ -266,8 +265,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
             row["status"] = "PASS"
             row["verified_stage"] = expected
             row["required_feature_coverage"] = outcome["required_feature_coverage"]
-            row["exploratory_clicks_performed"] = outcome["exploratory_clicks_performed"]
-            row["unknown_gui_exploration"] = outcome["unknown_gui_exploration"]
+            row["exploratory_clicks_performed"] = outcome.get("exploratory_clicks_performed", 0)
+            row["unknown_gui_exploration"] = outcome.get("unknown_gui_exploration", "NOT RUN")
         except (OSError, ValueError, TypeError, KeyError,
                 json.JSONDecodeError, subprocess.TimeoutExpired) as error:
             row["faults"].append(str(error))
