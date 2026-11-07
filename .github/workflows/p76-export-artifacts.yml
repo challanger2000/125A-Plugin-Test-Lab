@@ -1,0 +1,67 @@
+name: P76 universal WAV PCM and MIDI SMF export artifact oracle
+
+on:
+  pull_request:
+    paths:
+      - 'tests/run_export_artifact_oracle.py'
+      - 'tests/test_export_artifact_oracle.py'
+      - 'tests/run_export_artifact_native_fixture.py'
+      - 'tests/run_product_test_plan.py'
+      - '.github/workflows/p76-export-artifacts.yml'
+      - 'docs/P76-WAV-MIDI-ORACLES.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generic-and-negative:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check strict PCM bytes, WAV frames, MIDI note events and negative corruption
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_export_artifact_oracle.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P76 generic WAV/MIDI artifact test failed' }
+          python -m unittest discover -s tests -p test_product_test_plan.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P76 changed P65 backwards compatibility' }
+          python -m unittest discover -s tests -p test_product_test_plan_quickcheck.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P76 changed P66 technical native baseline' }
+          python -m py_compile tests/run_export_artifact_oracle.py tests/run_export_artifact_native_fixture.py
+          if ($LASTEXITCODE -ne 0) { throw 'P76 Python compile failed' }
+
+  actual-native-module-bound-oracle:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile actual native GUI Windows VST3 and generic host
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P76 CMake configure failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiNested
+          if ($LASTEXITCODE -ne 0) { throw 'P76 real native VST3 source build failed' }
+      - name: Bind independent WAV/SMF output fixtures to real VST3 identity via P65 and P67
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Nested.vst3')
+          $hostExe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          if ($bundle.Count -ne 1 -or $hostExe.Count -ne 1) { throw 'P76 real native VST3 or host missing' }
+          python tests/run_export_artifact_native_fixture.py --plugin $bundle[0].FullName --gui-host $hostExe[0].FullName --out build/p76
+          if ($LASTEXITCODE -ne 0) { throw 'P76 native product identity and independent export format CI failed' }
+          $result = Get-Content build/p76/INDEPENDENT-EXPORT-DEMO.json -Raw | ConvertFrom-Json
+          if ($result.status -ne 'POSITIVE_AND_NEGATIVE_CONFIRMED' -or
+              $result.actual_plugin_export_tested -ne $false -or
+              $result.release_approved -ne $false) {
+            throw 'P76 falsely claimed real plugin generated the fixture exports'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P76-independent-WAV-MIDI-format-fixture-good-bad-pinned-to-real-VST3
+          path: build/p76/
+          if-no-files-found: warn
