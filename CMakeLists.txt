@@ -398,5 +398,19 @@ if(ASIO_SDK_DIR)
   if(MSVC)
     target_compile_options(TestLabPhysicalASIO PRIVATE /W4 /permissive- /utf-8)
   endif()
+
+  # P95: a completely separate target. It cannot be used to certify actual
+  # physical hardware and requires two real registered ASIO input channels.
+  add_executable(TestLabVirtualASIOLoopback src/physical_asio.cpp)
+  set_target_properties(TestLabVirtualASIOLoopback PROPERTIES
+      OUTPUT_NAME "125A_Test_Lab_Virtual_ASIO_Loopback")
+  target_include_directories(TestLabVirtualASIOLoopback PRIVATE "${ASIO_SDK_DIR}/common")
+  target_link_libraries(TestLabVirtualASIOLoopback PRIVATE
+      Vst3WinModule sdk_hosting sdk_common base pluginterfaces ole32 advapi32 bcrypt)
+  target_compile_definitions(TestLabVirtualASIOLoopback PRIVATE
+      NOMINMAX _CRT_SECURE_NO_WARNINGS QA_ASIO_VIRTUAL_LOOPBACK=1)
+  if(MSVC)
+    target_compile_options(TestLabVirtualASIOLoopback PRIVATE /W4 /permissive- /utf-8)
+  endif()
 endif()
 
