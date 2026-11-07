@@ -71,7 +71,7 @@ jobs:
             }
           }
           $plan | ConvertTo-Json -Depth 8 | Out-File "$env:RUNNER_TEMP\p91-reaper-plan.json" -Encoding utf8
-          python tests/run_reaper_daw_qa.py --plan "$env:RUNNER_TEMP\p91-reaper-plan.json" --out build/p91-real-smoke --timeout 110
+          python tests/run_reaper_daw_qa.py --plan "$env:RUNNER_TEMP\p91-reaper-plan.json" --out build/p91-real-smoke --timeout 35
           if ($LASTEXITCODE -ne 0) { throw 'P91 actual REAPER process integration failed' }
           $report = Get-Content build/p91-real-smoke/REAPER-DAW-ACCEPTANCE.json -Raw | ConvertFrom-Json
           if ($report.status -ne 'REAL_REAPER_DAW_PIPELINE_PASS' -or
