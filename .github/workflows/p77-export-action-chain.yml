@@ -4,6 +4,8 @@ on:
     paths:
       - 'tests/run_export_action_chain.py'
       - 'tests/test_export_action_chain.py'
+      - 'tests/test_export_action_chain_integration.py'
+      - 'tests/run_product_test_plan.py'
       - '.github/workflows/p77-export-action-chain.yml'
       - 'docs/P77-EXPORT-ACTION-CHAIN.md'
   workflow_dispatch:
@@ -20,5 +22,9 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_export_action_chain.py -v
           if ($LASTEXITCODE -ne 0) { throw 'P77 regression FAILED' }
-          python -m py_compile tests/run_export_action_chain.py
+          python -m unittest discover -s tests -p test_export_action_chain_integration.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P77 P65 integration FAILED' }
+          python -m unittest discover -s tests -p test_product_test_plan.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P77 P65 compatibility FAILED' }
+          python -m py_compile tests/run_export_action_chain.py tests/run_product_test_plan.py
           if ($LASTEXITCODE -ne 0) { throw 'P77 compile FAILED' }
