@@ -1,0 +1,49 @@
+name: P85 real repeated VST3 GUI probes across isolated batches
+on:
+  pull_request:
+    paths:
+      - 'tests/run_p85_native_batch_replay.py'
+      - 'tests/run_gui_probe_repeatability.py'
+      - 'tests/run_vst3_batch_qa.py'
+      - 'tests/run_universal_qa.py'
+      - '.github/workflows/p85-native-batch-replay.yml'
+      - 'docs/P85-NATIVE-BATCH-REPLAY.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-multi-vst3:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile source-defined native Win32 GUI controls and test host
+        shell: pwsh
+        run: |
+          python -m py_compile tests/run_p85_native_batch_replay.py
+          if ($LASTEXITCODE -ne 0) { throw 'P85 syntax FAILED' }
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P85 configure FAILED' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiClick QAGuiInert
+          if ($LASTEXITCODE -ne 0) { throw 'P85 native VST3 compile FAILED' }
+      - name: Execute full P75 P83 P84 per-plugin isolation and native two-instance replay
+        shell: pwsh
+        run: |
+          python tests/run_p85_native_batch_replay.py --build build --out build/p85
+          if ($LASTEXITCODE -ne 0) { throw 'P85 native batch repeatability FAILED' }
+          $r = Get-Content build/p85/P85-ACCEPTANCE.json -Raw | ConvertFrom-Json
+          if ($r.status -ne 'PASS' -or
+              $r.scenarios.Count -ne 2 -or
+              $r.scenarios[0].approved_exploratory_clicks -ne 2 -or
+              $r.scenarios[1].approved_exploratory_clicks -ne 4 -or
+              $r.native_sham_and_clicks_verified -ne $true -or
+              $r.unknown_control_semantics -ne 'NOT ESTABLISHED' -or
+              $r.release_approved -ne $false) {
+            throw 'P85 native acceptance evidence is incomplete'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P85-real-multi-VST3-repeatability-and-sham-evidence
+          path: build/p85/
+          if-no-files-found: warn
