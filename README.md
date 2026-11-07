@@ -1,5 +1,7 @@
 # 125A Plugin Test Lab
 
+**P91 actual REAPER DAW integration:** Independent [Windows Actions run #42391164169](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42391164169) ran real REAPER 7.83 with a source-built VST3, created MIDI, saved and reopened the `.RPP` project and rendered a genuine 44.1 kHz/24-bit stereo WAV. The fixture is intentionally silent: this proves basic DAW workflow, **not** instrument sound, complete product coverage, loaded-module path attestation or physical ASIO hardware. A separate explicit self-hosted REAPER adapter can test reviewed installed plugins. [Instructions](docs/P91-REAPER-DAW-INTEGRATION.md).
+
 **P76 universal WAV/MIDI export evidence:** P65/P67 test plans may now include a generic `export_artifact` case checking real WAV PCM frame format, SMF MIDI note-on timeline and independently approved exact output SHA256. Any missing, truncated or mismatching file blocks required coverage. A standalone oracle cannot itself trigger the plugin's exporter, and CI distinguishes independently generated fixture files from genuine product output. [P76 scope](docs/P76-WAV-MIDI-ORACLES.md).
 
 

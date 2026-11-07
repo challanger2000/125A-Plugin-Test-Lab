@@ -1,0 +1,68 @@
+name: P91 REAPER real DAW integration contract
+on:
+  pull_request:
+    paths:
+      - 'tests/run_reaper_daw_qa.py'
+      - 'tests/reaper_qa_driver.lua'
+      - 'tests/test_p91_reaper_daw_qa.py'
+      - 'docs/P91-REAPER-DAW-INTEGRATION.md'
+      - '.github/workflows/p91-reaper-daw.yml'
+      - 'START-HERE.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reaper-adapter-regression:
+    name: REAPER API/CLI contract (no DAW installed)
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate all REAPER integration inputs and reject synthetic DAW proof
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_p91_reaper_daw_qa.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P91 REAPER adapter regression failed' }
+          python -m py_compile tests/run_reaper_daw_qa.py
+          if ($LASTEXITCODE -ne 0) { throw 'P91 Python compilation failed' }
+      - name: Ensure cloud runner does not masquerade as REAPER process
+        shell: pwsh
+        run: |
+          $hasReaper = Test-Path "C:\Program Files\REAPER (x64)\reaper.exe"
+          Write-Output "Cloud unit test only. REAPER present: $hasReaper"
+          Write-Output "Actual REAPER DAW acceptance: NOT RUN"
+          Write-Output "Physical ASIO hardware acceptance: NOT RUN"
+  real-reaper-on-dedicated-runner:
+    name: Optional real REAPER on licensed self-hosted Windows
+    if: ${{ github.event_name == 'workflow_dispatch' && vars.REAPER_LAB_ENABLED == 'YES_ISOLATED' }}
+    runs-on: [self-hosted, Windows, X64, 125A-REAPER]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm exact external pre-approved files and installed REAPER
+        shell: pwsh
+        env:
+          P91_PLAN_PATH: ${{ vars.REAPER_LAB_PLAN_PATH }}
+        run: |
+          if (-not $env:P91_PLAN_PATH -or -not (Test-Path -LiteralPath $env:P91_PLAN_PATH)) {
+            throw 'P91 real acceptance requires a preapproved local JSON plan and installed licensed REAPER'
+          }
+          if (Test-Path build/p91-real) {
+            throw 'P91 requires an isolated clean output directory'
+          }
+          python tests/run_reaper_daw_qa.py --plan $env:P91_PLAN_PATH --out build/p91-real --timeout 120
+          if ($LASTEXITCODE -ne 0) { throw 'Actual REAPER DAW acceptance failed' }
+          $r = Get-Content build/p91-real/REAPER-DAW-ACCEPTANCE.json -Raw | ConvertFrom-Json
+          if ($r.status -ne 'REAL_REAPER_DAW_PIPELINE_PASS' -or
+              $r.reloaded_project_verified -ne $true -or
+              $r.rendered_by_reaper_process -ne $true -or
+              $r.physical_asio_hardware -ne 'NOT RUN' -or
+              $r.release_approved -ne $false) {
+            throw 'P91 REAPER evidence incomplete or claiming physical ASIO'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P91-real-REAPER-daw-evidence
+          path: build/p91-real/REAPER-DAW-ACCEPTANCE.json
+          if-no-files-found: warn
