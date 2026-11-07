@@ -12,7 +12,7 @@ from pathlib import Path
 
 from run_vst3_auto_discovery import verify_bundle, digest
 from run_plugin_onboarding import run as onboarding_run
-from run_gui_exploration import run as exploration_run, parse_points
+from run_gui_exploration import run as exploration_run
 from run_product_test_plan import execute as contract_execute, validate as validate_contract
 from product_feature_coverage import validate_matrix
 
@@ -55,6 +55,9 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
     if exploration_points is not None and (
             not explore_unknown_gui or type(exploration_points) is not str):
         raise ValueError("P82 explicit coordinates require opt-in")
+    if exploration_points is not None and (
+            not 1 <= len(exploration_points.split(";")) <= exploration_max_points):
+        raise ValueError("P82 explicit probe coordinates exceed approved bounded budget")
     if type(run_technical) is not bool:
         raise ValueError("P74 explicit technical-test option must be a boolean")
     if (audio_host is None) != (stress_host is None):
