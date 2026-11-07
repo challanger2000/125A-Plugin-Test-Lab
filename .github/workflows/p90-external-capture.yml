@@ -4,6 +4,8 @@ on:
     paths:
       - 'tests/run_external_daw_capture_check.py'
       - 'tests/test_p90_external_capture_check.py'
+      - 'tests/test_p90_unified_capture.py'
+      - 'tests/run_unified_qa_gaps.py'
       - '.github/workflows/p90-external-capture.yml'
       - 'docs/P90-EXTERNAL-DAW-ASIO-CAPTURE.md'
   workflow_dispatch:
@@ -20,5 +22,9 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_p90_external_capture_check.py -v
           if ($LASTEXITCODE -ne 0) { throw 'P90 independent PCM acceptance FAILED' }
-          python -m py_compile tests/run_external_daw_capture_check.py
+          python -m unittest discover -s tests -p test_p90_unified_capture.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P90 consolidated DAW capture integration FAILED' }
+          python -m unittest discover -s tests -p test_p89_unified_qa_gaps.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P89 backwards compatibility FAILED' }
+          python -m py_compile tests/run_external_daw_capture_check.py tests/run_unified_qa_gaps.py
           if ($LASTEXITCODE -ne 0) { throw 'P90 Python syntax FAILED' }
