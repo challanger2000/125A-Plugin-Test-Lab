@@ -1,5 +1,8 @@
 # 125A Plugin Test Lab
 
+**P73 headless and technical onboarding:** The same P72 one-command discovery handles plugins that expose no VST3 editor without fabricating GUI controls, and an explicit `--run-technical-baseline` option runs the existing general native playback, sample-rate, state save/recall checks after accepting both audio and stress host executables. No hardware/DAW or product approval claims. [Headless/technical details](docs/P73-HEADLESS-AUTOCHECK.md).
+
+
 **P71/P72 one-command onboarding:** Unified native HWND and custom-painted VST3 GUI discovery (deduplicated candidates, no clicks by default), plus one read-only command combining P68 plugin ABI metadata with GUI candidates and a concrete product-owner review task list. No product-specific Test Lab code or automated release claims. [Universal onboarding](docs/P71-P72-UNIVERSAL-ONBOARDING.md).
 
 
