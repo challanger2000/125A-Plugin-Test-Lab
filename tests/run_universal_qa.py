@@ -13,6 +13,7 @@ from pathlib import Path
 from run_vst3_auto_discovery import verify_bundle, digest
 from run_plugin_onboarding import run as onboarding_run
 from run_gui_exploration import run as exploration_run
+from run_gui_probe_repeatability import run as repeatability_run
 from run_product_test_plan import execute as contract_execute, validate as validate_contract
 from product_feature_coverage import validate_matrix
 
@@ -41,7 +42,8 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
             run_technical=False, plan=None, matrix=None, timeout=90,
             onboarding=onboarding_run, product_runner=contract_execute,
             explore_unknown_gui=False, exploration_points=None, exploration_max_points=4,
-            explorer=exploration_run):
+            explorer=exploration_run, exploration_repeats=1,
+            repeatability_runner=repeatability_run):
     bundle, dll = verify_bundle(plugin)
     gui = Path(gui_host).resolve(strict=True)
     if not gui.is_file():
@@ -50,6 +52,10 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
         raise ValueError("P74 timeout must be 5..120 seconds")
     if type(explore_unknown_gui) is not bool:
         raise ValueError("P82 unknown GUI probing opt-in must be explicit boolean")
+    if type(exploration_repeats) is not int or not 1 <= exploration_repeats <= 5:
+        raise ValueError("P84 unknown GUI repetition count must be 1..5")
+    if exploration_repeats != 1 and not explore_unknown_gui:
+        raise ValueError("P84 repeatability requires explicit unknown GUI opt-in")
     if type(exploration_max_points) is not int or not 1 <= exploration_max_points <= 16:
         raise ValueError("P82 bounded GUI probe count must be 1..16")
     if exploration_points is not None and (
@@ -93,6 +99,8 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
         "exploratory_clicks_performed": 0,
         "exploratory_candidates_observed": 0,
         "unknown_gui_semantics": "NOT ESTABLISHED",
+        "unknown_gui_repeatability": "NOT RUN",
+        "unknown_gui_completed_repetitions": 0,
         "all_product_features_automatically_discovered": False,
         "real_asio_hardware": "NOT RUN",
         "commercial_daw_session": "NOT RUN",
@@ -142,34 +150,61 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
                             candidate_points.append(point)
                     if candidate_points:
                         coordinates = ";".join(candidate_points)
-                observed = explorer(
-                    bundle, gui, out / "unknown-gui-probes",
-                    acknowledge=True,
-                    points=coordinates,
-                    max_points=exploration_max_points,
-                    timeout=min(timeout, 35))
+                if exploration_repeats > 1:
+                    stable = repeatability_runner(
+                        bundle, gui, out / "unknown-gui-probes",
+                        points=coordinates, max_points=exploration_max_points,
+                        repeats=exploration_repeats, timeout=min(timeout, 35))
+                    if (not isinstance(stable, dict)
+                            or stable.get("schema") != "125a-repeatable-gui-observation-v1"
+                            or stable.get("status") != "REPRODUCIBLE_OBSERVATIONS"
+                            or stable.get("verified_module_sha256") != hashes[dll]
+                            or stable.get("verified_gui_host_sha256") != hashes[gui]
+                            or stable.get("requested_repetitions") != exploration_repeats
+                            or stable.get("completed_repetitions") != exploration_repeats
+                            or stable.get("identical_fresh_instance_observations") is not True
+                            or stable.get("semantic_correctness") != "NOT ESTABLISHED"
+                            or stable.get("release_approved") is not False
+                            or not isinstance(stable.get("reproduced_control_signatures"), list)):
+                        raise ValueError("P84 independent native GUI repetitions disagree or incomplete")
+                    report["unknown_gui_repeatability"] = "REPRODUCIBLE_OBSERVATIONS"
+                    report["unknown_gui_completed_repetitions"] = exploration_repeats
+                    report["exploratory_clicks_performed"] = (
+                        exploration_repeats * stable["requested_points_per_repetition"])
+                    report["exploratory_candidates_observed"] = sum(
+                        x["classification"] not in ("NO_OBSERVED_CHANGE",)
+                        for x in stable["reproduced_control_signatures"])
+                    report["unknown_gui_exploration"] = "OBSERVATIONS_COMPLETE"
+                    report["unknown_gui_semantics"] = "UNAPPROVED OBSERVATIONS ONLY"
+                else:
+                    observed = explorer(
+                        bundle, gui, out / "unknown-gui-probes",
+                        acknowledge=True,
+                        points=coordinates,
+                        max_points=exploration_max_points,
+                        timeout=min(timeout, 35))
                 expected_count = (len(coordinates.split(";")) if coordinates is not None
                                   else exploration_max_points)
-                if (not isinstance(observed, dict)
-                        or observed.get("schema") != "125a-gui-exploration-result-v1"
-                        or observed.get("status") != "OBSERVATIONS_COMPLETE"
-                        or observed.get("verified_module_sha256") != hashes[dll]
-                        or observed.get("verified_gui_host_sha256") != hashes[gui]
-                        or observed.get("requested_points") != expected_count
-                        or observed.get("completed_points") != expected_count
-                        or observed.get("sham_verified_points") != expected_count
-                        or observed.get("sham_control") != "COMPLETE"
-                        or observed.get("gui_control_discovery") != "OBSERVATIONS_ONLY"
-                        or observed.get("product_gui_controls") != "NOT COVERED"
-                        or observed.get("release_approved") is not False
-                        or not isinstance(observed.get("candidates"), list)
-                        or len(observed["candidates"]) > expected_count):
-                    raise ValueError("P82 unknown VST3 GUI probe lacks complete sham-controlled evidence")
-                report["unknown_gui_exploration"] = "OBSERVATIONS_COMPLETE"
-                report["exploratory_clicks_performed"] = expected_count
-                report["exploratory_candidates_observed"] = len(observed["candidates"])
-                report["unknown_gui_semantics"] = "UNAPPROVED OBSERVATIONS ONLY"
-            else:
+                    if (not isinstance(observed, dict)
+                            or observed.get("schema") != "125a-gui-exploration-result-v1"
+                            or observed.get("status") != "OBSERVATIONS_COMPLETE"
+                            or observed.get("verified_module_sha256") != hashes[dll]
+                            or observed.get("verified_gui_host_sha256") != hashes[gui]
+                            or observed.get("requested_points") != expected_count
+                            or observed.get("completed_points") != expected_count
+                            or observed.get("sham_verified_points") != expected_count
+                            or observed.get("sham_control") != "COMPLETE"
+                            or observed.get("gui_control_discovery") != "OBSERVATIONS_ONLY"
+                            or observed.get("product_gui_controls") != "NOT COVERED"
+                            or observed.get("release_approved") is not False
+                            or not isinstance(observed.get("candidates"), list)
+                            or len(observed["candidates"]) > expected_count):
+                        raise ValueError("P82 unknown VST3 GUI probe lacks complete sham-controlled evidence")
+                    report["unknown_gui_exploration"] = "OBSERVATIONS_COMPLETE"
+                    report["exploratory_clicks_performed"] = expected_count
+                    report["exploratory_candidates_observed"] = len(observed["candidates"])
+                    report["unknown_gui_semantics"] = "UNAPPROVED OBSERVATIONS ONLY"
+                else:
                 raise ValueError("P82 GUI editor availability not reliably established")
         if run_technical:
             if (onboarding_result.get("native_technical_status") != "TECHNICAL_PASS"
@@ -232,6 +267,7 @@ def main():
     p.add_argument("--exploration-points", type=str,
                    help="Optional semicolon-separated approved test-environment probe coordinates")
     p.add_argument("--exploration-max-points", type=int, default=4)
+    p.add_argument("--exploration-repeats", type=int, default=1)
     p.add_argument("--approved-plan", type=Path)
     p.add_argument("--feature-matrix", type=Path)
     p.add_argument("--timeout", type=int, default=90)
@@ -248,7 +284,8 @@ def main():
             plan=plan, matrix=matrix, timeout=a.timeout,
             explore_unknown_gui=a.explore_unknown_gui,
             exploration_points=a.exploration_points,
-            exploration_max_points=a.exploration_max_points)
+            exploration_max_points=a.exploration_max_points,
+            exploration_repeats=a.exploration_repeats)
     except (OSError, ValueError, TypeError, KeyError,
             json.JSONDecodeError) as error:
         a.out.mkdir(parents=True, exist_ok=True)
