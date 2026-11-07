@@ -68,6 +68,20 @@ def run():
         dest.mkdir(parents=True, exist_ok=True)
         (dest / "ORACLE-COUNTERPROOF.json").write_text(
             json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        # Boundary challenge: actual capture is sample-aligned with output.
+        # The current analyzer searches lag>=1 window and therefore cannot
+        # represent a true 0-frame return delay.
+        zero_path = f.make_trace(delay=0)
+        zero = verify_pcm(zero_path, f.proof, f.root / "audit-zero-delay")
+        report["zero_delay_control_status"] = zero["status"]
+        report["zero_delay_actual_frames"] = 0
+        report["zero_delay_reported_frames"] = (
+            zero.get("metrics", {}).get("latency_frames_estimate"))
+        report["zero_delay_bias_detected"] = (
+            zero["status"] == "VIRTUAL_ASIO_PCM_LOOPBACK_PASS" and
+            report["zero_delay_reported_frames"] > 0)
+        (dest / "ORACLE-COUNTERPROOF.json").write_text(
+            json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(report, indent=2))
         if detected:
             raise AssertionError("P99 expected to reproduce the current uncovered frequency error; if the verifier was fixed, update the audit.")
