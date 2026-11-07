@@ -353,18 +353,20 @@ struct Engine {
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
             // Input is sampled before output to preserve actual driver timing.
             // Four interleaved floats/frame: emitted L,R then captured L,R.
+            // No exceptions or heap allocations in the real-time callback,
+            // even on malformed input or when the reserved trace is full.
             if (framePosition + static_cast<uint64_t>(frames) > maxRecordedFrames)
-                throw std::runtime_error("P95 trace buffer capacity exhausted");
-            for (size_t ch = 0; ch < 2; ++ch) {
+                ok = false;
+            for (size_t ch = 0; ch < 2 && ok; ++ch) {
                 const void* input = asioBuffers[ch + 2].buffers[index];
-                if (!input) throw std::runtime_error("P95 ASIO input buffer absent");
-                for (int n = 0; n < frames; ++n) {
+                if (!input) { ok = false; break; }
+                for (int n = 0; n < frames && ok; ++n) {
                     const float v = readAsioSample(input, sampleTypes[ch + 2], n, ok);
-                    // readAsioSample sets ok=false on failure; start true.
-                    if (!ok) throw std::runtime_error("P95 corrupt ASIO input format");
-                    loopbackTrace[static_cast<size_t>((framePosition + n) * 4 + 2 + ch)] = v;
+                    if (ok)
+                        loopbackTrace[static_cast<size_t>((framePosition + n) * 4 + 2 + ch)] = v;
                 }
             }
+            if (ok) {
 #endif
             auto& p = *processing;
             // Deterministic low-level stimulus for insert effects; each
@@ -384,7 +386,7 @@ struct Engine {
             ok = processor->process(p.data) == kResultOk;
             if (ok) for (size_t ch = 0; ch < 2; ++ch) {
                 auto* target = asioBuffers[ch].buffers[index];
-                ensure(target != nullptr, "ASIO output buffer unavailable");
+                if (!target) { ok = false; break; }
                 const auto& samples = p.outputs[0].channels[ch];
                 writeAsioSamples(target, sampleTypes[ch],
                                  samples.data(), frames, ok, 0.10); // -20 dBFS safety ceiling
@@ -394,6 +396,9 @@ struct Engine {
                         std::clamp(samples[static_cast<size_t>(n)], -0.10f, 0.10f);
 #endif
             }
+#if defined(QA_ASIO_VIRTUAL_LOOPBACK)
+            }
+#endif
         } catch (...) { ok = false; }
         if (ok) processedCallbacks.fetch_add(1, std::memory_order_relaxed);
         else processFailures.fetch_add(1, std::memory_order_relaxed);
@@ -491,6 +496,11 @@ Arguments parse(int argc, char** argv) {
 void writeLoopbackTrace(const Arguments& args, const Engine& engine) {
     ensure(engine.framePosition <= engine.maxRecordedFrames,
            "P95 loopback trace contains more samples than preallocated");
+    ensure(engine.framePosition == engine.asioCallbacks.load() *
+           static_cast<uint64_t>(args.frames),
+           "P98 ASIO callback count does not match captured sample count");
+    ensure(engine.asioCallbacks.load() == engine.processedCallbacks.load(),
+           "P98 one or more ASIO callbacks did not produce valid PCM");
     ensure(engine.framePosition >= static_cast<uint64_t>(args.frames) * 200,
            "P95 not enough actual virtual ASIO samples for independent PCM");
     std::ofstream out(args.pcm, std::ios::binary | std::ios::trunc);

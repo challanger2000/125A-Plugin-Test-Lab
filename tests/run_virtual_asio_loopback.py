@@ -96,7 +96,7 @@ def run(plan, out, *, acknowledge=False, platform=sys.platform,
         report["metrics"] = pcm["metrics"]
         report["verified_module_sha256"] = product_sha
         report["verified_executor_sha256"] = native_sha
-        report["completed_asio_callbacks"] = s["callbacks"]
+        report["completed_asio_callbacks"] = observed["completed_callbacks"]
         report["captured_native_pcm_sha256"] = digest(trace)
     except (OSError, KeyError, ValueError, TypeError, UnicodeError,
             json.JSONDecodeError, subprocess.TimeoutExpired) as err:
