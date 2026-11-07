@@ -80,6 +80,22 @@ def run():
         report["zero_delay_bias_detected"] = (
             zero["status"] == "VIRTUAL_ASIO_PCM_LOOPBACK_PASS" and
             report["zero_delay_reported_frames"] > 0)
+        # Second orthogonal negative: a valid P95 source waveform is returned
+        # with a 4x (+12.04 dB) unintended input gain. The current normalized
+        # correlation oracle has no input/output transfer-gain limit.
+        gain_path = f.make_trace(delay=3072)
+        raw = gain_path.read_bytes()
+        changed = array("f")
+        changed.frombytes(raw[24:])
+        for n in range(frames):
+            changed[4*n+2] *= 4
+            changed[4*n+3] *= 4
+        gain_path.write_bytes(raw[:24] + changed.tobytes())
+        gain = verify_pcm(gain_path, f.proof, f.root / "audit-4x-return-gain")
+        report["fourfold_return_gain_actual_db"] = round(20*math.log10(4),3)
+        report["fourfold_return_gain_status"] = gain["status"]
+        report["fourfold_return_gain_accepted"] = (
+            gain["status"] == "VIRTUAL_ASIO_PCM_LOOPBACK_PASS")
         (dest / "ORACLE-COUNTERPROOF.json").write_text(
             json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(report, indent=2))
