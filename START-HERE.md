@@ -1,3 +1,13 @@
+## P92 — Verified real REAPER audible MIDI oracle
+
+P92 extends the P91 real Windows REAPER session with a source-built
+VST3 that actually synthesizes a 220 Hz tone in response to MIDI note 36.
+It also generates an independent no-note negative project, which MUST
+render silently. Both must save/reload correctly in the actual DAW.
+A green workflow establishes **MIDI-caused audible PCM**; NOT physical
+ASIO hardware or universal musical correctness.
+See [P92 MIDI oracle](docs/P92-REAPER-MIDI-AUDIO-ORACLE.md).
+
 ## P91 — REAPER real-DAW plugin testing (opt-in, hardware not claimed)
 
 P91 introduces a real REAPER process adapter, using REAPER Lua ReaScript
