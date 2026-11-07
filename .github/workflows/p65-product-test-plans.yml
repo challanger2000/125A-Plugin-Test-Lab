@@ -7,8 +7,11 @@ on:
       - 'tests/test_product_test_plan.py'
       - '.github/workflows/p65-product-test-plans.yml'
       - 'docs/P65-PRODUCT-TEST-PLANS.md'
-      - 'CMakeLists.txt'
   workflow_dispatch:
+
+concurrency:
+  group: p93-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

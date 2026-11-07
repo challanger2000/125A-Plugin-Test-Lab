@@ -8,7 +8,6 @@ on:
       - 'tests/voice_fixture.cpp'
       - 'tests/verify_voice_stress.py'
       - '.github/workflows/p29-voice-stress.yml'
-      - 'CMakeLists.txt'
   workflow_dispatch:
 
 permissions:

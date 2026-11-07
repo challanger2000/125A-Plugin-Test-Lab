@@ -71,7 +71,6 @@ on:
       - 'src/main.cpp'
       - 'tests/make_p32_fixtures.py'
       - '.github/workflows/p25-state-stress.yml'
-      - 'CMakeLists.txt'
   workflow_dispatch:
 
 permissions:

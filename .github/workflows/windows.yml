@@ -3,8 +3,26 @@ name: 125A Test Lab - Windows P02
 on:
   push:
     branches: [main]
+    paths:
+      - '.github/workflows/windows.yml'
+      - 'CMakeLists.txt'
+      - 'src/main.cpp'
+      - 'src/p15_dropfiles.h'
+      - 'tests/signal_fixture.cpp'
+      - 'tests/verify_render.py'
+      - 'tests/verify_universal_discovery.py'
+      - 'tests/run_vst3_batch.py'
   pull_request:
     branches: [main]
+    paths:
+      - '.github/workflows/windows.yml'
+      - 'CMakeLists.txt'
+      - 'src/main.cpp'
+      - 'src/p15_dropfiles.h'
+      - 'tests/signal_fixture.cpp'
+      - 'tests/verify_render.py'
+      - 'tests/verify_universal_discovery.py'
+      - 'tests/run_vst3_batch.py'
   workflow_dispatch:
 
 concurrency:

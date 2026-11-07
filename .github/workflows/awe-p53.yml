@@ -16,7 +16,6 @@ on:
       - 'tests/run_product_qa.py'
       - 'tests/run_p34_capture.py'
       - 'src/gui_host.cpp'
-      - 'CMakeLists.txt'
   workflow_dispatch:
 
 permissions:

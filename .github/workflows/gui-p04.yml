@@ -11,7 +11,6 @@ on:
       - 'tests/test_native_gui_snapshot.py'
       - 'tests/verify_p33_artifacts.py'
       - 'tests/gui_fixture.cpp'
-      - 'CMakeLists.txt'
       - '.github/workflows/gui-p04.yml'
   workflow_dispatch:
 
