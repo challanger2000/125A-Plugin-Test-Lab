@@ -17,12 +17,13 @@ from run_gui_workflow import run as gui_run, validate as validate_gui
 from run_gui_gesture_sweep import run as sweep_run, compile_contract
 from run_plugin_quickcheck import run as quick_run
 from product_feature_coverage import validate_matrix, evaluate
+from run_export_artifact_oracle import validate as validate_export, verify as verify_export
 
 SCHEMA = "125a-product-test-plan-v1"
 RESULT = "125a-product-test-plan-result-v1"
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 HEX = re.compile(r"^[a-f0-9]{64}$")
-KINDS = {"gui_workflow", "gesture_sweep", "technical_quickcheck"}
+KINDS = {"gui_workflow", "gesture_sweep", "technical_quickcheck", "export_artifact"}
 QUICK_COVERAGE = {"api_playback_save", "sample_rate_buffer_matrix",
                   "native_audio_state_capture", "fresh_process_project_recall"}
 
@@ -81,6 +82,11 @@ def validate(plan):
         ids.add(cid)
         if kind not in KINDS or not isinstance(contract, dict):
             raise ValueError("P65 unknown or unapproved adapter kind")
+        if kind == "export_artifact":
+            file_entries = validate_export(contract, product["sha256"])
+            compiled.append({"id": cid, "kind": kind, "contract": contract,
+                             "expected_actions": len(file_entries)})
+            continue
         if kind == "technical_quickcheck":
             if not {"audio", "stress"} <= set(host_paths):
                 raise ValueError("P66 technical quickcheck requires two native audio/stress hosts")
@@ -156,7 +162,21 @@ def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run,
                             for name, path in hosts.items())):
                     raise ValueError("P66 executable or VST3 module changed before case")
                 folder = out / ("%02d-%s" % (idx + 1, cid))
-                if kind == "technical_quickcheck":
+                if kind == "export_artifact":
+                    observed = verify_export(case["contract"], folder,
+                                             module_sha=fingerprint)
+                    if (not isinstance(observed, dict)
+                            or observed.get("schema") != "125a-export-artifact-result-v1"
+                            or observed.get("status") != "ARTIFACT_PASS"
+                            or observed.get("verified_module_sha256") != fingerprint
+                            or observed.get("release_approved") is not False
+                            or observed.get("declared_actions") != case["expected_actions"]
+                            or observed.get("verified_actions") != case["expected_actions"]
+                            or not isinstance(observed.get("outputs"), list)
+                            or len(observed["outputs"]) != case["expected_actions"]
+                            or any(x.get("status") != "PASS" for x in observed["outputs"])):
+                        raise ValueError("P76 WAV/MIDI artifact oracle lacks independent complete evidence")
+                elif kind == "technical_quickcheck":
                     bundle = next(x for x in module.parents if
                                   x.is_dir() and x.suffix.lower() == ".vst3")
                     observed = quick_runner(bundle, hosts["audio"], hosts["stress"],
