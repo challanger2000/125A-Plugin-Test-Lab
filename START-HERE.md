@@ -1,3 +1,16 @@
+## P97 — Local one-command real ASIO4ALL virtual loopback acceptance
+
+P97 adds `tests/Invoke-VirtualASIOAcceptance.ps1`: read-only
+`-CheckOnly` and explicitly approved `-ApproveVirtualAudioTesting` on
+an isolated, preinstalled/rebooted Windows 11 machine. It builds the
+native P95 ASIO host and stereo VST3 fixture, executes genuine driver
+callbacks, compares returned PCM and writes an evidence report without
+using a public GitHub self-hosted runner. Cloud Windows CI only checks
+readiness detection and denial without consent. Physical hardware
+acceptance and real ASIO4ALL loopback remain NOT RUN until an actual
+driver-equipped isolated Windows machine executes the live command.
+See [P97 one-command Windows acceptance](docs/P97-ONE-COMMAND-LOCAL-ASIO.md).
+
 ## P96 — Windows virtual ASIO test-machine provisioning gate
 
 P96 provides an attended, explicit-UAC vendor installer launcher and an
