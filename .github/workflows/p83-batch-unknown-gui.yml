@@ -1,0 +1,55 @@
+name: P83 unknown GUI exploration in isolated multi-VST3 batches
+on:
+  pull_request:
+    paths:
+      - 'tests/run_vst3_batch_qa.py'
+      - 'tests/test_p83_batch_gui_exploration.py'
+      - 'tests/run_p83_native_batch_gui_exploration.py'
+      - '.github/workflows/p83-batch-unknown-gui.yml'
+      - 'docs/P83-BATCH-UNKNOWN-GUI.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit-and-native:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: P83 per-plugin opt-in, isolation, no-click default and P75/P80 compatibility
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_p83_batch_gui_exploration.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P83 batch unit regression FAILED' }
+          python -m unittest discover -s tests -p test_vst3_batch_qa.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P75 backward compatibility FAILED' }
+          python -m unittest discover -s tests -p test_p80_batch_functional_qa.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P80 functional batch compatibility FAILED' }
+          python -m py_compile tests/run_vst3_batch_qa.py tests/run_p83_native_batch_gui_exploration.py
+          if ($LASTEXITCODE -ne 0) { throw 'P83 compile FAILED' }
+      - name: Compile genuine GUI VST3 active and inert fixtures
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P83 CMake configure FAILED' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiClick QAGuiInert
+          if ($LASTEXITCODE -ne 0) { throw 'P83 genuine Windows VST3 compilation FAILED' }
+      - name: Execute actual selected-only and positive-negative GUI exploration batches
+        shell: pwsh
+        run: |
+          python tests/run_p83_native_batch_gui_exploration.py --build build --out build/p83
+          if ($LASTEXITCODE -ne 0) { throw 'P83 real VST3 batch exploration FAILED' }
+          $r = Get-Content build/p83/P83-RESULT.json -Raw | ConvertFrom-Json
+          if ($r.status -ne 'PASS' -or
+              $r.real_source_built_vst3_controls_probed -ne $true -or
+              $r.scenarios.Count -ne 2 -or
+              $r.unknown_plugin_control_semantics_verified -ne $false -or
+              $r.release_approved -ne $false) {
+            throw 'P83 ungrounded native exploration evidence'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P83-actual-native-VST3-GUI-batch-probe-evidence
+          path: build/p83/
+          if-no-files-found: warn
