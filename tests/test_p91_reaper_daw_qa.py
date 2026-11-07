@@ -89,7 +89,7 @@ class ReaperQATests(unittest.TestCase):
         self.assertEqual(len(issued),3)
         self.assertEqual(issued[0][0][1:4],["-newinst","-nosplash","-new"])
         self.assertEqual(issued[1][0][1],"-newinst")
-        self.assertEqual(issued[2][0][1],"-renderproject")
+        self.assertEqual(issued[2][0][1:3],["-nosplash","-renderproject"])
         self.assertEqual(result["render"]["channels"],2)
         self.assertFalse(result["release_approved"])
         self.assertEqual(result["physical_asio_hardware"],"NOT RUN")
