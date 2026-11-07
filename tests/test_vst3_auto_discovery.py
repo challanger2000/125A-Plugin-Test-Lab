@@ -50,7 +50,7 @@ class ReadOnlyDiscoveryTests(unittest.TestCase):
             capability().replace("editor_win32_hwnd\t1", "editor_win32_hwnd\t2"),
             capability().replace("bus\t1\t0\t0\t1\t0\t0",
                                  "bus\t0\t1\t0\t2\t0\t0"),
-            capability().replace("param_count\t2", "param_count\t02"),
+            capability().replace("parameter_count\t2", "parameter_count\t02"),
             capability() + "unexpected\n",
         ]
         for item in bad:
