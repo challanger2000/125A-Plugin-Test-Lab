@@ -59,7 +59,7 @@ function Get-ASIO4ALL {
             }
         }
     }
-    return ,$drivers
+    return $drivers
 }
 function Get-BootFingerprint {
     $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
