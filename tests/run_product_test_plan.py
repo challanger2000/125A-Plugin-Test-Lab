@@ -203,6 +203,16 @@ def execute(plan, out, *, gui_runner=gui_run, sweep_runner=sweep_run,
                             or set(observed["verified_exports"]) != {
                                 item["filename"] for item in case["contract"]["expected_exports"]
                             }
+                            or any(
+                                not isinstance(observed["verified_exports"].get(item["filename"]), dict)
+                                or observed["verified_exports"][item["filename"]].get("sha256") != item["sha256"]
+                                or observed["verified_exports"][item["filename"]].get("format") != item["type"]
+                                or observed["verified_exports"][item["filename"]].get("metadata") != {
+                                    k: v for k, v in item.items()
+                                    if k not in ("filename", "type", "sha256")
+                                }
+                                for item in case["contract"]["expected_exports"]
+                            )
                             or expected_actions + expected_files != case["expected_actions"]):
                         raise ValueError("P79 native GUI-driven independent export contract incomplete")
                 elif kind == "export_action_chain":
