@@ -110,7 +110,7 @@ def run(bundle, gui_host, out, *, max_points=9, timeout=40,
     gui_host = Path(gui_host).resolve(strict=True)
     if not gui_host.is_file():
         raise ValueError("P72 native Windows GUI host missing")
-    if type(timeout) is not int or not 5 <= timeout <= 90:
+    if type(timeout) is not int or not 5 <= timeout <= 120:
         raise ValueError("P72 invalid bounded timeout")
     if type(max_points) is not int or not 1 <= max_points <= 16:
         raise ValueError("P72 invalid candidate budget")
@@ -141,7 +141,7 @@ def run(bundle, gui_host, out, *, max_points=9, timeout=40,
         observed = None
         if abi["reported_editor_available"]:
             observed = gui(bundle, gui_host, out / "gui-inventory",
-                           acknowledge=False, max_points=max_points, timeout=timeout)
+                           acknowledge=False, max_points=max_points, timeout=min(timeout, 90))
             if observed.get("status") != "CANDIDATES_COMPLETE":
                 raise ValueError("P72 combined GUI inspection incomplete")
         draft_path = out / "vst3-inventory" / "PROPOSED-TEST-PLAN.json"
