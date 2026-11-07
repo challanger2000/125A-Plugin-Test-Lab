@@ -14,6 +14,7 @@ from run_vst3_auto_discovery import verify_bundle, digest
 from run_plugin_onboarding import run as onboarding_run
 from run_gui_exploration import run as exploration_run
 from run_gui_probe_repeatability import run as repeatability_run
+from run_gui_dense_audit import run as dense_run
 from run_product_test_plan import execute as contract_execute, validate as validate_contract
 from product_feature_coverage import validate_matrix
 
@@ -43,13 +44,21 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
             onboarding=onboarding_run, product_runner=contract_execute,
             explore_unknown_gui=False, exploration_points=None, exploration_max_points=4,
             explorer=exploration_run, exploration_repeats=1,
-            repeatability_runner=repeatability_run):
+            repeatability_runner=repeatability_run,
+            dense_grid=None, dense_runner=dense_run):
     bundle, dll = verify_bundle(plugin)
     gui = Path(gui_host).resolve(strict=True)
     if not gui.is_file():
         raise ValueError("P74 actual native GUI test host required")
     if type(timeout) is not int or not 5 <= timeout <= 120:
         raise ValueError("P74 timeout must be 5..120 seconds")
+    if dense_grid is not None:
+        if type(dense_grid) is not int or dense_grid not in (3, 5):
+            raise ValueError("P86 dense GUI scan supports grid sides 3/5 only")
+        if not explore_unknown_gui or exploration_points is not None:
+            raise ValueError("P86 dense GUI scan requires explicit opt-in and disallows partial points")
+        if exploration_repeats not in (1, 2):
+            raise ValueError("P86 dense GUI scan repeat budget must be 1 or 2")
     if type(explore_unknown_gui) is not bool:
         raise ValueError("P82 unknown GUI probing opt-in must be explicit boolean")
     if type(exploration_repeats) is not int or not 1 <= exploration_repeats <= 5:
@@ -150,7 +159,44 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
                             candidate_points.append(point)
                     if candidate_points:
                         coordinates = ";".join(candidate_points)
-                if exploration_repeats > 1:
+                if dense_grid is not None:
+                    dense = dense_runner(
+                        bundle, gui, out / "unknown-gui-dense-sweep",
+                        side=dense_grid, repeats=exploration_repeats,
+                        timeout=min(timeout, 35))
+                    if (not isinstance(dense, dict)
+                            or dense.get("schema") != "125a-dense-gui-audit-v1"
+                            or dense.get("status") != "SAMPLED_GRID_COMPLETE"
+                            or dense.get("verified_module_sha256") != hashes[dll]
+                            or dense.get("verified_gui_host_sha256") != hashes[gui]
+                            or dense.get("grid_side") != dense_grid
+                            or dense.get("repeat_count") != exploration_repeats
+                            or dense.get("planned_points") != dense_grid*dense_grid
+                            or dense.get("completed_points") != dense_grid*dense_grid
+                            or dense.get("sham_click_pairs") !=
+                               dense_grid*dense_grid*exploration_repeats
+                            or dense.get("all_controls_discovered") is not False
+                            or dense.get("all_product_features_tested") is not False
+                            or dense.get("control_semantics") != "NOT ESTABLISHED"
+                            or dense.get("release_approved") is not False
+                            or not isinstance(dense.get("observations"), list)
+                            or len(dense["observations"]) != dense_grid*dense_grid
+                            or not isinstance(dense.get("observed_parameter_ids"), list)
+                            or type(dense.get("distinct_observed_candidates")) is not int
+                            or not 0 <= dense["distinct_observed_candidates"] <=
+                               dense_grid*dense_grid):
+                        raise ValueError("P86 native dense GUI observation evidence incomplete")
+                    report["unknown_gui_exploration"] = "OBSERVATIONS_COMPLETE"
+                    report["unknown_gui_semantics"] = "UNAPPROVED OBSERVATIONS ONLY"
+                    report["unknown_gui_dense_grid"] = dense_grid
+                    report["unknown_gui_grid_coverage"] = "SAMPLED POINTS ONLY"
+                    report["exploratory_clicks_performed"] = dense["sham_click_pairs"]
+                    report["exploratory_candidates_observed"] = dense["distinct_observed_candidates"]
+                    report["unknown_gui_repeatability"] = (
+                        "REPRODUCIBLE_OBSERVATIONS" if exploration_repeats == 2
+                        else "NOT RUN")
+                    report["unknown_gui_completed_repetitions"] = exploration_repeats
+                elif exploration_repeats > 1:
                     stable = repeatability_runner(
                         bundle, gui, out / "unknown-gui-probes",
                         points=coordinates, max_points=exploration_max_points,
@@ -273,6 +319,8 @@ def main():
                    help="Optional semicolon-separated approved test-environment probe coordinates")
     p.add_argument("--exploration-max-points", type=int, default=4)
     p.add_argument("--exploration-repeats", type=int, default=1)
+    p.add_argument("--dense-gui-grid", type=int, choices=(3, 5),
+                   help="Explicitly opt in to dense 3x3/5x5 unknown control survey")
     p.add_argument("--approved-plan", type=Path)
     p.add_argument("--feature-matrix", type=Path)
     p.add_argument("--timeout", type=int, default=90)
@@ -290,7 +338,8 @@ def main():
             explore_unknown_gui=a.explore_unknown_gui,
             exploration_points=a.exploration_points,
             exploration_max_points=a.exploration_max_points,
-            exploration_repeats=a.exploration_repeats)
+            exploration_repeats=a.exploration_repeats,
+            dense_grid=a.dense_gui_grid)
     except (OSError, ValueError, TypeError, KeyError,
             json.JSONDecodeError) as error:
         a.out.mkdir(parents=True, exist_ok=True)
