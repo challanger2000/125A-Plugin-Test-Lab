@@ -78,29 +78,28 @@ def _pcm(path, declared_hash):
             int.from_bytes(raw[i:i+3], "little", signed=True)
             for i in range(0, len(raw), 3)]
         scale = 8388608.0
-    # Compare channel 1 of uncompressed PCM; maintain channel count and
-    # explicitly report that the remaining channel is NOT evaluated.
-    mono = [v/scale for v in values[::nch]]
-    if max(abs(v) for v in mono) < .005:
-        raise ValueError("P90 missing/silent reference or real capture")
-    peak = max(abs(v) for v in mono)
-    if peak >= .99999:
-        raise ValueError("P90 clipped waveform cannot serve as valid proof")
-    return {"samples": mono, "rate": rate, "frames": count,
-            "channels": nch, "bits": width*8, "peak": peak,
+    streams = [[v/scale for v in values[ch::nch]] for ch in range(nch)]
+    peaks = [max(abs(v) for v in samples) for samples in streams]
+    if any(peak < .005 for peak in peaks):
+        raise ValueError("P90 silent reference/capture channel invalid")
+    if any(peak >= .99999 for peak in peaks):
+        raise ValueError("P90 clipped waveform channel cannot prove PCM integrity")
+    return {"samples_by_channel": streams, "rate": rate, "frames": count,
+            "channels": nch, "bits": width*8, "peaks": peaks,
             "sha256": declared_hash}
 
 
 def _compare(ref, capture, max_offset, threshold):
-    a, b = ref["samples"], capture["samples"]
-    limit = min(max_offset, abs(len(a)-len(b)) + max_offset)
+    # The common lag is estimated with channel one, then ALL real channels
+    # must independently pass the exact same lag, gain and PCM residual
+    # requirements. A good left channel cannot conceal a broken right.
+    a, b = ref["samples_by_channel"][0], capture["samples_by_channel"][0]
     window = min(8192, len(a)//3, len(b)//3)
     if window < 1000:
         raise ValueError("P90 insufficient signal for independent comparison")
     stride = max(1, window//1024)
     best = (-math.inf, 0)
-    for offset in range(-limit, limit+1):
-        # offset > 0 means recorded capture begins with extra samples.
+    for offset in range(-max_offset, max_offset+1):
         start_a, start_b = max(0, -offset), max(0, offset)
         pairs = min(window, len(a)-start_a, len(b)-start_b)
         if pairs < 1000:
@@ -118,25 +117,39 @@ def _compare(ref, capture, max_offset, threshold):
     overlap = min(len(a)-start_a, len(b)-start_b)
     if overlap < int(.75 * min(len(a), len(b))):
         raise ValueError("P90 captured waveform overlaps too little")
-    # Whole-segment normalized least-squares gain and residual; compare up to
-    # 40k points to cap runtime without cherry-picking a quiet section.
     stride = max(1, overlap//40000)
-    aa = a[start_a:start_a+overlap:stride]
-    bb = b[start_b:start_b+overlap:stride]
-    xx = sum(x*x for x in aa)
-    yy = sum(y*y for y in bb)
-    xy = sum(x*y for x,y in zip(aa,bb))
-    if xx < 1e-6 or yy < 1e-6:
-        raise ValueError("P90 capture or reference has insufficient signal energy")
-    gain = xy/xx
-    corr = xy/math.sqrt(xx*yy)
-    nrmse = math.sqrt(max(0, yy-2*gain*xy+gain*gain*xx)/yy)
-    valid = (corr >= threshold and .2 <= gain <= 5.0 and nrmse <= .18
-             and abs(len(a)-len(b)) <= max_offset)
-    return {"lag_frames": offset, "correlation": round(corr, 7),
+    comparisons = []
+    for channel, (ref_stream, recorded_stream) in enumerate(zip(
+            ref["samples_by_channel"], capture["samples_by_channel"]), start=1):
+        aa = ref_stream[start_a:start_a+overlap:stride]
+        bb = recorded_stream[start_b:start_b+overlap:stride]
+        xx = sum(x*x for x in aa)
+        yy = sum(y*y for y in bb)
+        xy = sum(x*y for x,y in zip(aa,bb))
+        if xx < 1e-6 or yy < 1e-6:
+            raise ValueError("P90 channel has insufficient captured signal energy")
+        gain = xy/xx
+        corr = xy/math.sqrt(xx*yy)
+        nrmse = math.sqrt(max(0, yy-2*gain*xy+gain*gain*xx)/yy)
+        valid_channel = corr >= threshold and .2 <= gain <= 5.0 and nrmse <= .18
+        comparisons.append({
+            "channel": channel, "correlation": round(corr, 7),
             "relative_rms_error": round(nrmse, 7),
             "estimated_gain": round(gain, 7),
-            "compared_frames": overlap, "matches_reference": valid}
+            "matches_reference": valid_channel
+        })
+    valid = (all(x["matches_reference"] for x in comparisons)
+             and abs(len(a)-len(b)) <= max_offset)
+    return {
+        "lag_frames": offset,
+        "correlation": min(x["correlation"] for x in comparisons),
+        "relative_rms_error": max(x["relative_rms_error"] for x in comparisons),
+        "estimated_gain": comparisons[0]["estimated_gain"],
+        "channel_results": comparisons,
+        "channels_compared": len(comparisons),
+        "compared_frames": overlap,
+        "matches_reference": valid
+    }
 
 
 def run(contract, out):
@@ -198,7 +211,7 @@ def run(contract, out):
             raise ValueError("P90 capture/reference channel counts disagree")
         result = _compare(ref, mic, lag, oracle["min_correlation"])
         report["comparison"] = result
-        report["reference"] = {k:v for k,v in ref.items() if k != "samples"}
+        report["reference"] = {k:v for k,v in ref.items() if k != "samples_by_channel"}
         report["capture"] = {k:v for k,v in mic.items() if k != "samples"}
         report["status"] = ("AUDIO_COMPARISON_PASS_SOURCE_UNATTESTED"
                             if result["matches_reference"] else "FAIL")
