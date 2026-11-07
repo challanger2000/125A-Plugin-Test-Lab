@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P71/P72 — one universal onboarding command for any Windows VST3
+
+Run `python tests/run_plugin_onboarding.py --plugin <actual.vst3> --gui-host <125A_Test_Lab_GUI.exe> --out <evidence>` for a single read-only review pack integrating P68 native plugin inventory and P71 combined real HWND + custom-painted GUI candidate discovery. No unapproved clicks, guessed oracle values, or automatic release flags. For separate GUI discovery and explicitly authorized sham-controlled clicks see `tests/run_gui_unified_discovery.py` and `docs/P71-P72-UNIVERSAL-ONBOARDING.md`.
+
+
 ## P70 — custom-painted VSTGUI candidate discovery
 
 Run `python tests/run_gui_painted_candidates.py --plugin <Plugin.vst3> --gui-host <125A_Test_Lab_GUI.exe> --out <results>` to identify pixel-based, possibly interactive regions in an untouched native editor screenshot. The default never clicks. In a disposable, approved test environment, `--acknowledge-ui-clicks` enables sham-controlled real Win32 click observations. These are candidates, not proof that an undisclosed control exists or works. Details in `docs/P70-PAINTED-CANDIDATES.md`.
