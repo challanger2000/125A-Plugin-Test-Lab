@@ -1363,6 +1363,113 @@ int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
 
 // Non-destructive audit of every advertised VST3 controller parameter.
 // This inventory does not infer corresponding physical GUI control locations.
+
+// P68: read-only generic VST3 ABI feature discovery. This never guesses
+// semantics, executes GUI controls or exercises DSP/audio callbacks.
+int inventoryCapabilities(const std::string& pluginPath,
+                          const std::filesystem::path& reportPath) {
+    std::string error;
+    auto module = Module::create(pluginPath, error);
+    require(bool(module), "P68 cannot load real VST3 module");
+    HostApplication host;
+    auto factory = module->getFactory();
+    factory.setHostContext(&host);
+    int classes = 0;
+    for (const auto& cls : factory.classInfos()) {
+        if (cls.category() != kVstAudioEffectClass) continue;
+        ++classes;
+        require(classes == 1, "P68 multiple audio classes require explicit class selection");
+        auto component = factory.createInstance<IComponent>(cls.ID());
+        require(bool(component) && component->initialize(&host) == kResultOk,
+                "P68 actual VST3 processor cannot initialize");
+        try {
+            Controller controller;
+            acquireController(component.get(), factory, &host, controller);
+            struct BusRow {
+                int media{}, direction{}, index{}, channels{}, kind{}, flags{};
+            };
+            std::vector<BusRow> buses;
+            for (const auto media : {kAudio, kEvent}) {
+                for (const auto direction : {kInput, kOutput}) {
+                    const int32 count = component->getBusCount(media, direction);
+                    require(count >= 0 && count <= 128,
+                            "P68 VST3 reports unsupported or excessive bus count");
+                    for (int32 index = 0; index < count; ++index) {
+                        BusInfo info{};
+                        require(component->getBusInfo(media, direction, index, info)
+                                == kResultOk,
+                                "P68 cannot retrieve real VST3 bus metadata");
+                        require(info.channelCount >= 0 && info.channelCount <= 1024,
+                                "P68 VST3 bus advertises invalid channel count");
+                        buses.push_back({int(media), int(direction), int(index),
+                                        int(info.channelCount), int(info.busType),
+                                        int(info.flags)});
+                    }
+                }
+            }
+            const int32 parameterCount = controller.ptr->getParameterCount();
+            require(parameterCount >= 0 && parameterCount <= 8192,
+                    "P68 controller has invalid parameter count");
+            int editable = 0, readonly = 0, bypass = 0, program = 0;
+            std::vector<ParamID> ids;
+            ids.reserve(static_cast<size_t>(parameterCount));
+            for (int32 i = 0; i < parameterCount; ++i) {
+                ParameterInfo info{};
+                require(controller.ptr->getParameterInfo(i, info) == kResultTrue,
+                        "P68 cannot enumerate declared VST3 parameter");
+                require(std::find(ids.begin(), ids.end(), info.id) == ids.end(),
+                        "P68 duplicate parameter identifier");
+                ids.push_back(info.id);
+                require(info.stepCount >= 0 &&
+                        std::isfinite(info.defaultNormalizedValue) &&
+                        info.defaultNormalizedValue >= 0.0 &&
+                        info.defaultNormalizedValue <= 1.0,
+                        "P68 invalid parameter default/step count");
+                if (info.flags & ParameterInfo::kIsReadOnly) ++readonly;
+                else ++editable;
+                if (info.flags & ParameterInfo::kIsBypass) ++bypass;
+                if (info.flags & ParameterInfo::kIsProgramChange) ++program;
+            }
+            int editor = 0, hwnd = 0;
+            if (auto* view = controller.ptr->createView(ViewType::kEditor)) {
+                editor = 1;
+                hwnd = view->isPlatformTypeSupported(kPlatformTypeHWND) == kResultTrue
+                    ? 1 : 0;
+                view->release();
+            }
+            if (!reportPath.parent_path().empty())
+                std::filesystem::create_directories(reportPath.parent_path());
+            std::ofstream out(reportPath, std::ios::binary | std::ios::trunc);
+            require(out.good(), "P68 cannot create native metadata evidence");
+            out << "format\t125A-VST3-CAPABILITIES-v1\n"
+                << "audio_classes\t" << classes << "\n"
+                << "parameter_count\t" << parameterCount << "\n"
+                << "editable_parameters\t" << editable << "\n"
+                << "readonly_parameters\t" << readonly << "\n"
+                << "bypass_parameters\t" << bypass << "\n"
+                << "program_parameters\t" << program << "\n"
+                << "editor_available\t" << editor << "\n"
+                << "editor_win32_hwnd\t" << hwnd << "\n"
+                << "bus_count\t" << buses.size() << "\n";
+            for (const auto& bus : buses)
+                out << "bus\t" << bus.media << "\t" << bus.direction
+                    << "\t" << bus.index << "\t" << bus.channels << "\t"
+                    << bus.kind << "\t" << bus.flags << "\n";
+            out << "end\tCOMPLETE\n";
+            out.flush();
+            require(out.good(), "P68 incomplete native capabilities evidence");
+            controller.close();
+        } catch (...) {
+            (void)component->terminate();
+            throw;
+        }
+        require(component->terminate() == kResultOk,
+                "P68 VST3 component termination failed");
+    }
+    require(classes == 1, "P68 no unique VST3 processor class");
+    return 0;
+}
+
 int inventoryParameters(const std::string& pluginPath,
                         const std::filesystem::path& reportPath) {
     std::string error;
@@ -3050,6 +3157,8 @@ int main(int argc, char** argv) {
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])),
                        x, y, expected, std::filesystem::path(argv[7]));
         }
+        if (argc == 4 && std::string(argv[1]) == "--inventory-capabilities")
+            return inventoryCapabilities(argv[2], argv[3]);
         if (argc == 4 && std::string(argv[1]) == "--inventory-parameters")
             return inventoryParameters(argv[2],argv[3]);
         if (argc == 4 && std::string(argv[1]) == "--sweep-parameters")

@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P68 — automatic read-only VST3 capability inventory
+
+Use `python tests/run_vst3_auto_discovery.py --plugin <actual.vst3> --gui-host <125A_Test_Lab_GUI.exe> --out <results>`. P68 inventories native bus layout, event I/O, parameter IDs/defaults and GUI capability without clicking controls; it generates `PROPOSED-TEST-PLAN.json` with `executable_p65_plan=false`. The owning plugin chat supplies independent expectations and P67 required feature coverage before running any unapproved checks. [Technical scope](docs/P68-VST3-AUTO-DISCOVERY.md).
+
+
 ## P67 — mandatory declared-feature coverage matrix
 
 Product chats should provide **two separate files**: the P65/P66 native-test `plan.json` and an independently reviewed `features.json`. Run `python tests/run_product_test_plan.py --plan <plan.json> --coverage-matrix <features.json> --out <results>`. P67 reports each required feature as `PASS`, `FAIL`, `NOT RUN` or `NOT COVERED`; any required gap makes the coverage-gated CLI fail **even when executed native VST3 checks are green**. No matrix means `NOT DECLARED`, never full functional approval. See `docs/P67-REQUIRED-FEATURE-COVERAGE.md`. A user/product owner must still review whether the inventory contains every relevant feature; the test engine cannot infer omitted functionality.

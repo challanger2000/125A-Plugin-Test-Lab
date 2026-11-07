@@ -1,5 +1,8 @@
 # 125A Plugin Test Lab
 
+**P68 automatic read-only VST3 inventory:** The common Windows GUI host now detects actual audio/event buses, parameter counts, automation flags and editor availability from the plugin ABI and produces a **non-executable** proposed P65/P66 plan. It does not invent GUI positions or musical reference values; each plugin chat reviews expectations before activation. See [P68 discovery](docs/P68-VST3-AUTO-DISCOVERY.md).
+
+
 **P67 mandatory product-feature coverage:** The versioned P65/P66 test-plan runner now accepts a separately reviewed `--coverage-matrix` containing required and optional product features with exact linked native test cases. Green VST3 results **do not** imply complete coverage: any declared required feature without passing native case evidence becomes `NOT COVERED`, `NOT RUN` or `FAIL`, blocks the coverage gate, and appears by name in `PRODUCT-FEATURE-COVERAGE.json`. Without a matrix, coverage is explicitly `NOT DECLARED`. This does not certify the product's entire feature inventory, hardware ASIO, DAW or commercial release. [P67 specification](docs/P67-REQUIRED-FEATURE-COVERAGE.md).
 
 
