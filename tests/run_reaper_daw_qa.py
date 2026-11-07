@@ -167,6 +167,33 @@ def check_pcm(path, rate, seconds, minimum_rms, expect_audio):
             "audible_in_render": rms >= minimum_rms}
 
 
+def _windows_for_process(pid):
+    """Capture real GUI window titles when an isolated REAPER test hangs."""
+    if os.name != "nt":
+        return []
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    titles = []
+    fn_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def inspect(hwnd, _param):
+        owning = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owning))
+        if owning.value == pid:
+            length = user32.GetWindowTextLengthW(hwnd)
+            if 0 < length <= 2048:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                if buf.value:
+                    titles.append(buf.value[:240])
+        return True
+
+    callback = fn_type(inspect)
+    user32.EnumWindows(callback, 0)
+    return titles[:20]
+
+
 def run_process(command, status_file=None, timeout=90):
     """A fresh process per phase. Existing user REAPER session is untouched."""
     process = subprocess.Popen(command, stdout=subprocess.DEVNULL,
@@ -184,7 +211,7 @@ def run_process(command, status_file=None, timeout=90):
                 if process.poll() is not None:
                     raise ValueError("P91 REAPER exited without actual in-DAW evidence")
                 time.sleep(.1)
-            raise ValueError("P91 REAPER ReaScript timed out")
+            raise ValueError("P91 REAPER ReaScript timed out; windows=" + repr(_windows_for_process(process.pid)))
         code = process.wait(timeout=timeout)
         if code != 0:
             raise ValueError("P91 REAPER render process failed")
@@ -228,7 +255,7 @@ def execute(plan, out, *, timeout=90, script_template=None, process_runner=run_p
     try:
         setup_script = generate_script(
             script_template, plan, folder, status_setup, project, "setup")
-        cmd = [str(exe), "-newinst", "-new", str(setup_script)]
+        cmd = [str(exe), "-newinst", "-nosplash", "-new", str(setup_script)]
         setup = process_runner(cmd, status_setup, timeout)
         report["genuine_reaper_process_launched"] = True
         if (setup.get("phase") != "setup" or setup.get("note_count") != "1"
@@ -240,7 +267,7 @@ def execute(plan, out, *, timeout=90, script_template=None, process_runner=run_p
         report["saved_project_sha256"] = digest(project)
         reload_script = generate_script(
             script_template, plan, folder, status_reload, project, "reload")
-        reload_cmd = [str(exe), "-newinst", str(project), str(reload_script)]
+        reload_cmd = [str(exe), "-newinst", "-nosplash", str(project), str(reload_script)]
         loaded = process_runner(reload_cmd, status_reload, timeout)
         if (loaded.get("phase") != "reload" or
                 loaded.get("note_count") != "1" or
