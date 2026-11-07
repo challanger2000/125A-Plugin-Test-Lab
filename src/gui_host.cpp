@@ -1364,6 +1364,22 @@ int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
 // Non-destructive audit of every advertised VST3 controller parameter.
 // This inventory does not infer corresponding physical GUI control locations.
 
+// P73: some perfectly valid native VST3 audio processors deliberately have
+// NO IEditController interface and no controller class ID. This must not
+// convert a real headless audio plugin into a discovery failure. If a class
+// is advertised, acquireController still fails closed if it is broken.
+bool hasDeclaredController(IComponent* component) {
+    IEditController* embedded = nullptr;
+    if (component->queryInterface(IEditController::iid,
+            reinterpret_cast<void**>(&embedded)) == kResultTrue && embedded) {
+        embedded->release();
+        return true;
+    }
+    if (embedded) embedded->release();
+    TUID declared{};
+    return component->getControllerClassId(declared) == kResultTrue;
+}
+
 // P68: read-only generic VST3 ABI feature discovery. This never guesses
 // semantics, executes GUI controls or exercises DSP/audio callbacks.
 int inventoryCapabilities(const std::string& pluginPath,
@@ -1384,7 +1400,9 @@ int inventoryCapabilities(const std::string& pluginPath,
                 "P68 actual VST3 processor cannot initialize");
         try {
             Controller controller;
-            acquireController(component.get(), factory, &host, controller);
+            const bool hasController = hasDeclaredController(component.get());
+            if (hasController)
+                acquireController(component.get(), factory, &host, controller);
             struct BusRow {
                 int media{}, direction{}, index{}, channels{}, kind{}, flags{};
             };
@@ -1407,7 +1425,8 @@ int inventoryCapabilities(const std::string& pluginPath,
                     }
                 }
             }
-            const int32 parameterCount = controller.ptr->getParameterCount();
+            const int32 parameterCount = hasController
+                ? controller.ptr->getParameterCount() : 0;
             require(parameterCount >= 0 && parameterCount <= 8192,
                     "P68 controller has invalid parameter count");
             int editable = 0, readonly = 0, bypass = 0, program = 0;
@@ -1431,7 +1450,8 @@ int inventoryCapabilities(const std::string& pluginPath,
                 if (info.flags & ParameterInfo::kIsProgramChange) ++program;
             }
             int editor = 0, hwnd = 0;
-            if (auto* view = controller.ptr->createView(ViewType::kEditor)) {
+            if (auto* view = hasController
+                    ? controller.ptr->createView(ViewType::kEditor) : nullptr) {
                 editor = 1;
                 hwnd = view->isPlatformTypeSupported(kPlatformTypeHWND) == kResultTrue
                     ? 1 : 0;
@@ -1488,8 +1508,10 @@ int inventoryParameters(const std::string& pluginPath,
                 "Parameter inventory cannot initialize processor");
         {
             Controller controller;
-            acquireController(component.get(), factory, &app, controller);
-            const int32 count = controller.ptr->getParameterCount();
+            const bool hasController = hasDeclaredController(component.get());
+            if (hasController)
+                acquireController(component.get(), factory, &app, controller);
+            const int32 count = hasController ? controller.ptr->getParameterCount() : 0;
             require(count >= 0 && count <= 8192,
                     "VST3 controller returned invalid/oversized parameter count");
             struct Row {int32 index; ParamID id; int32 steps; double defaultValue;
