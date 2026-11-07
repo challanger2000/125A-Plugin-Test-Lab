@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P73 — universal onboarding for VST3 without GUI, plus technical baseline
+
+The P72 onboarding command now **skips GUI probing for real no-editor VST3** based on independently reported P68 capability metadata, instead of failing or inventing controls. Supply `--audio-host <125A_Test_Lab_Host.exe> --stress-host <125A_Test_Lab_State_Stress.exe> --run-technical-baseline` to run existing generic VST3 technical audio/save tests in the same command, producing genuine PASS/FAIL results while retaining NOT RUN for physical ASIO and DAW. Details: `docs/P73-HEADLESS-AUTOCHECK.md`.
+
+
 ## P71/P72 — one universal onboarding command for any Windows VST3
 
 Run `python tests/run_plugin_onboarding.py --plugin <actual.vst3> --gui-host <125A_Test_Lab_GUI.exe> --out <evidence>` for a single read-only review pack integrating P68 native plugin inventory and P71 combined real HWND + custom-painted GUI candidate discovery. No unapproved clicks, guessed oracle values, or automatic release flags. For separate GUI discovery and explicitly authorized sham-controlled clicks see `tests/run_gui_unified_discovery.py` and `docs/P71-P72-UNIVERSAL-ONBOARDING.md`.
