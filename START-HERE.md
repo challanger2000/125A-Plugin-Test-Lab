@@ -1,3 +1,30 @@
+## P86–P87 — Bounded native GUI sample coverage and parameter gaps
+
+The read-only universal VST3 scan remains the default. For deliberately
+sandboxed **opt-in** testing of unfamiliar plugin controls, P86 can sample
+a 3×3 or 5×5 grid of the actual Win32 editor, with optional independent
+sham/click repetitions. P87 reconciles the observed parameter changes with
+the independent P68 ParameterInfo inventory, reporting which exposed
+parameter IDs were **not seen changing** at the sampled coordinates:
+
+```powershell
+python tests/run_universal_qa.py --plugin C:\\QA\\Unknown.vst3 --gui-host C:\\QA\\125A_Test_Lab_GUI.exe --out C:\\QA\\Result --explore-unknown-gui --dense-gui-grid 5 --exploration-repeats 2 --crosscheck-abi-gui
+```
+
+The same opt-in flags can be specified per plugin in a P75/P83 batch
+manifest. Native evidence is saved in `unknown-gui-dense-sweep` and
+`parameter-coverage/ABI-GUI-COVERAGE-GAPS.json`.
+
+**Interpretation:** this is an evidence-backed *sampled* GUI/parameter
+inventory, not evidence that all controls or product functions were
+discovered, safe, or musically correct. An unobserved parameter is not
+necessarily broken. Unknown GUI clicks may have unsafe side effects:
+use disposable isolated Windows test runners and no sensitive assets.
+No DAW, physical ASIO, or release approval is inferred.
+
+See [P86 dense GUI audit](docs/P86-DENSE-GUI-AUDIT.md) and
+[P87 ABI/GUI gaps](docs/P87-ABI-GUI-COVERAGE-GAPS.md).
+
 # START HERE — 125A Plugin Test Lab
 
 ## P76 — universal, independently referenced WAV and MIDI export checks
