@@ -1,5 +1,8 @@
 # 125A Plugin Test Lab
 
+**P67 mandatory product-feature coverage:** The versioned P65/P66 test-plan runner now accepts a separately reviewed `--coverage-matrix` containing required and optional product features with exact linked native test cases. Green VST3 results **do not** imply complete coverage: any declared required feature without passing native case evidence becomes `NOT COVERED`, `NOT RUN` or `FAIL`, blocks the coverage gate, and appears by name in `PRODUCT-FEATURE-COVERAGE.json`. Without a matrix, coverage is explicitly `NOT DECLARED`. This does not certify the product's entire feature inventory, hardware ASIO, DAW or commercial release. [P67 specification](docs/P67-REQUIRED-FEATURE-COVERAGE.md).
+
+
 **P65 standard plugin-specific test plans:** All 125A plugin development chats can now supply a single versioned JSON plan with exact VST3/host hashes, named real GUI-workflow and bidirectional knob-sweep expectations. The shared Test Lab runs the existing native Windows engines without per-plugin code changes; case-level PASS/FAIL/NOT RUN, immutable fingerprints, and explicit ASIO/DAW/whole-product NOT COVERED remain enforced. [Specification and handoff](docs/P65-PRODUCT-TEST-PLANS.md).
 
 
