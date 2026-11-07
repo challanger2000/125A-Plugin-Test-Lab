@@ -9,11 +9,16 @@ the output PCM. Supply an exact SHA-256-pinned local plan:
 python tests/run_reaper_daw_qa.py --plan C:\\QA\\approved-reaper-plan.json --out C:\\QA\\new-reaper-evidence
 ```
 
-An explicit, isolated self-hosted `125A-REAPER` Windows workflow is
-provided; **public Windows CI tests only driver/plan/mock regressions,
-NOT a real REAPER installation or session.** Real DAW acceptance requires
-this actual optional live run and its evidence. ASIO hardware remains
-`NOT RUN`. No third-party REAPER binary or license is bundled.
+P91 includes both strict adapter/mock unit tests (which are NOT DAW
+evidence) and a **verified real REAPER 7.83 Windows-2022 smoke job**
+that loaded a source-built VST3, created MIDI, saved/reloaded a project,
+and rendered a 24-bit stereo WAV:
+[Actions #42391164169](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42391164169).
+The chosen GUI test VST3 is deliberately silent; real MIDI sound and
+actual production-plugin fidelity are not proven. A separate opt-in
+self-hosted `125A-REAPER` workflow can run reviewed local plugin plans.
+ASIO hardware is still `NOT RUN`. REAPER is downloaded only from its
+official installer, and no REAPER binary or license is bundled.
 See [P91 documentation](docs/P91-REAPER-DAW-INTEGRATION.md).
 
 ## P90 — Real external DAW/ASIO capture PCM comparison
