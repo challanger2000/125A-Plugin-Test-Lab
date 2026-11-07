@@ -1,0 +1,51 @@
+name: P81 real native VST3 GUI export through complete multi-plugin batch
+on:
+  pull_request:
+    paths:
+      - 'tests/run_p81_native_batch_exports.py'
+      - 'tests/run_p79_native_export_fixtures.py'
+      - 'tests/run_vst3_batch_qa.py'
+      - 'tests/run_universal_qa.py'
+      - 'tests/run_product_test_plan.py'
+      - '.github/workflows/p81-native-batch-export.yml'
+      - 'docs/P81-NATIVE-BATCH-EXPORT-E2E.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-four-vst3-batch:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile native Windows GUI host and four source-built VST3 exporters
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P81 configure FAILED' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiExportGood QAGuiExportBad QAGuiExportMidiGood QAGuiExportMidiBad
+          if ($LASTEXITCODE -ne 0) { throw 'P81 VST3 compilation FAILED' }
+      - name: Execute real multi-VST3 good/bad WAV/MIDI exports and verify independent saved file bytes
+        shell: pwsh
+        run: |
+          python -m py_compile tests/run_p81_native_batch_exports.py
+          if ($LASTEXITCODE -ne 0) { throw 'P81 syntax FAILED' }
+          python tests/run_p81_native_batch_exports.py --build build --out build/p81
+          if ($LASTEXITCODE -ne 0) { throw 'P81 real isolated plugin batch FAILED' }
+          $s = Get-Content build/p81/P81-SUMMARY.json -Raw | ConvertFrom-Json
+          if ($s.status -ne 'PASS' -or $s.release_approved -ne $false -or
+              $s.scenarios.Count -ne 2 -or
+              $s.scenarios[0].scenario -ne 'BAD_FIRST_GOOD_LATER' -or
+              $s.scenarios[0].passed_plugins -ne 2 -or
+              $s.scenarios[0].failed_plugins -ne 2 -or
+              $s.scenarios[1].scenario -ne 'ALL_GOOD' -or
+              $s.scenarios[1].passed_plugins -ne 2 -or
+              $s.scenarios[1].failed_plugins -ne 0) {
+            throw 'P81 summary failed independent count and limitation checks'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P81-full-native-batch-good-bad-WAV-MIDI-evidence
+          path: build/p81/
+          if-no-files-found: warn
