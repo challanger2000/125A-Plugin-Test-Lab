@@ -12,7 +12,17 @@ from run_universal_qa import execute
 from test_product_test_plan import make_plan
 from test_universal_qa import onboard_for
 from run_gui_exploration import digest
-from test_gui_exploration import bmp
+import struct
+
+
+def bmp(path, color, width=320, height=180):
+    pixels = bytes((color[2], color[1], color[0], 255)) * (width*height)
+    header = struct.pack('<HIHHI', 0x4D42, 54+len(pixels), 0, 0, 54)
+    dib = struct.pack('<IiiHHIIiiII', 40, width, -height, 1, 32,
+                      0, len(pixels), 0, 0, 0, 0)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(header + dib + pixels)
+
 
 
 class DenseAuditTests(unittest.TestCase):
