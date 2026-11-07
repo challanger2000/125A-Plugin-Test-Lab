@@ -1,0 +1,24 @@
+name: P77 approved GUI-to-export chain regression
+on:
+  pull_request:
+    paths:
+      - 'tests/run_export_action_chain.py'
+      - 'tests/test_export_action_chain.py'
+      - '.github/workflows/p77-export-action-chain.yml'
+      - 'docs/P77-EXPORT-ACTION-CHAIN.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract-regression:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run action-and-export contract regression
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_export_action_chain.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P77 regression FAILED' }
+          python -m py_compile tests/run_export_action_chain.py
+          if ($LASTEXITCODE -ne 0) { throw 'P77 compile FAILED' }
