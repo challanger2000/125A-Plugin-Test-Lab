@@ -28,7 +28,7 @@ ALLOWED = {"INVENTORY_COMPLETE", "TECHNICAL_BASELINE_PASS",
 def validate_exploration_spec(item):
     """Explicit opt-in is mandatory for every plugin; never infer it from a directory scan."""
     permitted = {"explore_unknown_gui", "exploration_points",
-                 "exploration_max_points", "exploration_repeats"}
+                 "exploration_max_points", "exploration_repeats", "dense_gui_grid"}
     if not permitted.intersection(item):
         return {}
     if item.get("explore_unknown_gui") is not True:
@@ -41,6 +41,13 @@ def validate_exploration_spec(item):
         raise ValueError("P84 invalid fresh-instance GUI repetition count")
     result = {"explore_unknown_gui": True, "exploration_max_points": count,
               "exploration_repeats": repeats}
+    if "dense_gui_grid" in item:
+        side = item["dense_gui_grid"]
+        if (type(side) is not int or side not in (3, 5)
+                or repeats not in (1, 2)
+                or "exploration_points" in item):
+            raise ValueError("P86 dense scan requires 3/5 grid, 1/2 repeats, no point override")
+        result["dense_gui_grid"] = side
     if "exploration_points" in item:
         points = item["exploration_points"]
         if (type(points) is not str or
@@ -82,7 +89,7 @@ def load_selection(selection=None, root=None, *, technical_all=False):
         if not isinstance(item, dict) or not {"id", "bundle", "run_technical_baseline"} <= set(item) or (
                 set(item) - {"id", "bundle", "run_technical_baseline", "approved_plan", "feature_matrix",
                              "explore_unknown_gui", "exploration_points", "exploration_max_points",
-                             "exploration_repeats"}):
+                             "exploration_repeats", "dense_gui_grid"}):
             raise ValueError("P75 unsupported plugin batch selection fields")
         ident = item["id"]
         if type(ident) is not str or not ID.fullmatch(ident) or ident in ids:
@@ -147,7 +154,7 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                               "run_technical_baseline", "approved_plan",
                               "feature_matrix", "explore_unknown_gui",
                               "exploration_points", "exploration_max_points",
-                              "exploration_repeats"} or
+                              "exploration_repeats", "dense_gui_grid"} or
                 ("approved_plan" in entry) != ("feature_matrix" in entry) or
                 type(entry["id"]) is not str or not ID.fullmatch(entry["id"]) or
                 entry["id"] in observed_ids or
@@ -218,6 +225,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                         "--exploration-repeats", str(entry["exploration_repeats"])]
                 if "exploration_points" in entry:
                     cmd += ["--exploration-points", entry["exploration_points"]]
+                if "dense_gui_grid" in entry:
+                    cmd += ["--dense-gui-grid", str(entry["dense_gui_grid"])]
             process = runner(cmd, capture_output=True, text=True,
                              errors="replace", check=False,
                              timeout=per_plugin_timeout)
@@ -250,6 +259,11 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                      outcome.get("approved_product_cases") != "CONTRACT_PASS") or
                     (entry["run_technical_baseline"] and
                      outcome.get("native_technical") != "PASS") or
+                    (entry.get("dense_gui_grid") is not None and (
+                         outcome.get("unknown_gui_dense_grid") != entry["dense_gui_grid"] or
+                         outcome.get("unknown_gui_grid_coverage") != "SAMPLED POINTS ONLY" or
+                         outcome.get("exploratory_clicks_performed") !=
+                           entry["dense_gui_grid"]**2 * entry["exploration_repeats"])) or
                     (entry.get("explore_unknown_gui", False) and
                      (outcome.get("unknown_gui_exploration") not in (
                          "OBSERVATIONS_COMPLETE", "NOT APPLICABLE - NO EDITOR") or
