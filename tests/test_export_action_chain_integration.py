@@ -77,6 +77,27 @@ class Integration(unittest.TestCase):
                              gui_runner=lambda *_a, **_kw: self.fail("must skip"))
             self.assertEqual([x["status"] for x in report["cases"]], ["FAIL", "NOT RUN"])
 
+    def test_p65_rejects_correct_files_without_plugin_provenance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan, _, _ = make_plan(root)
+            plan["cases"] = [chain_case(plan, root / "future.wav")]
+            def unproven_chain(contract, folder, timeout):
+                return {
+                    "schema": "125a-export-action-chain-result-v1",
+                    "status": "ACTION_AND_ARTIFACT_PASS",
+                    "verified_module_sha256": plan["product"]["sha256"],
+                    "verified_gui_host_sha256": plan["hosts"]["gui"]["sha256"],
+                    "expected_actions": 1, "verified_actions": 1,
+                    "expected_outputs": 1, "verified_outputs": 1,
+                    "actual_plugin_export_tested": False,
+                    "provenance_verified": False,
+                    "release_approved": False
+                }
+            report = execute(plan, root / "results", chain_runner=unproven_chain)
+            self.assertEqual(report["status"], "FAIL")
+            self.assertEqual(report["failed_cases"], 1)
+
     def test_preflight_rejects_wrong_chain_plugin(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
