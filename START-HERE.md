@@ -1,5 +1,10 @@
 # START HERE — 125A Plugin Test Lab
 
+## P69 — automatically locate real native HWND GUI buttons
+
+Run `python tests/run_gui_hwnd_guided.py --plugin <actual.vst3> --gui-host <125A_Test_Lab_GUI.exe> --out <results>` to derive candidate clicks from actual standard Win32 child controls **without clicking**. On an isolated reviewed test machine, add `--acknowledge-ui-clicks` for bounded P42 sham-controlled probing. Custom-painted VSTGUI controls and unknown actions remain NOT COVERED. See `docs/P69-HWND-GUIDED-EXPLORATION.md`.
+
+
 ## P68 — automatic read-only VST3 capability inventory
 
 Use `python tests/run_vst3_auto_discovery.py --plugin <actual.vst3> --gui-host <125A_Test_Lab_GUI.exe> --out <results>`. P68 inventories native bus layout, event I/O, parameter IDs/defaults and GUI capability without clicking controls; it generates `PROPOSED-TEST-PLAN.json` with `executable_p65_plan=false`. The owning plugin chat supplies independent expectations and P67 required feature coverage before running any unapproved checks. [Technical scope](docs/P68-VST3-AUTO-DISCOVERY.md).
