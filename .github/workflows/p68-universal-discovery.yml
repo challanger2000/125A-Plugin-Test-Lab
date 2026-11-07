@@ -1,0 +1,71 @@
+name: P68 universal read-only VST3 discovery and test-plan draft
+
+on:
+  pull_request:
+    paths:
+      - 'src/gui_host.cpp'
+      - 'tests/run_vst3_auto_discovery.py'
+      - 'tests/test_vst3_auto_discovery.py'
+      - '.github/workflows/p68-universal-discovery.yml'
+      - 'docs/P68-VST3-AUTO-DISCOVERY.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject corrupt, false and unverifiable VST3 capability evidence
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_vst3_auto_discovery.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P68 read-only discovery evidence contract failed' }
+          python -m py_compile tests/run_vst3_auto_discovery.py
+          if ($LASTEXITCODE -ne 0) { throw 'P68 Python discovery syntax failed' }
+
+  real-native-vst3:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build actual generic GUI host and two real VST3s
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P68 CMake configure failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiAnalogGood QAGuiPopupGood
+          if ($LASTEXITCODE -ne 0) { throw 'P68 genuine native VST3 build failed' }
+      - name: Independently inventory two actual plugin variants without any clicks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostFile = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          if ($hostFile.Count -ne 1) { throw 'P68 native Windows host unavailable' }
+          foreach ($variant in @('AnalogGood','PopupGood')) {
+            $plugin = @(Get-ChildItem build -Recurse -Directory -Filter "125A_QA_GUI_$variant.vst3")
+            if ($plugin.Count -ne 1) { throw "P68 missing actual $variant VST3" }
+            $PSNativeCommandUseErrorActionPreference = $false
+            python tests/run_vst3_auto_discovery.py --plugin $plugin[0].FullName --gui-host $hostFile[0].FullName --out "build/p68/$variant"
+            if ($LASTEXITCODE -ne 0) { throw "P68 real VST3 discovery failed $variant" }
+            $result = Get-Content "build/p68/$variant/DISCOVERY-RESULT.json" -Raw | ConvertFrom-Json
+            $draft = Get-Content "build/p68/$variant/PROPOSED-TEST-PLAN.json" -Raw | ConvertFrom-Json
+            if ($result.status -ne 'DISCOVERY_COMPLETE' -or $draft.executable_p65_plan -ne $false -or
+                $result.executable_plan_generated -ne $false -or
+                $draft.required_feature_inventory -ne 'NOT DECLARED' -or
+                $draft.release_approved -ne $false -or
+                $result.parameter_count -lt 1 -or $result.bus_count -lt 1) {
+              throw "P68 falsely approved an unreviewed product plan or lost real native metadata: $variant"
+            }
+            if (@($draft.proposed_cases).Count -lt 1) { throw 'P68 missing proposed test actions' }
+          }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P68-source-built-VST3-read-only-inventory-draft
+          path: build/p68/
+          if-no-files-found: warn
