@@ -3,6 +3,7 @@
 // Not a product plugin, and never bundled with a commercial release.
 #include "public.sdk/source/main/pluginfactory.h"
 #include "public.sdk/source/vst/vstaudioeffect.h"
+#include "public.sdk/source/vst/vsteditcontroller.h"
 #include "pluginterfaces/vst/vstspeaker.h"
 #include "pluginterfaces/vst/ivstevents.h"
 #include <cmath>
@@ -14,11 +15,13 @@ using namespace Steinberg::Vst;
 
 namespace {
 const FUID kProcessorUID(0x125A2026, 0x11070092, 0xA125A092, 0xB125A092);
+const FUID kControllerUID(0x125A2026, 0x11070092, 0xA125A093, 0xB125A093);
 constexpr const char* kName = "125A QA REAPER MIDI Audible";
 constexpr double pi = 3.14159265358979323846;
 
 class MidiTone final : public AudioEffect {
 public:
+    MidiTone() { setControllerClass(kControllerUID); }
     static FUnknown* createInstance(void*) {
         return static_cast<IAudioProcessor*>(new MidiTone);
     }
@@ -89,6 +92,12 @@ private:
     bool gate_ = false;
     double phase_ = 0.;
 };
+class MidiToneController final : public EditController {
+public:
+    static FUnknown* createInstance(void*) {
+        return static_cast<IEditController*>(new MidiToneController);
+    }
+};
 } // namespace
 
 BEGIN_FACTORY_DEF("125A Internal Test Infrastructure",
@@ -98,4 +107,8 @@ DEF_CLASS2(INLINE_UID_FROM_FUID(kProcessorUID), PClassInfo::kManyInstances,
            kVstAudioEffectClass, kName, Vst::kDistributable,
            "Instrument", "0.1.0", kVstVersionString,
            MidiTone::createInstance)
+DEF_CLASS2(INLINE_UID_FROM_FUID(kControllerUID), PClassInfo::kManyInstances,
+           kVstComponentControllerClass, "125A QA REAPER MIDI Controller",
+           0, "", "0.1.0", kVstVersionString,
+           MidiToneController::createInstance)
 END_FACTORY
