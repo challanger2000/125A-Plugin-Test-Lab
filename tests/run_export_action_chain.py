@@ -6,6 +6,9 @@ Outputs must be absent BEFORE any native GUI action (no deletion or stale-file r
 """
 import argparse
 import json
+import os
+import stat
+import time
 from pathlib import Path
 
 from run_gui_workflow import validate as validate_gui, run as run_gui, digest
@@ -28,8 +31,14 @@ def validate(chain):
     resolved = [Path(item["path"]).resolve() for item in outputs]
     if len(set(resolved)) != len(resolved):
         raise ValueError("P77 duplicate output destinations")
-    if any(path.exists() for path in resolved):
-        raise ValueError("P77 output already exists: use a fresh destination, never stale evidence")
+    # lexists includes broken symlinks, unlike Path.exists().
+    if any(os.path.lexists(path) for path in resolved):
+        raise ValueError("P78 output destination occupied, including symlink")
+    for path in resolved:
+        if path in (host, module, Path(__file__).resolve()):
+            raise ValueError("P78 export path collides with executable")
+        if not path.parent.is_dir():
+            raise ValueError("P78 output directory must exist")
     return host, module, len(steps), resolved
 
 
@@ -51,7 +60,8 @@ def run(chain, out, *, gui_runner=run_gui, export_verifier=verify_export, timeou
         "release_approved": False, "faults": []
     }
     try:
-        # The native workflow is the ONLY producer under test.
+        # Capture wall-clock before dispatch; freshness alone does not prove authorship.
+        action_started_ns = time.time_ns()
         observed = gui_runner(chain["workflow"], out / "actions", timeout=timeout)
         if (not isinstance(observed, dict) or observed.get("status") != "TECHNICAL_PASS"
                 or observed.get("verified_module_sha256") != module_hash
@@ -63,8 +73,14 @@ def run(chain, out, *, gui_runner=run_gui, export_verifier=verify_export, timeou
         report["verified_actions"] = count
         if digest(module) != module_hash or digest(host) != host_hash:
             raise ValueError("P77 executable identity changed")
-        if not all(p.is_file() for p in paths):
-            raise ValueError("P77 approved action did not generate all expected files")
+        for path in paths:
+            st = path.lstat()
+            if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+                raise ValueError("P78 export must be a regular nonlinked file")
+            if st.st_mtime_ns < action_started_ns:
+                raise ValueError("P78 export predates GUI action")
+            if st.st_size < 1:
+                raise ValueError("P78 export is empty")
         evidence = export_verifier(chain["export"], out / "artifacts", module_sha=module_hash)
         if (not isinstance(evidence, dict) or evidence.get("status") != "ARTIFACT_PASS"
                 or evidence.get("verified_module_sha256") != module_hash
@@ -77,8 +93,13 @@ def run(chain, out, *, gui_runner=run_gui, export_verifier=verify_export, timeou
             raise ValueError("P77 independent WAV/MIDI oracle rejected generated output")
         if digest(module) != module_hash or digest(host) != host_hash:
             raise ValueError("P77 executable identity changed after oracle")
+        # Verified new output is not proof that the plugin wrote it:
+        # another process could have written matching bytes.
         report.update(status="ACTION_AND_ARTIFACT_PASS",
-                      verified_outputs=len(paths), actual_plugin_export_tested=True)
+                      verified_outputs=len(paths),
+                      actual_plugin_export_tested=False,
+                      export_origin="UNATTRIBUTED_AFTER_NATIVE_GUI_ACTION",
+                      provenance_verified=False)
     except (ValueError, OSError, TypeError, KeyError, IndexError) as exc:
         report["faults"].append(str(exc))
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
