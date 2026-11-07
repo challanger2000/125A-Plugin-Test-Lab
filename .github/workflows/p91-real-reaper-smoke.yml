@@ -27,7 +27,7 @@ jobs:
           $exe = 'C:\Program Files\REAPER (x64)\reaper.exe'
           if (-not (Test-Path $exe)) { throw 'Official REAPER not installed' }
           "P91_REAPER_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Build original 125A MIDI-sensitive source-defined real VST3
+      - name: Build original 125A full-controller real VST3
         shell: pwsh
         run: |
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64
