@@ -1,0 +1,24 @@
+name: P99 audit-only P95 PCM oracle counterproof
+on:
+  pull_request:
+    paths:
+      - 'tests/audit_p99_oracle_counterproof.py'
+      - '.github/workflows/p99-audit-oracle.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-only-adversarial-oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute real P95 Python verifier with independent wrong-frequency stimulus
+        run: |
+          python tests/audit_p99_oracle_counterproof.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P99-AUDIT-KNOWN-ORACLE-GAP-NOT-RELEASE-APPROVAL
+          path: artifacts/P99-audit/ORACLE-COUNTERPROOF.json
+          if-no-files-found: error
