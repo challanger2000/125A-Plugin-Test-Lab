@@ -209,6 +209,61 @@ def _windows_for_process(pid):
     return titles[:20]
 
 
+def _dismiss_unconfigured_audio_device_prompt(pid):
+    """Choose ordinary 'No' when REAPER asks to configure audio hardware.
+
+    Offline MIDI rendering does not need a selected ASIO device. Only act on
+    the exact expected prompt inside the isolated REAPER test process.
+    """
+    if os.name != "nt":
+        return False
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    callback_t = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    clicked = [False]
+    callbacks = []
+
+    def caption(hwnd):
+        length = user32.GetWindowTextLengthW(hwnd)
+        if not 0 < length <= 2048:
+            return ""
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        return buf.value
+
+    def inspect_main(hwnd, _unused):
+        process = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process))
+        if process.value != pid or caption(hwnd).strip().upper() != "REAPER":
+            return True
+        controls = []
+        def collect(child, _unused2):
+            cls = ctypes.create_unicode_buffer(128)
+            user32.GetClassNameW(child, cls, 128)
+            controls.append((child, cls.value.lower(), caption(child),
+                             bool(user32.IsWindowEnabled(child))))
+            return True
+        cb = callback_t(collect)
+        callbacks.append(cb)
+        user32.EnumChildWindows(hwnd, cb, 0)
+        prompt = any(cls == "static" and
+                     "you have not yet selected an audio device" in value.lower()
+                     for _hwnd, cls, value, _enabled in controls)
+        if prompt:
+            for button, cls, label, enabled in controls:
+                if cls == "button" and label.lower().replace("&", "").strip() == "no" and enabled:
+                    user32.SendMessageW(button, 0x00F5, 0, 0)  # ordinary BM_CLICK
+                    clicked[0] = True
+                    break
+        return not clicked[0]
+
+    top_cb = callback_t(inspect_main)
+    callbacks.append(top_cb)
+    user32.EnumWindows(top_cb, 0)
+    return clicked[0]
+
+
 def _accept_visible_evaluation_dialog(pid):
     """Click only REAPER's ordinary, enabled evaluation-continue button.
 
@@ -270,6 +325,7 @@ def run_process(command, status_file=None, timeout=90):
         if status_file is not None:
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
+                _dismiss_unconfigured_audio_device_prompt(process.pid)
                 if not accepted_eval_dialog:
                     accepted_eval_dialog = _accept_visible_evaluation_dialog(process.pid)
                 status = read_status(status_file)
