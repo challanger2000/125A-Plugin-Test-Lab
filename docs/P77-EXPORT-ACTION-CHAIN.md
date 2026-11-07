@@ -32,3 +32,9 @@ All output paths from the export contract must be **absent before the first clic
 ## CI evidence boundary
 
 The P77 Windows regression and P65 adapter tests use mocked GUI actions and mock export files. These validate strict dispatch, stale-file refusal and fail-closed result accounting, **not** a completed native VST3 export. A real Windows host test invoking a genuine exporter and confirming the resulting WAV/MIDI files remains a required acceptance criterion.
+
+## P78 provenance hardening
+
+P78 rejects pre-existing destinations (including broken symlinks), missing output directories, hard-linked or symbolic-link outputs, zero-length files, and outputs whose modification time predates the approved GUI sequence. The independent P76 byte/format oracle remains mandatory.
+
+**Important correction to P77:** A GUI host reporting successful actions and subsequently finding correct WAV/MIDI files does not independently identify the writing process. Therefore `actual_plugin_export_tested` is **false** and `provenance_verified` is **false** until trustworthy native provenance instrumentation exists. P65/P74 deliberately reject an unattributed export as proof of a required plugin export feature. P78 Windows tests prove only orchestration and negative cases; they do not claim actual VST3 exporter coverage.
