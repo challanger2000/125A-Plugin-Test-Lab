@@ -84,6 +84,15 @@ smtg_add_vst3plugin(QAASIOReferenceMidi
 target_link_libraries(QAASIOReferenceMidi PRIVATE sdk)
 target_compile_definitions(QAASIOReferenceMidi PRIVATE NOMINMAX)
 
+# P183 deliberately defective lifecycle oracle: source-built but returns
+# non-OK on setProcessing(true). A real host must reject it BEFORE ASIO startup.
+smtg_add_vst3plugin(QAASIOReferenceMidiBroken
+    PACKAGE_NAME "125A_QA_ASIO_Reference_MIDI_Broken"
+    SOURCES_LIST tests/asio_reference_midi_fixture.cpp)
+target_link_libraries(QAASIOReferenceMidiBroken PRIVATE sdk)
+target_compile_definitions(QAASIOReferenceMidiBroken PRIVATE
+    NOMINMAX QA_REFERENCE_BROKEN_PROCESSING=1)
+
 # P04: native Win32 editor host; real mouse-to-VST3-parameter assertion is
 # verified by two independent, source-built synthetic UI fixtures in Actions.
 add_executable(TestLabGUI src/gui_host.cpp)

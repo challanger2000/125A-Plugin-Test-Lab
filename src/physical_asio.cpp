@@ -191,6 +191,9 @@ struct Processing {
     }
 };
 
+// P183: real offline MIDI-VST3 lifecycle proof, without an ASIO device.
+#include "asio_reference_lifecycle.inc"
+
 // Actual device formats: reject unsupported layouts rather than writing
 // 32-bit words into non-32-bit driver buffers.
 int asioBytesPerSample(ASIOSampleType type) {
@@ -958,6 +961,8 @@ int run(const Arguments& a) {
 
 int main(int argc, char** argv) {
     try {
+        if (argc >= 4 && std::strcmp(argv[1],"--vst3-reference-lifecycle-selftest")==0)
+            return referenceInstrumentLifecycleSelfTest(argc,argv);
         if (argc == 2 && std::strcmp(argv[1], "--sample-format-selftest") == 0)
             return formatSelfTest();
         if (argc == 2 && std::strcmp(argv[1], "--buffer-choice-selftest") == 0)

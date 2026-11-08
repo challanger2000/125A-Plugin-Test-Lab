@@ -14,10 +14,20 @@
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 
+#ifndef QA_REFERENCE_BROKEN_PROCESSING
+#define QA_REFERENCE_BROKEN_PROCESSING 0
+#endif
+
 namespace {
+#if QA_REFERENCE_BROKEN_PROCESSING
+const FUID kProcessorUID(0x125A2026, 0x11070183, 0xA125A183, 0xB125A184);
+const FUID kControllerUID(0x125A2026, 0x11070183, 0xA125A185, 0xB125A186);
+constexpr const char* kName = "125A QA ASIO Reference MIDI Broken Processing";
+#else
 const FUID kProcessorUID(0x125A2026, 0x11070182, 0xA125A182, 0xB125A182);
 const FUID kControllerUID(0x125A2026, 0x11070182, 0xA125A183, 0xB125A183);
 constexpr const char* kName = "125A QA ASIO Reference MIDI Tone";
+#endif
 constexpr double pi = 3.14159265358979323846;
 
 class MidiTone final : public AudioEffect {
@@ -38,6 +48,17 @@ public:
     tresult PLUGIN_API setActive(TBool state) override {
         if (state) { gate_ = false; phase_ = 0.0; }
         return AudioEffect::setActive(state);
+    }
+
+    // P183: AudioEffect's default setProcessing() is not guaranteed to return
+    // kResultOk. The native ASIO host correctly treats non-OK as NO-GO.
+    // The instrument has no resources to allocate during this transition.
+    tresult PLUGIN_API setProcessing(TBool /*state*/) override {
+#if QA_REFERENCE_BROKEN_PROCESSING
+        return kResultFalse; // P183 adversarial regression: must fail at start.
+#else
+        return kResultOk;
+#endif
     }
 
     tresult PLUGIN_API canProcessSampleSize(int32 size) override {
