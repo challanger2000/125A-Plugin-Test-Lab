@@ -78,6 +78,7 @@ jobs:
           if ($LASTEXITCODE -ne 2) { throw 'Actual BAT cancel lost errorlevel' }
           $reports=@(Get-ChildItem 'BAT path with spaces' -Recurse -Filter P185-ACCEPTANCE.json | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json })
           if ($reports.Count -ne 2 -or @($reports | Where-Object {$_.physical_asio -cne 'NOT_RUN' -or $_.release_approved}).Count) { throw 'Package fabricated hardware acceptance' }
+          if (@($reports | Where-Object {$_.executor_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $_.reference_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $_.etw_tool_sha256 -cnotmatch '^[0-9a-f]{64}$'}).Count) { throw 'Shareable acceptance omitted binary identities' }
           # Actual tamper, including an entry script: must fail, cannot start audio.
           Add-Content -LiteralPath 'BAT path with spaces/P185-ANALYZE.ps1' '# tampered'
           & cmd.exe /d /c '"BAT path with spaces\P185-ETW-ASIO.bat" -CheckOnly'

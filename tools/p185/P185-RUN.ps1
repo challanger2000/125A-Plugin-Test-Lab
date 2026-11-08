@@ -32,6 +32,9 @@ try {
   foreach($required in @('125A_Test_Lab_ETW.exe','125A_Test_Lab_Physical_ASIO.exe','125A_QA_ASIO_Reference_MIDI.vst3','P185-ANALYZE.ps1','P185-RUN.ps1','P185-ETW-ASIO.bat')){
     if(-not $manifest.files.PSObject.Properties[$required]){throw 'PACKAGE_REQUIRED_ENTRY_MISSING'}
   }
+  $report.executor_sha256=$manifest.files.'125A_Test_Lab_Physical_ASIO.exe'
+  $report.reference_sha256=$manifest.files.'125A_QA_ASIO_Reference_MIDI.vst3'
+  $report.etw_tool_sha256=$manifest.files.'125A_Test_Lab_ETW.exe'
   . (Join-Path $root 'P185-ANALYZE.ps1')
   $out=Join-Path $root ('P185-LOCAL-'+[Guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $out | Out-Null
@@ -70,6 +73,7 @@ try {
   $selected=$drivers[$index]
   $consent=Read-Host 'Nur wenn DAW geschlossen und Lautstaerke niedrig: START eingeben (sonst Abbruch)'
   if($consent -cne 'START'){$report.error_code='USER_CANCELLED';Save-P185;exit 2}
+  $report.driver_clsid=$selected.CLSID
   $cap=Join-Path $out 'driver-capabilities.json'
   $rc=Invoke-P185Native $hostExe @('--asio-buffer-capabilities','--driver-name',$selected.Name,'--driver-clsid',$selected.CLSID,'--nonce',$nonce,'--out',$cap) (Join-Path $out 'driver-preflight.log')
   if($rc -ne 0){throw 'ASIO_CAPABILITIES_FAILED'}
@@ -84,6 +88,7 @@ try {
   $rc=Invoke-P185Native $etw (@('--capture',$raw,$nonce,'--',$hostExe)+$argv) (Join-Path $out 'capture.log')
   if(-not (Test-Path (Join-Path $raw 'capture.json'))){throw 'ETW_CAPTURE_FAILED'}
   $capture=Read-P185Json (Join-Path $raw 'capture.json')
+  $report.etw_loss=@{kernel_events=$capture.kernel.events_lost;kernel_buffers=$capture.kernel.buffers_lost;kernel_session_events=$capture.kernel.session_events_lost;kernel_session_buffers=$capture.kernel.session_buffers_lost;provider_events=$capture.user.events_lost;provider_buffers=$capture.user.buffers_lost;provider_session_events=$capture.user.session_events_lost;provider_session_buffers=$capture.user.session_buffers_lost}
   if($capture.kernel.start -ne 0 -or $capture.user.start -ne 0 -or $capture.marker_enable -ne 0){throw 'ETW_NOT_AVAILABLE'}
   if(-not (Test-Path (Join-Path $raw 'asio.json'))){throw 'ASIO_OBSERVATION_NOT_AVAILABLE'}
   $analysis=Get-P185Analysis $raw $nonce $manifest.files.'125A_Test_Lab_Physical_ASIO.exe' $manifest.files.'125A_QA_ASIO_Reference_MIDI.vst3' $selected.CLSID $manifest.testlab_source
