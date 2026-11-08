@@ -32,12 +32,18 @@ jobs:
           if (-not $exe) { throw 'P100 executor missing' }
           & $exe --sample-format-selftest
           if ($LASTEXITCODE -ne 0) { throw 'P100 sample conversion selftest failed' }
+          & $exe --buffer-choice-selftest
+          if ($LASTEXITCODE -ne 0) { throw 'P101 ASIO buffer chooser selftest failed' }
           New-Item -Force -ItemType Directory artifacts/P100 | Out-Null
           $nonce='0123456789abcdef0123456789abcdef0123456789abcdef'
           $args=@('--physical-asio-probe','--plugin','C:/does-not-exist/Plugin.vst3','--driver-name','Unregistered P100 Dummy','--driver-clsid','{00000000-0000-0000-0000-000000000000}','--rate','44100','--frames','256','--callbacks','500','--nonce',$nonce,'--out','artifacts/P100/must-not-exist.json','--midi-note','48','--midi-out','artifacts/P100/invalid-midi.json')
           $PSNativeCommandUseErrorActionPreference = $false # negative native exit 1 is expected
           & $exe @args
           if ($LASTEXITCODE -eq 0 -or (Test-Path 'artifacts/P100/must-not-exist.json') -or (Test-Path 'artifacts/P100/invalid-midi.json')) { throw 'False ASIO/MIDI PASS without a driver or actual plug-in' }
+
+          $capArgs=@('--asio-buffer-capabilities','--driver-name','Unregistered P100 Dummy','--driver-clsid','{00000000-0000-0000-0000-000000000000}','--nonce',$nonce,'--out','artifacts/P100/forbidden-driver-capability.json')
+          & $exe @capArgs
+          if ($LASTEXITCODE -eq 0 -or (Test-Path 'artifacts/P100/forbidden-driver-capability.json')) { throw 'Capability probe manufactured driver data without real IASIO hardware' }
           "P100_SOURCE_SHA=$env:GITHUB_SHA" | Set-Content artifacts/P100/provenance.txt
           'REAL_ASIO_HARDWARE=NOT_RUN' | Add-Content artifacts/P100/provenance.txt
           'REAL_MIDI_ASIO_PCM=NOT_RUN' | Add-Content artifacts/P100/provenance.txt

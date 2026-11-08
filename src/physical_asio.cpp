@@ -478,6 +478,8 @@ ASIOTime* onTimeInfo(ASIOTime* info, long index, ASIOBool direct) {
     onBuffer(index, direct);
     return info;
 }
+#include "asio_buffer_probe.inc"
+
 struct Arguments {
     std::filesystem::path plugin, output;
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
@@ -508,7 +510,7 @@ Arguments parse(int argc, char** argv) {
     args.clsid = requireArg(argc, argv, "--driver-clsid");
     args.nonce = requireArg(argc, argv, "--nonce");
     args.rate = parseInteger(requireArg(argc, argv, "--rate"), 44100, 96000);
-    args.frames = parseInteger(requireArg(argc, argv, "--frames"), 64, 1024);
+    args.frames = parseInteger(requireArg(argc, argv, "--frames"), 64, 4096);
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
     args.callbacks = parseInteger(requireArg(argc, argv, "--callbacks"), 200, 1000);
 #else
@@ -528,9 +530,7 @@ Arguments parse(int argc, char** argv) {
 #endif
     ensure(args.rate == 44100 || args.rate == 48000 || args.rate == 96000,
            "unsupported ASIO sample rate");
-    ensure(args.frames == 64 || args.frames == 128 || args.frames == 256 ||
-           args.frames == 512 || args.frames == 1024,
-           "unsupported ASIO frames");
+    ensure(args.frames>=64&&args.frames<=4096,"unsupported physical ASIO buffer size");
     ensure(args.nonce.size() == 48 &&
            std::all_of(args.nonce.begin(), args.nonce.end(), [](char c) {
                return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
@@ -653,10 +653,7 @@ int run(const Arguments& a) {
 #endif
         checkASIO(driver->getBufferSize(&minimum, &maximum, &preferred, &granularity),
                   "Physical ASIO buffer capability query failed");
-        ensure(a.frames >= minimum && a.frames <= maximum &&
-               (granularity == -1 ? ((a.frames & (a.frames - 1)) == 0) :
-                (granularity == 0 ? a.frames == preferred :
-                 (granularity > 0 && ((a.frames - minimum) % granularity == 0)))),
+        ensure(asioFramesAllowed(a.frames,minimum,maximum,preferred,granularity),
                "Requested ASIO buffer size not supported by physical driver");
         checkASIO(driver->canSampleRate(static_cast<double>(a.rate)),
                   "Physical ASIO hardware rejects requested sample rate");
@@ -835,6 +832,12 @@ int main(int argc, char** argv) {
     try {
         if (argc == 2 && std::strcmp(argv[1], "--sample-format-selftest") == 0)
             return formatSelfTest();
+        if (argc == 2 && std::strcmp(argv[1], "--buffer-choice-selftest") == 0)
+            return asioBufferSelfTest();
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+        if (argc >= 2 && std::strcmp(argv[1],"--asio-buffer-capabilities")==0)
+            return asioReadDriverCapabilities(argc,argv);
+#endif
         return run(parse(argc, argv));
     } catch (const std::exception& ex) {
         std::cerr << "[P58 HARDWARE NO-GO] " << ex.what() << "\n";
