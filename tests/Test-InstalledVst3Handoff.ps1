@@ -118,3 +118,33 @@ Reject-Bundle 'extra-resource' $sourceManifest $manifestSha
 Remove-Item -LiteralPath $surprise
 Reject-Bundle 'wrong-manifest-hash' $sourceManifest ('0' * 64)
 Write-Host 'P109 full bundle resources authenticated on positive and all four negative controls'
+
+# P110 hard links are invisible to reparse-point checks: same correct
+# bytes, same relative path and file count, but another path outside the
+# approved VST3 bundle addresses the same underlying NTFS file.
+$externalResource = Join-Path $WorkingRoot 'P110-outside-bundle-hardlink-target.txt'
+[IO.File]::WriteAllBytes($externalResource, $sourceBytes)
+Remove-Item -LiteralPath $installedResource
+New-Item -ItemType HardLink -Path $installedResource -Target $externalResource -ErrorAction Stop | Out-Null
+if ((Get-FileHash -LiteralPath $installedResource -Algorithm SHA256).Hash -cne
+    (Get-FileHash -LiteralPath $externalResource -Algorithm SHA256).Hash) {
+  throw 'P110 hard-link test fixture bytes unexpectedly differ'
+}
+Reject-Bundle 'external-ntfs-hardlink' $sourceManifest $manifestSha
+$badSourceManifest = Join-Path $WorkingRoot 'P110-should-not-create-manifest.json'
+& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Get-Vst3BundleManifest.ps1') -Bundle $dest -OutputFile $badSourceManifest | Out-Null
+if ($LASTEXITCODE -eq 0 -or (Test-Path -LiteralPath $badSourceManifest)) {
+  throw 'P110 source manifest generator incorrectly accepted externally hardlinked resource'
+}
+Write-Host 'P110 NTFS hardlink rejected by both source manifest and installed-bundle verifier'
+Remove-Item -LiteralPath $installedResource
+[IO.File]::WriteAllBytes($installedResource, $sourceBytes)
+# Even if the manifest bytes are legitimately hashed again, an untrusted
+# manifest entry may not reference a parent path outside the bundle.
+$maliciousManifest = Join-Path $WorkingRoot 'P110-parent-traversal-manifest.json'
+$alteredManifest = Get-Content -LiteralPath $sourceManifest -Raw -Encoding UTF8 | ConvertFrom-Json
+$alteredManifest.files[0].path = '../outside-resource.txt'
+$alteredManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $maliciousManifest -Encoding UTF8
+$maliciousSha = (Get-FileHash -LiteralPath $maliciousManifest -Algorithm SHA256).Hash.ToLowerInvariant()
+Reject-Bundle 'parent-traversal-path' $maliciousManifest $maliciousSha
+Write-Host 'P110 traversal manifest rejected before native P74'
