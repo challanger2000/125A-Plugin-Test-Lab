@@ -137,7 +137,7 @@ try {
   }
   if ($result.whole_bundle_integrity -eq 'VERIFIED_BEFORE_P74') {
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $checker -Bundle $bundle -ExpectedManifest $ExpectedBundleManifest -ExpectedManifestSha256 $ExpectedBundleManifestSha256 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'P109 installed VST3 resource changed during P74' }
+    if ($LASTEXITCODE -ne 0) { throw 'P109 bundle content changed during P74' }
     $result.whole_bundle_integrity = 'VERIFIED'
   }
   $result.p74_result = $qa.status
@@ -151,11 +151,11 @@ try {
   exit 1
 }
 ) {
-      throw 'P109 requires separately pinned whole-bundle manifest'
+      throw 'P109 requires separately pinned source bundle manifest and SHA256'
     }
     $checker = Join-Path $PSScriptRoot 'Test-Vst3BundleManifest.ps1'
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $checker -Bundle $bundle -ExpectedManifest $ExpectedBundleManifest -ExpectedManifestSha256 $ExpectedBundleManifestSha256 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'P109 installed VST3 bundle resource integrity failed before P74' }
+    if ($LASTEXITCODE -ne 0) { throw 'P109 installed whole bundle integrity mismatch before P74' }
     $result.whole_bundle_integrity = 'VERIFIED_BEFORE_P74'
   }
   $result.installation_evidence_checked = $true
