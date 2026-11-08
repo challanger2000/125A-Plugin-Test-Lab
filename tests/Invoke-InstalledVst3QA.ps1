@@ -53,8 +53,8 @@ try {
       $install.commercial_daw_verified -ne $false -or
       $install.faults.Count -ne 0 -or
       $install.exit_code -ne 0 -or
-      -not $install.installer_sha256 -or
-      $install.installer_sha256 -notmatch '^[a-f0-9]{64}
+      $install.installer_sha256 -notmatch '^[a-f0-9]{64}$' -or
+      $install.expected_artifact_sha256 -notmatch '^[a-f0-9]{64}$') {
     throw 'P106 installation report is not verified genuine installation evidence'
   }
   $installerPath = (Resolve-Path -LiteralPath $install.installer_path -ErrorAction Stop).ProviderPath
