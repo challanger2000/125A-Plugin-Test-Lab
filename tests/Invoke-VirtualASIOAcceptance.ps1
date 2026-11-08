@@ -35,6 +35,7 @@ $report = @{
     status = 'NOT_RUN'
     native_virtual_asio_callbacks = 'NOT_RUN'
     virtual_pcm_loopback = 'NOT_RUN'
+    driver_execution_verified = $false
     physical_asio_hardware_verified = $false
     commercial_daw_verified = $false
     release_approved = $false
@@ -132,12 +133,14 @@ try {
         '--timeout','180','--acknowledge-virtual-drivers') 'ACTUAL ASIO4ALL/VB-CABLE PCM return'
     $full = Get-Content -LiteralPath (Join-Path $measurement 'P95-VIRTUAL-LOOPBACK-RUN.json') -Raw | ConvertFrom-Json
     if ($full.status -ne 'VIRTUAL_ASIO_LOOPBACK_PASS' -or
+        $full.driver_execution_verified -ne $true -or
         $full.physical_asio_hardware_verified -ne $false -or
         $full.commercial_daw_verified -ne $false -or
         $full.release_approved -ne $false -or
         $full.metrics.pass -ne $true) {
         throw 'P97 genuine ASIO loopback result is invalid or falsely asserts physical/DAW approval'
     }
+    $report.driver_execution_verified = $true
     $report.status = 'REAL_VIRTUAL_ASIO_PCM_LOOPBACK_PASS'
     $report.native_virtual_asio_callbacks = $full.completed_asio_callbacks
     $report.virtual_pcm_loopback = 'VERIFIED'
