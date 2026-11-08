@@ -57,6 +57,11 @@ try {
       $install.installer_sha256 -notmatch '^[a-f0-9]{64}
     throw 'P106 installation report is not verified genuine installation evidence'
   }
+  $installerPath = (Resolve-Path -LiteralPath $install.installer_path -ErrorAction Stop).ProviderPath
+  if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf) -or
+      (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $install.installer_sha256) {
+    throw 'Installer binary does not match the originally executed installer SHA256'
+  }
   $bundle = (Resolve-Path -LiteralPath $Vst3Bundle -ErrorAction Stop).ProviderPath
   $module = (Resolve-Path -LiteralPath $InstalledModule -ErrorAction Stop).ProviderPath
   if (-not (Test-Path -LiteralPath $bundle -PathType Container) -or
