@@ -1,0 +1,30 @@
+name: P106 universal Windows EXE/MSI installer observer – safe fixture
+on:
+  pull_request:
+    paths:
+      - 'tests/Invoke-UniversalInstaller.ps1'
+      - 'tests/Test-UniversalInstaller.ps1'
+      - 'tests/p106_installer_fixture.cs'
+      - 'docs/P106-UNIVERSAL-WINDOWS-INSTALLER.md'
+      - '.github/workflows/p106-universal-installer.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-built-exe-installer:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute real harmless Windows EXE and adversarial refusal tests
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests/Test-UniversalInstaller.ps1 -WorkingRoot (Join-Path $env:RUNNER_TEMP 'P106-safe-fixture')
+          if ($LASTEXITCODE -ne 0) { throw "P106 actual fixture regressions failed: $LASTEXITCODE" }
+      - name: Publish sandbox-only evidence (no installer binary)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P106-harmless-fixture-evidence-NOT-vendor-release-approval
+          path: ${{ runner.temp }}/P106-safe-fixture/*/P106-INSTALLER-RESULT.json
+          if-no-files-found: error
