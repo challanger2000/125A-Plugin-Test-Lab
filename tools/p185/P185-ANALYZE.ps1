@@ -124,6 +124,7 @@ function Get-P185Analysis {
     correlation='VERIFIED_QPC_BRACKETS_PID_TID_NONCE_SHA';strict_full_run=if($clean){'CLEAN_IN_THIS_RUN'}else{'NO_GO'}
     cause='INCONCLUSIVE';physical_asio_run='OBSERVED_REFERENCE_ONLY';awe_realtime='NOT_RUN';release_approved=$false
     callbacks=$a.actual;sample_rate=$a.sample_rate;frames=$a.frames;pid=$a.pid
+    lifecycle_observation=@{iasio_start_wall_us=($l.start_after-$l.start_before)*1e6/$f;first_callback_after_start_call_us=($a.callbacks[0].start-$l.start_before)*1e6/$f;first_callback_before_start_return=($a.callbacks[0].start -lt $l.start_after);iasio_stop_wall_us=($l.stop_after-$l.stop_before)*1e6/$f;calibration_max_bracket_us=[Math]::Max(($a.markers[0].after-$a.markers[0].before),($a.markers[1].after-$a.markers[1].before))*1e6/$f}
     callback_wall=Get-P185Statistics $durations;start_spacing=Get-P185Statistics $spacings;end_to_start=Get-P185Statistics $idle
     gaps=$gaps;callback_intervals=$callbackRows;providers=$c.providers
     limitation='Scheduled time includes host, driver and interrupt work; it is not isolated DSP CPU time. Provider proximity is not causation. Pre-armed callbacks are unobserved. No warmup exclusion.'

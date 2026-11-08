@@ -91,6 +91,17 @@ try {
   $report.status='INCONCLUSIVE';$report.physical_asio='OBSERVED_REFERENCE_ONLY';$report.strict_full_run=$analysis.strict_full_run
   $report.correlation=$analysis.correlation;$report.callbacks=$analysis.callbacks;$report.sample_rate=$analysis.sample_rate;$report.frames=$analysis.frames
   $report.gap_count=@($analysis.gaps).Count;$report.callback_wall=$analysis.callback_wall;$report.start_spacing=$analysis.start_spacing;$report.end_to_start=$analysis.end_to_start
+  # Bounded, path-free diagnosis is shareable without raw ETL or the large aggregate.
+  $report.lifecycle_observation=$analysis.lifecycle_observation
+  $report.gap_observations=@($analysis.gaps | Select-Object -First 16 | ForEach-Object {
+    $g=$_
+    @{callback_index=$g.index;start_to_start_us=$g.previous_start_to_start_us;end_to_start_us=$g.previous_end_to_start_us;
+      previous_callback_wall_us=$g.previous_callback_wall_us;ready_not_scheduled_us=$g.ready_not_scheduled_us;
+      waiting_us=$g.waiting_us;unknown_us=$g.unknown_us;schedule_complete=$g.schedule_complete;
+      nearby_etw_events=$g.nearby_kernel_or_provider_events;causal_attribution='INCONCLUSIVE'}
+  })
+  $report.gap_summary_truncated=(@($analysis.gaps).Count -gt 16)
+  $report.enabled_optional_provider_count=@($analysis.providers | Where-Object {$_.enable -eq 0}).Count
   $report.native_exit=$rc;Save-P185
   Write-Host ('P185: '+$report.strict_full_run+'; Ursache INCONCLUSIVE. Keine Releasefreigabe.')
   Write-Host ('Rueckgabe: '+(Join-Path $out 'P185-ACCEPTANCE.json')+'; ETL und Rohdaten bleiben lokal.')

@@ -24,6 +24,7 @@ $tests=[Collections.Generic.List[object]]::new()
 Reset-Fixture
 $good=Analyze
 Assert-P185 ($good.strict_full_run -ceq 'CLEAN_IN_THIS_RUN' -and $good.cause -ceq 'INCONCLUSIVE' -and $good.awe_realtime -ceq 'NOT_RUN' -and -not $good.release_approved -and $good.callback_wall.median_us -eq 100 -and $good.start_spacing.p99_us -eq 12000) 'POSITIVE_ORACLE_FAILED'
+Assert-P185 ($good.lifecycle_observation.iasio_start_wall_us -eq 19400 -and $good.lifecycle_observation.first_callback_after_start_call_us -eq 99400 -and -not $good.lifecycle_observation.first_callback_before_start_return -and $good.lifecycle_observation.calibration_max_bracket_us -eq 20) 'LIFECYCLE_NUMERIC_ORACLE_FAILED'
 $tests.Add(@{case='independent numeric positive';status='PASS';hardware='NOT_RUN'})
 function Reject([string]$Name,[scriptblock]$Mutate,[string]$Expected) {
   Reset-Fixture
