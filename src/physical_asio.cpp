@@ -366,6 +366,8 @@ struct Engine {
     void callback(long index) noexcept {
 #if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
         const auto traceIndex=asioCallbacks.fetch_add(1,std::memory_order_relaxed);
+        const auto driverMessagesAtEntry=xruns.load(std::memory_order_relaxed);
+        const auto rateMessagesAtEntry=sampleRateChanges.load(std::memory_order_relaxed);
 #else
         asioCallbacks.fetch_add(1,std::memory_order_relaxed);
 #endif
@@ -520,8 +522,8 @@ struct Engine {
                 record.bufferIndex=static_cast<int>(index);
                 record.gapViolation=traceGap;
                 record.processOk=ok;
-                record.xrunsAtStart=xruns.load(std::memory_order_relaxed);
-                record.rateChangesAtStart=sampleRateChanges.load(std::memory_order_relaxed);
+                record.xrunsAtStart=driverMessagesAtEntry;
+                record.rateChangesAtStart=rateMessagesAtEntry;
                 record.noteOnCount=emittedNoteOn;
                 record.noteOffCount=emittedNoteOff;
                 record.recorded=true;
