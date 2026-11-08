@@ -34,6 +34,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'P100 sample conversion selftest failed' }
           & $exe --buffer-choice-selftest
           if ($LASTEXITCODE -ne 0) { throw 'P101 ASIO buffer chooser selftest failed' }
+          & $exe --timing-trace-selftest
+          if ($LASTEXITCODE -ne 0) { throw 'P181 ASIO timing trace window selftest failed' }
           New-Item -Force -ItemType Directory artifacts/P100 | Out-Null
           $nonce='0123456789abcdef0123456789abcdef0123456789abcdef'
           $args=@('--physical-asio-probe','--plugin','C:/does-not-exist/Plugin.vst3','--driver-name','Unregistered P100 Dummy','--driver-clsid','{00000000-0000-0000-0000-000000000000}','--rate','44100','--frames','256','--callbacks','500','--nonce',$nonce,'--out','artifacts/P100/must-not-exist.json','--midi-note','48','--midi-out','artifacts/P100/invalid-midi.json')
@@ -50,14 +52,16 @@ jobs:
           $module=@(Get-ChildItem build-p100 -Filter '125A_QA_SignalGood.vst3' -Recurse -File)
           if ($module.Count -ne 1) { throw 'Valid source-built real VST3 fixture absent' }
           $blockedDiag='artifacts/P100/forbidden-callback-diagnostics.json'
+          $blockedTrace='artifacts/P100/forbidden-callback-timing-trace.json'
           $blockedAsio='artifacts/P100/forbidden-realplugin-asio-pass.json'
           $blockedMidi='artifacts/P100/forbidden-realplugin-midi-pass.json'
-          & $exe --physical-asio-probe --plugin $module[0].FullName --driver-name 'Unregistered P100 Dummy' --driver-clsid '{00000000-0000-0000-0000-000000000000}' --rate 44100 --frames 512 --callbacks 500 --nonce $nonce --out $blockedAsio --midi-note 48 --midi-out $blockedMidi --diagnostic-out $blockedDiag
-          if ($LASTEXITCODE -eq 0 -or (Test-Path $blockedAsio) -or (Test-Path $blockedMidi) -or (Test-Path $blockedDiag)) { throw 'Unregistered driver forged proof or diagnostic with valid VST3' }
+          & $exe --physical-asio-probe --plugin $module[0].FullName --driver-name 'Unregistered P100 Dummy' --driver-clsid '{00000000-0000-0000-0000-000000000000}' --rate 44100 --frames 512 --callbacks 500 --nonce $nonce --out $blockedAsio --midi-note 48 --midi-out $blockedMidi --diagnostic-out $blockedDiag --timing-trace-out $blockedTrace
+          if ($LASTEXITCODE -eq 0 -or (Test-Path $blockedAsio) -or (Test-Path $blockedMidi) -or (Test-Path $blockedDiag) -or (Test-Path $blockedTrace)) { throw 'Unregistered driver forged proof or diagnostic with valid VST3' }
           $overlap='artifacts/P100/forbidden-overlap.json'
           & $exe --physical-asio-probe --plugin $module[0].FullName --driver-name 'Unregistered P100 Dummy' --driver-clsid '{00000000-0000-0000-0000-000000000000}' --rate 44100 --frames 512 --callbacks 500 --nonce $nonce --out $overlap --midi-note 48 --midi-out $blockedMidi --diagnostic-out $overlap
           if ($LASTEXITCODE -eq 0 -or (Test-Path $overlap)) { throw 'ASIO diagnostic/proof path overlap not rejected' }
           "P100_SOURCE_SHA=$env:GITHUB_SHA" | Set-Content artifacts/P100/provenance.txt
+          'P181_TIMING_TRACE_WINDOWS=SELFTEST_ONLY' | Add-Content artifacts/P100/provenance.txt
           'REAL_ASIO_HARDWARE=NOT_RUN' | Add-Content artifacts/P100/provenance.txt
           'REAL_MIDI_ASIO_PCM=NOT_RUN' | Add-Content artifacts/P100/provenance.txt
           'RELEASE=NO_GO' | Add-Content artifacts/P100/provenance.txt

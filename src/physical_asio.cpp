@@ -315,6 +315,16 @@ int formatSelfTest() {
 #if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
 void updateDiagnosticMax(std::atomic<uint64_t>& target,uint64_t sample) noexcept;
 #endif
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+struct AsioTraceSample {
+    int64_t startQpc=0,endQpc=0;
+    uint64_t xrunsAtStart=0,rateChangesAtStart=0;
+    uint64_t noteOnCount=0,noteOffCount=0;
+    uint32_t threadId=0;
+    int bufferIndex=-1;
+    bool recorded=false,gapViolation=false,processOk=false;
+};
+#endif
 struct Engine {
     IASIO* driver{};
     IAudioProcessor* processor{};
@@ -340,6 +350,9 @@ struct Engine {
     std::atomic<uint64_t> sampleRateChanges{0};
 #if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
     bool diagnosticsEnabled=false;
+    bool traceEnabled=false;
+    std::vector<AsioTraceSample> trace; // Allocated BEFORE physical ASIO start.
+    std::atomic<uint64_t> traceDropped{0};
     std::atomic<uint64_t> callbackGapMisses{0},callbackDurationMisses{0};
     std::atomic<uint64_t> maxCallbackDurationNs{0},maxCallbackSpacingNs{0};
     std::atomic<uint64_t> midiEventFailures{0},vstProcessErrors{0};
@@ -351,7 +364,11 @@ struct Engine {
     int64_t qpcFrequency{};
 
     void callback(long index) noexcept {
-        asioCallbacks.fetch_add(1, std::memory_order_relaxed);
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+        const auto traceIndex=asioCallbacks.fetch_add(1,std::memory_order_relaxed);
+#else
+        asioCallbacks.fetch_add(1,std::memory_order_relaxed);
+#endif
         const LARGE_INTEGER started = [&]{ LARGE_INTEGER v{}; QueryPerformanceCounter(&v); return v;}();
         const auto budgetNs = static_cast<uint64_t>(
             1'000'000'000.0 * static_cast<double>(frames) / rate);
@@ -359,12 +376,14 @@ struct Engine {
             started.QuadPart * 1'000'000'000.0 / static_cast<double>(qpcFrequency));
         // A late callback is a host-observed scheduling anomaly, not proof
         // of physical hardware XRUN. Hardware overloads are counted separately.
+        bool traceGap=false;
         if(lastEndNs) {
             const auto spacingNs=startNs>lastEndNs ? startNs-lastEndNs : uint64_t(0);
 #if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
             if(diagnosticsEnabled)updateDiagnosticMax(maxCallbackSpacingNs,spacingNs);
 #endif
             if(spacingNs>2*budgetNs) {
+                traceGap=true;
                 deadlineMisses.fetch_add(1,std::memory_order_relaxed);
 #if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
                 callbackGapMisses.fetch_add(1,std::memory_order_relaxed);
@@ -492,6 +511,24 @@ struct Engine {
         QueryPerformanceCounter(&done);
         const auto durationTicks=done.QuadPart-started.QuadPart;
 #if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+        if(traceEnabled) {
+            if(traceIndex<trace.size()) {
+                auto& record=trace[static_cast<size_t>(traceIndex)];
+                record.startQpc=started.QuadPart;
+                record.endQpc=done.QuadPart;
+                record.threadId=GetCurrentThreadId();
+                record.bufferIndex=static_cast<int>(index);
+                record.gapViolation=traceGap;
+                record.processOk=ok;
+                record.xrunsAtStart=xruns.load(std::memory_order_relaxed);
+                record.rateChangesAtStart=sampleRateChanges.load(std::memory_order_relaxed);
+                record.noteOnCount=emittedNoteOn;
+                record.noteOffCount=emittedNoteOff;
+                record.recorded=true;
+            } else traceDropped.fetch_add(1,std::memory_order_relaxed);
+        }
+#endif
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
         if(diagnosticsEnabled&&durationTicks>0) {
             const auto durationNs=static_cast<uint64_t>(
                 static_cast<double>(durationTicks)*1000000000.0 /
@@ -547,6 +584,7 @@ struct Arguments {
     int midiPitch=-1;
     std::filesystem::path midiOut;
     std::filesystem::path diagnosticOut;
+    std::filesystem::path traceOut;
 };
 Arguments parse(int argc, char** argv) {
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
@@ -592,6 +630,15 @@ Arguments parse(int argc, char** argv) {
     ensure(args.diagnosticOut.empty()||
            (args.diagnosticOut!=args.output&&args.diagnosticOut!=args.midiOut),
            "ASIO diagnostic path must not overlap PASS proof paths");
+    for(int i=1;i<argc;++i)if(std::strcmp(argv[i],"--timing-trace-out")==0) {
+        ensure(i+1<argc,"missing --timing-trace-out value");
+        args.traceOut=std::filesystem::u8path(argv[++i]);
+    }
+    ensure(args.traceOut.empty()||
+           (!args.diagnosticOut.empty()&&args.traceOut!=args.output&&
+            args.traceOut!=args.midiOut&&args.traceOut!=args.diagnosticOut&&
+            args.callbacks<=4096),
+           "P181 timing trace requires diagnostic output and <=4096 callbacks, with distinct paths");
 #endif
     ensure(args.rate == 44100 || args.rate == 48000 || args.rate == 96000,
            "unsupported ASIO sample rate");
@@ -606,6 +653,7 @@ Arguments parse(int argc, char** argv) {
 }
 
 #include "asio_live_diagnostics.inc"
+#include "asio_timing_trace.inc"
 #if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
 void writeMidiProof(const Arguments& a,const Engine& e,
                     const std::string& moduleHash,const std::string& exeHash) {
@@ -775,6 +823,9 @@ int run(const Arguments& a) {
                 engine.midiPitch = a.midiPitch;
 #if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
                 engine.diagnosticsEnabled=!a.diagnosticOut.empty();
+                engine.traceEnabled=!a.traceOut.empty();
+                if(engine.traceEnabled)
+                    engine.trace.resize(static_cast<size_t>(a.callbacks)+64);
 #endif
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
                 engine.maxRecordedFrames =
@@ -856,6 +907,7 @@ int run(const Arguments& a) {
                 // Real device already stopped. This is NOT a PASS result:
                 // always write objective diagnostics before aggregated failure gate.
                 writeAsioDiagnostics(a,engine,moduleHash,executorHash);
+                writeAsioTimingTrace(a,engine,moduleHash,executorHash);
 #endif
 
                 ensure(engine.asioCallbacks.load() >= static_cast<uint64_t>(a.callbacks),
@@ -908,6 +960,10 @@ int main(int argc, char** argv) {
             return formatSelfTest();
         if (argc == 2 && std::strcmp(argv[1], "--buffer-choice-selftest") == 0)
             return asioBufferSelfTest();
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+        if (argc == 2 && std::strcmp(argv[1],"--timing-trace-selftest")==0)
+            return asioTraceSelfTest();
+#endif
 #if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
         if (argc >= 2 && std::strcmp(argv[1],"--asio-buffer-capabilities")==0)
             return asioReadDriverCapabilities(argc,argv);
