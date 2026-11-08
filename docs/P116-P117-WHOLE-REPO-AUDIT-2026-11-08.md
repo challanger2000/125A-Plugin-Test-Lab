@@ -25,10 +25,10 @@
 | Native Windows-Lab-Binaries | VS2022 x64 Release: `TestLabHost`, `TestLabGUI`, `TestLabStateStress`, `TestLabRecovery`, `TestLabInstanceIsolation`, `TestLabRateBlock`, `TestLabVoiceStress`, `TestLabControllerRecovery`, `TestLabGuiRecovery` | **Alle gelisteten First-Party-Ziele gebaut** |
 | Registrierte native CTests | `ctest --test-dir build -C Release --output-on-failure` | **2/2 PASS**: `transport_selftest`, `invalid_plugin_rejected` |
 | Alle importierbaren Python-Unittest-Module | 42 mit AST als echte Testklassen ausgewiesene `tests/test_*.py`-Module; `unittest.TextTestRunner` | **216 Tests, 0 FAIL, 0 ERROR, 0 SKIP** |
-| Python-Testskripte mit eigener CLI | 27 Dateien namens `test_*.py` sind **keine importierbaren Unittest-Module**, sondern eigenständige CLIs mit verpflichtenden Argumenten | **NICHT im P116-Unittest-Sweep ausgeführt**, andere produktspezifische Workflows teilweise vorhanden; separate Evidenz erforderlich |
+| Python-Testskripte mit eigener CLI | 26 Dateien namens `test_*.py` sind **keine importierbaren Unittest-Module**, sondern eigenständige CLIs mit verpflichtenden Argumenten | **NICHT im P116-Unittest-Sweep ausgeführt**, andere produktspezifische Workflows teilweise vorhanden; separate Evidenz erforderlich |
 | Reale ASIO-Hardware + beliebiger Vendor-Installer + Kundenprodukt | Kein solcher Job im P116-Sweep | **NOT RUN** |
 
-**Auditfehler im ersten Sweep:** [P116 RED #42519883971](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42519883971) versuchte alle `test_*.py` als `unittest` zu importieren. Genau `test_audio_reference.py` und `test_native_gui_snapshot.py` parsten bereits beim Import CLI-Argumente und führten zu `SystemExit(2)`. Dieses **Test-Harness-/Discovery-Problem**, nicht ein bewiesener Pluginfehler, wurde behoben: P116 inventarisiert die Standalone-CLIs explizit als separate, nicht aus dem Unittest-Resultat abgedeckte Gruppe. Danach 216/216 grün. Die 27 CLIs wurden **nicht stillschweigend als bestanden markiert**.
+**Auditfehler im ersten Sweep:** [P116 RED #42519883971](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42519883971) versuchte alle `test_*.py` als `unittest` zu importieren. Genau `test_audio_reference.py` und `test_native_gui_snapshot.py` parsten bereits beim Import CLI-Argumente und führten zu `SystemExit(2)`. Dieses **Test-Harness-/Discovery-Problem**, nicht ein bewiesener Pluginfehler, wurde behoben: P116 inventarisiert die Standalone-CLIs explizit als separate, nicht aus dem Unittest-Resultat abgedeckte Gruppe. Danach 216/216 grün. Die 26 CLIs wurden **nicht stillschweigend als bestanden markiert**.
 
 **Wichtiger Umfangsvorbehalt:** In `CMakeLists.txt` sind nur **zwei** Tests bei CTest registriert. Viele native Fixture-/Host-Torture-Prüfungen werden von individuellen GitHub-Workflows statt CTest aufgerufen. Der universelle P116-CMake-Lauf belegt Bau-/Verknüpfbarkeit von neun Host-Targets plus die beiden registrierten CTests; er belegt **nicht** sämtliche nicht registrierten native Codepfade als ausgeführt.
 
@@ -86,3 +86,48 @@ Die Änderung an P117 ist in [Issue #140](https://github.com/challanger2000/125A
 | Gesamtrelease/FULL AUDIT/Automatische Merge-Freigabe | **NO-GO** |
 
 **Diese Audit-Runde ist mit einem nachvollziehbaren, negativen Gesamturteil abgeschlossen.** Sie hat zusätzlich zur umfangreichen grünen technischen Regression echte früher unentdeckte Testlücken beseitigt und dokumentiert die verbleibenden ungeprüften Bereiche. Es wird **nicht** behauptet, dass ein fehlender unabhängiger zweiter Reviewer oder fehlende physische Hardware durch mehr eigene Unit-Tests ersetzt werden könnte. PR #132 und #137 bleiben **Draft und ungemergt**.
+
+---
+
+## P118/P119 Nachaudit: weiterer vollständiger Windows-Sweep und zwei neu nachgewiesene P75-Fehler
+
+Der repositoryweite Audit wurde auf dem getrennten Branch `audit/2026-11-08-full-test-lab-review` fortgesetzt. Die abschließende geprüfte **Code-SHA** für diesen Nachtrag ist `a38b9e374b954321f5abdf175c16c3cabd5f202b`. Dies überschreibt **nicht** die früheren genauen SHA-Zuordnungen im Hauptbericht.
+
+### P118: P75-Prozessfehler unterbrechen die gesamte Pluginliste
+
+**Verletzter Vertrag:** Bei einer mehrteiligen P75-Abnahme darf ein fehlerhafter nativer Child-Prozess die folgenden Plugin-Prüfungen nicht ausfallen lassen; seine Fehlermeldung muss im strukturierten Batchbericht landen. Die bisherige Ausnahmebehandlung in `tests/run_vst3_batch_qa.py` behandelte einen `subprocess.TimeoutExpired`, aber nicht `subprocess.CalledProcessError`. Ein fehlgeschlagener Child-Prozess mit geworfener Exception brach deshalb den gesamten Batch ab.
+
+- [**RED P75 #42521491226**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42521491226): `test_child_raised_calledprocesserror_is_isolated_and_reported` meldete die unaufgefangene `CalledProcessError(23)` als **ERROR**.
+- Fix: Child- und CLI-Grenzen behandeln `CalledProcessError` kontrolliert als FAIL, die nächste unabhängig ausgewählte VST3 wird weiter geprüft. Unvollständige `runner`-Prozessresultate werden explizit abgewiesen, anstatt mit `AttributeError` aus dem Berichtspfad zu fallen.
+- [**GREEN P75 #42521746503**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42521746503): `adversarial=SUCCESS`, `real-multiple-vst3=SUCCESS`. [Issue #141](https://github.com/challanger2000/125A-Plugin-Test-Lab/issues/141).
+
+### P119: Wiederholter Batch akzeptiert alten Kindbericht fälschlich als frisch
+
+**Nachgewiesener False-PASS:** `run_vst3_batch_qa.run()` entfernte zwar die vorherige Gesamtdatei `BATCH-QA-REPORT.json`, aber nicht `UNIVERSAL-QA-RESULT.json` in den Unterverzeichnissen. Beim erneuten Aufruf mit identischem Output-Ordner konnten korrekt passende Ergebnisse des *vorherigen* Durchlaufs von einem Child, das nur noch Exit 0 meldete, als neue Testbelege akzeptiert werden.
+
+- Die adversariale Gegenprobe führte zunächst einen echten P75-Runner-Pfad mit zwei separat geprüften Schema-/Hash-/Host-konformen Child-Belegen aus. Beim zweiten Aufruf auf denselben `--out`-Ordner lieferte der Child-Adapter 0 **ohne ein neues JSON zu schreiben**.
+- [**RED P75 #42522220724**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42522220724): bisherige Implementierung antwortete fälschlich `BATCH_TECHNICAL_PASS` statt `FAIL`.
+- Fix: Vor jedem Child-Start wird das vorherige `UNIVERSAL-QA-RESULT.json` dieses Plugins entfernt. Nur ein frisch produzierter und gesondert geprüfter Resultatpfad kann PASS liefern; die vorhandenen Host-/Modul-SHA, Schema-, Coverage- und Rückgabecodeprüfungen bleiben erhalten.
+- [**GREEN P75 #42522353810**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42522353810): `adversarial=SUCCESS`, `real-multiple-vst3=SUCCESS`. [Issue #142](https://github.com/challanger2000/125A-Plugin-Test-Lab/issues/142).
+
+### P116: Ausführbare Einzelprüfer zusätzlich zu den Unittests
+
+Der erste generische P116-Lauf hatte alle `test_*.py`-Skripte inventorisiert, aber nur die unittest-kompatiblen ausgeführt. Dies wurde durch eine zweite, echte **Windows-Subprozess-Teststrecke** behoben:
+
+- Der aktuelle Source-Inventurlauf zählt **322 getrackte Dateien**, **205 AST-Testfunktionen**, **0 Python-Syntaxfehler**. Für jede getrackte Datei liegt ein eigener SHA-256-Eintrag im herunterladbaren CI-Artefakt.
+- **Neun** zentrale Windows-x64-C++-Hostziele wurden mit Visual Studio 2022 im Release-Modus gebaut.
+- **2/2 registrierte CTests PASS**.
+- **218/218 Python-`unittest`-Fälle PASS**, 0 Fehler/Skips.
+- **25/25 eigenständige, ohne Produkt-/Bildargumente lauffähige Python-Prüfskripte** wurden **in getrennten Windows-Prozessen** mit überprüftem tatsächlichen Returncode und begrenztem Timeout ausgeführt: **alle PASS**. `PYTHONOPTIMIZE=0` wird erzwungen, damit in solchen älteren CLI-Skripten enthaltene `assert`-Orakel nicht abgeschaltet werden.
+- **Ein** separat geführter CLI-Prüfer `tests/test_native_gui_snapshot.py` benötigt als Pflicht-Eingabe eine echte Win32-HWND-BMP-Aufnahme und ist **nicht** Teil der generischen 25-Skript-Strecke. Native GUI-BMP-Funktionalität ist über P04-Workflows separat belegt, aber der komplette eigenständige Skriptaufruf wird in diesem Nachlauf korrekt als **NOT RUN** geführt.
+
+[**P116 Windows #42522353765**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42522353765) **SUCCESS** auf `a38b9e374b954321f5abdf175c16c3cabd5f202b`; Job-/Schrittmeldungen und alle 25 einzelnen PASS-Ausgaben wurden geprüft. Der zugehörige ursprüngliche fehlerhafte neue CLI-Testlauf [#42521746591](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42521746591) war aufgrund eines JSON-Reporter-Escaping-Fehlers rot; die Quelle wurde korrigiert und mit gültiger JSON-Datei grün neu ausgeführt. Dadurch wird kein zuvor nicht ausgeführter Test fälschlich zur PASS-Zahl addiert.
+
+### Erneutes Urteil / endgültige Gate-Grenze
+
+**P118 + P119: REPRODUZIERT RED / GEZIELT BEHOBEN / WINDOWS GREEN.**  
+**P116 Auto-Test-Vollinventur: PASS nur für tatsächlich aufgezählte 218 Unittests, 25 CLI-Skripte, 2 CTests und die neun Builds.**
+
+Diese sehr breite automatisierte Testabnahme ist **keine vollständige unabhängige semantische Prüfung aller 322 Quelldateien**. Ein separater unabhängiger Source-Reviewer, eine echte physische ASIO-Konfiguration, ein beliebiger Herstellerinstaller, exakte REAPER-Laufzeit-DLL-Provenienz und vollständige, vom jeweiligen Pluginbesitzer freigegebene Produkt-Control-/DSP-Orakel sind weiterhin **NOT RUN / NOT VERIFIED**.
+
+**FULL AUDIT bleibt NO-GO. PR #132 und #137 bleiben Draft/unmerged.** Weitere reine eigene, generische Unit-Tests können diese realen und unabhängigen Anforderungen nicht im Alleingang ersetzen.
