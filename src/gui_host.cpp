@@ -121,6 +121,23 @@ private:
     HWND hwnd_{};
 };
 
+// VST3 IEditController::setComponentHandler is MANDATORY for a real host.
+// Earlier P173 diagnostics omitted it, so their failed live-GUI oracle
+// cannot prove the product is defective. Provide a real host callback
+// object, but never invent parameter changes from the callback.
+class P99ComponentHandler final : public FObject, public IComponentHandler {
+public:
+    tresult PLUGIN_API beginEdit(ParamID) override {return kResultOk;}
+    tresult PLUGIN_API performEdit(ParamID,ParamValue) override {return kResultOk;}
+    tresult PLUGIN_API endEdit(ParamID) override {return kResultOk;}
+    tresult PLUGIN_API restartComponent(int32) override {return kResultOk;}
+    OBJ_METHODS(P99ComponentHandler,FObject)
+    DEFINE_INTERFACES
+        DEF_INTERFACE(IComponentHandler)
+    END_DEFINE_INTERFACES(FObject)
+    REFCOUNT_METHODS(FObject)
+};
+
 class Window final {
 public:
     explicit Window(ViewRect bounds) {
@@ -1421,6 +1438,11 @@ int captureHostParameterSequence(const std::string& pluginPath,
             Controller controller;
             acquireController(component.get(),factory,&host,controller);
             require(controller.ptr!=nullptr,"P98 no real VST3 controller");
+            auto* mandatoryHandler=new P99ComponentHandler();
+            const auto handlerResult=controller.ptr->setComponentHandler(mandatoryHandler);
+            mandatoryHandler->release(); // Controller retains its IPtr reference.
+            require(handlerResult==kResultOk,
+                    "P99 VST3-mandatory host component handler registration failed");
             bool exposed=false;
             for(int32 i=0;i<controller.ptr->getParameterCount();++i) {
                 ParameterInfo info{};
