@@ -299,6 +299,23 @@ with tempfile.TemporaryDirectory() as td:
     assert report["coverage"]["declared_gui_controls"] == "PASS"
     assert report["coverage"]["product_gui_controls"] == "NOT COVERED"
 
+    # P121: a real native controller sweep process returning nonzero must
+    # never count as PASS even if it left a syntactically correct TSV.
+    def failing_sweep_process_with_valid_tsv(cmd, **kwargs):
+        result = all_native_gui(cmd, **kwargs)
+        if cmd[1] == "--sweep-parameters":
+            return subprocess.CompletedProcess(
+                cmd, 23, result.stdout, result.stderr)
+        return result
+
+    invalid_sweep_exit = quick.run(
+        bundle, host, stress, out, runner=failing_sweep_process_with_valid_tsv,
+        gui_host=gui)
+    assert invalid_sweep_exit["status"] == "FAIL", (
+        "P121 falsely accepted native sweep exit 23 with valid old TSV")
+    assert invalid_sweep_exit["coverage"]["native_parameter_sweep"] == "FAIL"
+    assert invalid_sweep_exit["release_approved"] is False
+
     # The native process must not be able to forge a green text mapping
     # when one parser silently returns a value for another displayed label.
     def falsified_text(cmd, **kwargs):
