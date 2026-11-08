@@ -32,5 +32,33 @@ jobs:
           $mismatch = Get-Content (Join-Path $test 'wronghash/INSTALLER-INVENTORY.json') -Raw | ConvertFrom-Json
           if ($mismatch.status -ne 'FAIL' -or $mismatch.error -notmatch 'SHA256 mismatch' -or $mismatch.release_approved -ne $false) { throw 'Checksum evidence invalid' }
           Write-Output 'P98 fail-closed negative checks passed; NO installer executed.'
+          # Build a harmless source-defined executable: proves actual Windows process execution
+          # and that a newly installed file is captured in the inventory.
+          $cs = @'
+          using System;
+          using System.IO;
+          public class HarmlessInstaller {
+            public static int Main(string[] args) {
+              var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "125A_P98_Fixture");
+              Directory.CreateDirectory(dir);
+              File.WriteAllText(Path.Combine(dir, "fixture-installed.txt"), "p98-fixture-ok");
+              return 0;
+            }
+          }
+          '@
+          Add-Type -TypeDefinition $cs -OutputAssembly (Join-Path $test 'harmless.exe') -OutputType ConsoleApplication
+          $good = Join-Path $test 'harmless.exe'
+          $goodSha = (Get-FileHash $good -Algorithm SHA256).Hash
+          & powershell -NoProfile -File tests/Invoke-InstallerInventory.ps1 -Installer $good -ExpectedSha256 $goodSha -OutputFolder (Join-Path $test 'positive') -ApproveExecution -TimeoutSeconds 30
+          if ($LASTEXITCODE -ne 0) { throw 'Actual harmless installer process failed' }
+          $result = Get-Content (Join-Path $test 'positive/INSTALLER-INVENTORY.json') -Raw | ConvertFrom-Json
+          if ($result.status -ne 'INSTALLER_EXECUTED_INVENTORY_CAPTURED' -or $result.exit_code -ne 0 -or $result.release_approved -ne $false) {
+            throw 'Positive native Windows execution evidence invalid'
+          }
+          if (@($result.added | Where-Object { $_ -match '125A_P98_Fixture.*fixture-installed.txt
+ }).Count -ne 1) {
+            throw 'Actual installed file was not detected'
+          }
+          Write-Output 'P98 real harmless EXE execution and installed-file inventory PASS.'
           $global:LASTEXITCODE = 0
           exit 0
