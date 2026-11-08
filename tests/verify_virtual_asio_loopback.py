@@ -132,10 +132,40 @@ def signed_stereo_match(samples, frames, coarse_left, coarse_right):
                              math.sqrt(energy*return_energy))
     if min(signed_scores) < 0.92:
         raise ValueError("P103 signed stereo PCM waveform/phase mismatch")
+    # P104 full-resolution residual: the 32:1 phase/alignment sampler
+    # must not become the audio-integrity oracle. With a fixed common
+    # lag, measure every returned PCM sample against its emitted sample,
+    # allowing one constant positive transfer gain per channel. Both
+    # signal energy and mismatch energy include all interstitial frames.
+    residuals = []
+    for channel in (0, 1):
+        src_power = 0.
+        capture_power = 0.
+        dot = 0.
+        for n in range(frames - lag):
+            source = samples[4*n + channel]
+            returned = samples[4*(n+lag) + channel+2]
+            src_power += source * source
+            capture_power += returned * returned
+            dot += source * returned
+        if src_power < 1.e-9 or capture_power < 1.e-9:
+            raise ValueError("P104 insufficient full-resolution PCM energy")
+        gain = dot / src_power
+        if gain <= 0.:
+            raise ValueError("P104 full-resolution PCM polarity mismatch")
+        # Least-squares normalized residual from all samples; a
+        # time-varying distortion cannot be hidden by average gain.
+        relative_error = math.sqrt(max(
+            0., 1. - dot*dot/(src_power*capture_power)))
+        if relative_error > 0.15:
+            raise ValueError("P104 full-resolution PCM waveform distortion")
+        residuals.append(relative_error)
     return {"signed_pcm_l": round(signed_scores[0], 5),
             "signed_pcm_r": round(signed_scores[1], 5),
             "signed_pcm_common_lag_frames": lag,
-            "pcm_magnitude_alignment": round(best[0], 5)}
+            "pcm_magnitude_alignment": round(best[0], 5),
+            "full_resolution_pcm_residual_l": round(residuals[0], 6),
+            "full_resolution_pcm_residual_r": round(residuals[1], 6)}
 
 
 def verify_known_source_signal(trace):
