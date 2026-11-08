@@ -4,6 +4,11 @@ on:
     paths:
       - 'tests/audit_p99_oracle_counterproof.py'
       - 'tests/audit_p99_host_context_challenge.py'
+      - 'tests/verify_virtual_asio_loopback.py'
+      - 'tests/run_virtual_asio_loopback.py'
+      - 'tests/test_p95_virtual_asio_loopback.py'
+      - 'tests/virtual_asio_signal_fixture.cpp'
+      - 'src/physical_asio.cpp'
       - '.github/workflows/p99-audit-oracle.yml'
   workflow_dispatch:
 permissions:
@@ -16,6 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Execute real P95 Python verifier with independent wrong-frequency stimulus
         run: |
+          python -m unittest discover -s tests -p test_p95_virtual_asio_loopback.py -v
           python tests/audit_p99_oracle_counterproof.py
           python tests/audit_p99_host_context_challenge.py
       - uses: actions/upload-artifact@v4
