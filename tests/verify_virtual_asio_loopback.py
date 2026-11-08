@@ -82,49 +82,60 @@ def normalized_correlation(a, b, lag):
 
 
 def signed_stereo_match(samples, frames, coarse_left, coarse_right):
-    """P103: sparse signed PCM correlation using a SHARED sample-level lag.
+    """P103: find a SHARED lag without using polarity, then check signed PCM.
 
-    RMS envelopes cannot detect polarity inversion or phase-distorted audio.
-    One physically common cable latency must explain BOTH stereo channels;
-    optimizing each oscillator independently could wrongly hide a shifted
-    half-cycle. This is a bounded distortion check, not absolute hardware
-    sample fidelity.
+    Picking the lag by maximum *signed* correlation can hide an inverted
+    channel: an oscillator half-cycle shift mimics positive correlation.
+    Instead locate both channels jointly via absolute-value waveform
+    correlation, which is polarity-independent, and only then inspect the
+    true signed waveforms at that *same* independently selected lag.
     """
     center = round((coarse_left + coarse_right) * 128)
     start = max(0, center - 256)
     stop = min(frames // 3, center + 256)
-    # Include candidates with both parities, so real driver latency need
-    # not be divisible by 256 or by the decimation factor.
-    candidate_lags = range(start, stop + 1, 2)
-    max_lag = stop
-    positions = range(0, frames - max_lag, 32)
-    reference = []
+    positions = range(0, frames - stop, 32)
+    refs = []
     for channel in (0, 1):
-        data = [samples[4*n + channel] for n in positions]
-        power = sum(v*v for v in data)
-        if power <= 1.e-9:
+        src = [samples[4*n + channel] for n in positions]
+        energy = sum(v*v for v in src)
+        if energy <= 1.e-9:
             raise ValueError("P103 insufficient output energy for signed PCM")
-        reference.append((data, power))
-    best = (-1., None, None, None)
-    for lag in candidate_lags:
-        scores = []
+        refs.append((src, [abs(v) for v in src], energy))
+    best = (-1., None, None)
+    # Exact sample-by-sample lag search, decimated only along the audio
+    # timeline; does not assume a driver delay divisible by 2 or 256.
+    for lag in range(start, stop + 1):
+        abs_scores = []
         for channel in (0, 1):
-            src, src_power = reference[channel]
-            returned = [samples[4*(n+lag) + channel+2] for n in positions]
-            return_power = sum(v*v for v in returned)
-            if return_power <= 1.e-9:
-                scores.append(-1.)
+            src, src_abs, energy = refs[channel]
+            capture = [samples[4*(n+lag) + channel+2] for n in positions]
+            return_energy = sum(v*v for v in capture)
+            if return_energy <= 1.e-9:
+                abs_scores.append(-1.)
                 continue
-            dot = sum(x*y for x,y in zip(src, returned))
-            scores.append(dot / math.sqrt(src_power*return_power))
-        quality = min(scores)
+            dot = sum(x*abs(y) for x,y in zip(src_abs, capture))
+            abs_scores.append(dot / math.sqrt(energy*return_energy))
+        quality = min(abs_scores)
         if quality > best[0]:
-            best = (quality, lag, scores[0], scores[1])
-    if best[0] < 0.92:
+            best = (quality, lag, abs_scores)
+    if best[0] < 0.94:
+        raise ValueError("P103 captured stereo PCM magnitude waveform mismatch")
+    lag = best[1]
+    signed_scores = []
+    for channel in (0, 1):
+        src, _, energy = refs[channel]
+        returned = [samples[4*(n+lag) + channel+2] for n in positions]
+        return_energy = sum(v*v for v in returned)
+        if return_energy <= 1.e-9:
+            raise ValueError("P103 insufficient return energy for signed PCM")
+        signed_scores.append(sum(x*y for x,y in zip(src, returned)) /
+                             math.sqrt(energy*return_energy))
+    if min(signed_scores) < 0.92:
         raise ValueError("P103 signed stereo PCM waveform/phase mismatch")
-    return {"signed_pcm_l": round(best[2], 5),
-            "signed_pcm_r": round(best[3], 5),
-            "signed_pcm_common_lag_frames": best[1]}
+    return {"signed_pcm_l": round(signed_scores[0], 5),
+            "signed_pcm_r": round(signed_scores[1], 5),
+            "signed_pcm_common_lag_frames": lag,
+            "pcm_magnitude_alignment": round(best[0], 5)}
 
 
 def verify_known_source_signal(trace):
