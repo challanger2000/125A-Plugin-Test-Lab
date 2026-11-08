@@ -43,7 +43,7 @@ if ($proof.status -ne 'INSTALL_AND_NATIVE_TECHNICAL_PASS' -or
 Write-Host 'P106 installed actual source-built VST3 -> P74 actual native GUI, audio/state and API tests PASS'
 $wrongSha = '0' * 64
 $rejectOut = Join-Path $WorkingRoot '11-bad-installed-vst3-sha'
-& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $postScript @($baseArgs | Where-Object { $false }) -InstallationReport $report -Vst3Bundle $dest -InstalledModule $destModule -ExpectedModuleSha256 $wrongSha -GuiHost $GuiHost -PythonExecutable $PythonExecutable -OutputFolder $rejectOut | Out-Null
+& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $postScript -InstallationReport $report -Vst3Bundle $dest -InstalledModule $destModule -ExpectedModuleSha256 $wrongSha -GuiHost $GuiHost -PythonExecutable $PythonExecutable -OutputFolder $rejectOut | Out-Null
 if ($LASTEXITCODE -eq 0) { throw 'P106 bridge accepted wrong installed binary hash' }
 $rejected = Get-Content -LiteralPath (Join-Path $rejectOut 'P106-POSTINSTALL-VST3-RESULT.json') -Raw | ConvertFrom-Json
 if ($rejected.p74_executed -ne $false -or $rejected.status -ne 'FAIL') { throw 'P106 wrong installed hash incorrectly reached native host' }
