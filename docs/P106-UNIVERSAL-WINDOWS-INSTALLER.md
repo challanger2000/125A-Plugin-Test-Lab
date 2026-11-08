@@ -101,3 +101,13 @@ P109's reparse-point checks do **not** detect an NTFS hardlink: a second file pa
 The real Windows fixture creates a byte-identical hardlink to an **outside-bundle** file, then confirms **both** source manifest generation and P109 handoff reject it. An independently rehashed malicious manifest with a parent traversal (`../outside-resource.txt`) also fails before P74. These are not simulated JSON-only checks: Windows creates a real hardlink with distinct filesystem paths to the same NTFS file.
 
 This gate does not prove isolation from a malicious Windows administrator or kernel, race-free file opening, absence of alternate NTFS streams, or completeness of files installed **outside** the VST3 bundle. Such scopes remain NOT VERIFIED. The P106/P110 runner continues to use harmless compiled fixtures, not arbitrary vendor installers.
+
+## P112 – NTFS alternate data stream oracle (red / green)
+
+A real Windows adversarial regression created the named stream `P112Hidden` on an existing installed VST3 resource **without changing the file's ordinary SHA-256 hash**. P109/P110 and the file/directory manifest v2 initially accepted this altered bundle. [RED Windows run #42497526541](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42497526541) failed exactly with `P109 modified alternate-ntfs-stream falsely accepted`.
+
+The shared `tests/P109-LinkCount.ps1` NTFS helper now also defines `Assert-P112NoAlternateStreams`: Windows PowerShell enumerates every file's FileSystem-provider stream using `Get-Item -Stream *` and rejects any stream other than the sole unnamed `:$DATA`, refusing ambiguous/empty stream enumeration. Both **source manifest creation** and **installed-bundle verification** enforce this check alongside hardlink detection.
+
+[GREEN Windows run #42497870451](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42497870451): true EXE/MSI, installed source-built VST3/P74, and all prior negatives PASS. The new real ADS mutation is independently rejected by **both** the installed oracle before P74 and the source manifest generator; log contains `P112 unapproved NTFS alternate data stream found: P112Hidden`.
+
+This conservative policy can reject files that legitimately contain named streams (including `Zone.Identifier`), so the package must be reviewed rather than silently exempted. ADS test evidence is Windows NTFS-scoped and does not provide remote attestation, physical ASIO, a vendor installer pass or whole-machine filesystem isolation.
