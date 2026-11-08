@@ -124,6 +124,20 @@ Reject-Bundle 'extra-resource' $sourceManifest $manifestSha
 Remove-Item -LiteralPath $surprise
 Reject-Bundle 'wrong-manifest-hash' $sourceManifest ('0' * 64)
 Write-Host 'P109 full bundle resources authenticated on positive and all four negative controls'
+# P111: the required source directory contains NO files. It must still
+# survive real EXE installation, and must be protected by the manifest.
+if (-not (Test-Path -LiteralPath $installedEmptyDir -PathType Container)) {
+  throw 'P111 approved empty directory missing after installation'
+}
+Remove-Item -LiteralPath $installedEmptyDir -Force
+Reject-Bundle 'missing-required-empty-directory' $sourceManifest $manifestSha
+New-Item -ItemType Directory -Path $installedEmptyDir -Force | Out-Null
+$unexpectedEmpty = Join-Path $dest 'Contents\Resources\P111-unapproved-empty-directory'
+New-Item -ItemType Directory -Path $unexpectedEmpty -Force | Out-Null
+Reject-Bundle 'unexpected-empty-directory' $sourceManifest $manifestSha
+Remove-Item -LiteralPath $unexpectedEmpty -Force
+Write-Host 'P111 both missing and additional empty directories rejected before native P74'
+
 
 # P110 hard links are invisible to reparse-point checks: same correct
 # bytes, same relative path and file count, but another path outside the
