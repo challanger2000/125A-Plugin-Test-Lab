@@ -179,6 +179,37 @@ class P95VirtualLoopback(unittest.TestCase):
         self.assertIn("full-resolution", " ".join(result["faults"]))
         self.assertFalse(result["pcm_content_verified"])
 
+    def test_unexplained_input_before_first_output_arrives_fails(self):
+        # P105: samples in [0, real_lag) are outside P104 comparison.
+        # Inject an unrelated full-level signal only there, without
+        # changing output or any aligned capture PCM sample.
+        path = self.make_trace(delay=3072)
+        raw = path.read_bytes()
+        values = array("f")
+        values.frombytes(raw[24:])
+        for n in range(256, 2816):
+            values[4*n+2] = .025 * math.sin(2*math.pi*823*n/self.rate)
+            values[4*n+3] = .030 * math.sin(2*math.pi*1103*n/self.rate)
+        path.write_bytes(raw[:24] + values.tobytes())
+        result = verify_pcm(path, self.proof, self.root / "unexplained-prefix")
+        self.assertEqual(result["status"], "FAIL", result)
+        self.assertIn("pre-return", " ".join(result["faults"]))
+
+    def test_short_return_dropout_fails_despite_good_global_correlation(self):
+        # P105: 512 frames of silence can be lost among >100k frames.
+        # Global normalized error alone may stay below threshold.
+        path = self.make_trace(delay=3072)
+        raw = path.read_bytes()
+        values = array("f")
+        values.frombytes(raw[24:])
+        for n in range(22016, 22528):
+            values[4*n+2] = 0.
+            values[4*n+3] = 0.
+        path.write_bytes(raw[:24] + values.tobytes())
+        result = verify_pcm(path, self.proof, self.root / "short-dropout")
+        self.assertEqual(result["status"], "FAIL", result)
+        self.assertIn("local PCM", " ".join(result["faults"]))
+
     def test_sample_accurate_common_lag_not_multiple_of_256(self):
         # A valid ASIO return may have non-256-aligned endpoint latency.
         # The signed comparison must not falsely fail such a clean trace.
