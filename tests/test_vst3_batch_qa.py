@@ -96,6 +96,28 @@ class BatchTests(unittest.TestCase):
             self.assertEqual(len(calls),2)
             self.assertFalse(report["release_approved"])
 
+    def test_child_raised_calledprocesserror_is_isolated_and_reported(self):
+        # P118 genuine batch orchestration: a failed native/test process
+        # may raise instead of returning a nonzero CompletedProcess.
+        with tempfile.TemporaryDirectory() as t:
+            root=Path(t)
+            selection,gui=setup(root)
+            items=load_selection(selection=selection)
+            calls=[]
+            def failed_first(cmd,**kwargs):
+                calls.append(cmd)
+                if len(calls)==1:
+                    raise subprocess.CalledProcessError(23,cmd)
+                return successful_child(cmd,**kwargs)
+            report=run(items,gui,root/"failed-child",runner=failed_first)
+            self.assertEqual(report["status"],"FAIL")
+            self.assertEqual([x["status"] for x in report["plugins"]],
+                             ["FAIL","PASS"])
+            self.assertEqual(len(calls),2)
+            saved=root/"failed-child"/"BATCH-QA-REPORT.json"
+            self.assertTrue(saved.is_file())
+            self.assertFalse(json.loads(saved.read_text())["release_approved"])
+
     def test_forged_success_or_corrupted_module_cannot_pass(self):
         with tempfile.TemporaryDirectory() as t:
             root=Path(t)
