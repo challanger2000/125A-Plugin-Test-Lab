@@ -452,7 +452,11 @@ def execute(plan, out, *, timeout=90, script_template=None, process_runner=run_p
         if digest(project) != report["saved_project_sha256"]:
             raise ValueError("P91 project changed unexpectedly during reload")
         # CLI documented by ReaTeam; REAPER, not our host, renders the FX.
-        process_runner([str(exe), "-nosplash", "-renderproject", str(project)], None, timeout)
+        render_process = process_runner([str(exe), "-nosplash", "-renderproject", str(project)], None, timeout)
+        if (not isinstance(render_process, dict)
+                or type(render_process.get("exit_code")) is not int
+                or render_process["exit_code"] != 0):
+            raise ValueError("P117 actual REAPER render process did not exit successfully")
         if not rendered.is_file():
             raise ValueError("P91 real REAPER CLI render did not produce WAV")
         report["rendered_by_reaper_process"] = True
