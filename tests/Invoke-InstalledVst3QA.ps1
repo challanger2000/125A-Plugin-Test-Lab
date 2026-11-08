@@ -147,6 +147,7 @@ try {
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $checker -Bundle $bundle -ExpectedManifest $ExpectedBundleManifest -ExpectedManifestSha256 $ExpectedBundleManifestSha256 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'P109 bundle content changed during P74' }
     $result.whole_bundle_integrity = 'VERIFIED'
+    $result.whole_bundle_file_count = @(Get-ChildItem -LiteralPath $bundle -Recurse -File -Force).Count
   }
   $result.p74_result = $qa.status
   $result.vst3_technical_baseline = if ($RunTechnicalBaseline) { 'PASS' } else { 'NOT RUN' }
