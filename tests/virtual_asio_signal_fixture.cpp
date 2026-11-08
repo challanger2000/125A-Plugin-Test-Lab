@@ -5,6 +5,7 @@
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include "public.sdk/source/vst/vsteditcontroller.h"
 #include "pluginterfaces/vst/vstspeaker.h"
+#include "pluginterfaces/vst/ivstprocesscontext.h"
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
