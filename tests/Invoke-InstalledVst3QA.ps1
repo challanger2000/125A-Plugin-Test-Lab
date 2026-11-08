@@ -135,6 +135,11 @@ try {
   if ((Get-FileHash -LiteralPath $module -Algorithm SHA256).Hash.ToLowerInvariant() -cne $actualHash) {
     throw 'Installed VST3 changed while P74 inspected it'
   }
+  if ($result.whole_bundle_integrity -eq 'VERIFIED_BEFORE_P74') {
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $checker -Bundle $bundle -ExpectedManifest $ExpectedBundleManifest -ExpectedManifestSha256 $ExpectedBundleManifestSha256 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'P109 installed VST3 resource changed during P74' }
+    $result.whole_bundle_integrity = 'VERIFIED'
+  }
   $result.p74_result = $qa.status
   $result.vst3_technical_baseline = if ($RunTechnicalBaseline) { 'PASS' } else { 'NOT RUN' }
   $result.status = if ($RunTechnicalBaseline) { 'INSTALL_AND_NATIVE_TECHNICAL_PASS' } else { 'INSTALL_AND_NATIVE_INVENTORY_COMPLETE' }
