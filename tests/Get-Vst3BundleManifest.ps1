@@ -12,6 +12,7 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'P109-LinkCount.ps1')
 function Get-WholeBundleFiles([string]$path) {
   $root = (Resolve-Path -LiteralPath $path -ErrorAction Stop).ProviderPath
   $base = Get-Item -LiteralPath $root -Force
@@ -27,6 +28,7 @@ function Get-WholeBundleFiles([string]$path) {
       throw 'P109 source VST3 contains symlink/junction/reparse entry'
     }
     if ($entry.PSIsContainer) { continue }
+    Assert-P110SingleLink $entry.FullName
     $relative = $entry.FullName.Substring($root.TrimEnd('\').Length + 1).Replace('\','/')
     $files += @{ path=$relative; sha256=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
   }
