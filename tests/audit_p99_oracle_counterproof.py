@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""2026-11-07 read-only adversarial proof of an existing oracle coverage gap.
+"""P99 adversarial regression of P95 oracle: known-bad PCM MUST FAIL.
 
-This test deliberately documents an *accepted incorrect source stimulus*.
-Its own CI PASS means a defect in test adequacy was reproduced, NOT that
-virtual ASIO4ALL hardware or correct VST3 audio was accepted.
+A green job confirms a corrected synthetic oracle only, NOT a real ASIO4ALL
+or hardware audio callback acceptance.
 """
 from array import array
 import json
@@ -99,9 +98,13 @@ def run():
         (dest / "ORACLE-COUNTERPROOF.json").write_text(
             json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(report, indent=2))
-        if detected:
-            raise AssertionError("P99 expected to reproduce the current uncovered frequency error; if the verifier was fixed, update the audit.")
-        print("[AUDIT] Counterexample reproduced. Product/audio acceptance remains FAIL/NOT RUN.")
+        if not detected:
+            raise AssertionError("P99 wrong-frequency VST3 source escaped independent PCM oracle")
+        if report["fourfold_return_gain_accepted"]:
+            raise AssertionError("P99 fourfold input gain escaped independent PCM oracle")
+        if zero["status"] != "VIRTUAL_ASIO_PCM_LOOPBACK_PASS" or report["zero_delay_reported_frames"] != 0:
+            raise AssertionError("P99 zero-lag loopback reported invalid latency")
+        print("[AUDIT] P99 adversarial fixture errors correctly rejected; actual ASIO4ALL NOT RUN.")
     finally:
         f.tearDown()
         f.doCleanups()
