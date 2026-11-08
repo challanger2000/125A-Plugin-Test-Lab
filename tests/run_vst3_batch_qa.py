@@ -292,10 +292,16 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                          "OBSERVATIONS_COMPLETE", "NOT APPLICABLE - NO EDITOR") or
                       type(outcome.get("exploratory_clicks_performed")) is not int or
                       (entry.get("exploration_repeats", 1) > 1 and (
-                          outcome.get("unknown_gui_repeatability") not in (
-                              "REPRODUCIBLE_OBSERVATIONS", "NOT RUN") or
-                          outcome.get("unknown_gui_completed_repetitions") not in (
-                              entry["exploration_repeats"], 0))) or
+                          (outcome.get("unknown_gui_exploration") ==
+                           "OBSERVATIONS_COMPLETE" and (
+                            outcome.get("unknown_gui_repeatability") !=
+                                "REPRODUCIBLE_OBSERVATIONS" or
+                            outcome.get("unknown_gui_completed_repetitions") !=
+                                entry["exploration_repeats"])) or
+                          (outcome.get("unknown_gui_exploration") ==
+                           "NOT APPLICABLE - NO EDITOR" and (
+                            outcome.get("unknown_gui_repeatability") != "NOT RUN" or
+                            outcome.get("unknown_gui_completed_repetitions") != 0)))) or
                       (outcome["unknown_gui_exploration"] == "OBSERVATIONS_COMPLETE" and
                        (outcome["exploratory_clicks_performed"] < 1 or
                         outcome.get("unknown_gui_semantics") != "UNAPPROVED OBSERVATIONS ONLY")) or
