@@ -74,11 +74,19 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+// P99 observational counters from the real Win32 message queue. No timer
+// injection, fake paint event, or product instrumentation.
+static uint64_t p99Timers = 0, p99VstguiTimerCallbacks = 0, p99Paints = 0;
 void pump(DWORD milliseconds) {
     const auto until = GetTickCount64() + milliseconds;
     MSG msg{};
     do {
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if(msg.message==WM_TIMER) {
+                ++p99Timers;
+                if(msg.lParam)++p99VstguiTimerCallbacks;
+            }
+            if(msg.message==WM_PAINT)++p99Paints;
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
@@ -1450,7 +1458,13 @@ int captureHostParameterSequence(const std::string& pluginPath,
                     const double wanted=values[i];
                     require(controller.ptr->setParamNormalized(id,wanted)==kResultTrue,
                             "P98 host parameter setParamNormalized failed");
-                    pump(320); // wait for real editor VSTGUI idle synchronization
+                    const auto beforeTimers=p99Timers,beforeCallbacks=p99VstguiTimerCallbacks;
+                    const auto beforePaints=p99Paints;
+                    pump(1300); // >30 VSTGUI idle cycles in a legitimate host
+                    std::cout<<"P99_LIVE_GUI_TIMER step="<<i
+                        <<" total_WM_TIMER="<<(p99Timers-beforeTimers)
+                        <<" callback_WM_TIMER="<<(p99VstguiTimerCallbacks-beforeCallbacks)
+                        <<" WM_PAINT="<<(p99Paints-beforePaints)<<"\n";
                     const double observed=controller.ptr->getParamNormalized(id);
                     require(std::isfinite(observed) &&
                             std::abs(observed-wanted)<0.000001,
