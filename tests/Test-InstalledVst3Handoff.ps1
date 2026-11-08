@@ -48,3 +48,30 @@ if ($LASTEXITCODE -eq 0) { throw 'P106 bridge accepted wrong installed binary ha
 $rejected = Get-Content -LiteralPath (Join-Path $rejectOut 'P106-POSTINSTALL-VST3-RESULT.json') -Raw | ConvertFrom-Json
 if ($rejected.p74_executed -ne $false -or $rejected.status -ne 'FAIL') { throw 'P106 wrong installed hash incorrectly reached native host' }
 Write-Host 'P106 independent wrong installed VST3 SHA rejected before P74 starts'
+
+# P107: ordinary JSON is not cryptographic attestation. Refuse
+# contradictory metadata *before* invoking native P74, even when
+# the installed DLL itself has the right bytes.
+$goodReport = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+$mutations = @(
+  @{ id='bad-exit'; key='exit_code'; value=3010 },
+  @{ id='false-audio'; key='vst3_qa_executed'; value=$true },
+  @{ id='invented-daw'; key='commercial_daw_verified'; value=$true },
+  @{ id='hidden-fault'; key='faults'; value=@('installer reported an error') },
+  @{ id='installer-sha'; key='installer_sha256'; value=('0' * 64) },
+  @{ id='artifact-sha'; key='expected_artifact_sha256'; value=('0' * 64) }
+)
+foreach ($mutation in $mutations) {
+  $altered = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+  $altered.($mutation.key) = $mutation.value
+  $fakePath = Join-Path $WorkingRoot ($mutation.id + '-tampered-install.json')
+  $altered | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $fakePath -Encoding UTF8
+  $negativeDir = Join-Path $WorkingRoot ('negative-' + $mutation.id)
+  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $postScript -InstallationReport $fakePath -Vst3Bundle $dest -InstalledModule $destModule -ExpectedModuleSha256 $moduleHash -GuiHost $GuiHost -PythonExecutable $PythonExecutable -OutputFolder $negativeDir | Out-Null
+  if ($LASTEXITCODE -eq 0) { throw "P107 tampered $($mutation.id) wrongly passed" }
+  $reject = Get-Content -LiteralPath (Join-Path $negativeDir 'P106-POSTINSTALL-VST3-RESULT.json') -Raw | ConvertFrom-Json
+  if ($reject.status -ne 'FAIL' -or $reject.p74_executed -ne $false) {
+    throw "P107 tampered $($mutation.id) reached native P74"
+  }
+  Write-Host "P107 tampered $($mutation.id) rejected before P74"
+}
