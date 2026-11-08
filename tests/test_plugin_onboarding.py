@@ -2,6 +2,7 @@
 """P72 independent consistency and read-only product onboarding tests."""
 import copy
 import json
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -70,6 +71,27 @@ class FullProductOnboardingTests(unittest.TestCase):
             for case in bads:
                 with self.subTest(case=case),self.assertRaises(ValueError):
                     combine(*case,"a"*64,"b"*64)
+
+    def test_native_discovery_timeout_must_emit_failure_report(self):
+        # P115 independent adversarial run() contract, not mocked final output:
+        # any native child timeout must persist a fail-closed JSON result.
+        with tempfile.TemporaryDirectory() as t:
+            root=Path(t)
+            dll=root/"Plugin.vst3"/"Contents"/"x86_64-win"/"Plugin.vst3"
+            dll.parent.mkdir(parents=True)
+            dll.write_bytes(b"vst3")
+            host=root/"GUI.exe"
+            host.write_bytes(b"host")
+            out=root/"timeout"
+            def expired(*args, **kwargs):
+                raise subprocess.TimeoutExpired(["vst3-discovery"], 5)
+            observed=run(dll.parents[2],host,out,inventory=expired)
+            self.assertEqual(observed["status"],"FAIL")
+            self.assertFalse(observed["release_approved"])
+            self.assertTrue(observed["faults"])
+            saved=out/"PLUGIN-ONBOARDING-RESULT.json"
+            self.assertTrue(saved.is_file())
+            self.assertEqual(json.loads(saved.read_text())["status"],"FAIL")
 
     def test_only_read_only_detection_dispatch_and_real_hash_binding(self):
         with tempfile.TemporaryDirectory() as t:

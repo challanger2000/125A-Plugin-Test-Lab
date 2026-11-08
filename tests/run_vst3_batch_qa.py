@@ -237,9 +237,17 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                     cmd += ["--dense-gui-grid", str(entry["dense_gui_grid"])]
                 if entry.get("crosscheck_abi_gui", False):
                     cmd += ["--crosscheck-abi-gui"]
+            # P119: each batch may reuse its output root. An unchanged
+            # successful JSON from a PRIOR child run is never new evidence.
+            result_path = folder / "UNIVERSAL-QA-RESULT.json"
+            result_path.unlink(missing_ok=True)
             process = runner(cmd, capture_output=True, text=True,
                              errors="replace", check=False,
                              timeout=per_plugin_timeout)
+            if (not hasattr(process, "returncode") or
+                    not hasattr(process, "stdout") or
+                    not hasattr(process, "stderr")):
+                raise ValueError("P118 child process returned malformed completion evidence")
             (folder / "batch-child.log").write_text(
                 (process.stdout or "")[-32000:] + "\n" +
                 (process.stderr or "")[-32000:], encoding="utf-8")
@@ -284,10 +292,16 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                          "OBSERVATIONS_COMPLETE", "NOT APPLICABLE - NO EDITOR") or
                       type(outcome.get("exploratory_clicks_performed")) is not int or
                       (entry.get("exploration_repeats", 1) > 1 and (
-                          outcome.get("unknown_gui_repeatability") not in (
-                              "REPRODUCIBLE_OBSERVATIONS", "NOT RUN") or
-                          outcome.get("unknown_gui_completed_repetitions") not in (
-                              entry["exploration_repeats"], 0))) or
+                          (outcome.get("unknown_gui_exploration") ==
+                           "OBSERVATIONS_COMPLETE" and (
+                            outcome.get("unknown_gui_repeatability") !=
+                                "REPRODUCIBLE_OBSERVATIONS" or
+                            outcome.get("unknown_gui_completed_repetitions") !=
+                                entry["exploration_repeats"])) or
+                          (outcome.get("unknown_gui_exploration") ==
+                           "NOT APPLICABLE - NO EDITOR" and (
+                            outcome.get("unknown_gui_repeatability") != "NOT RUN" or
+                            outcome.get("unknown_gui_completed_repetitions") != 0)))) or
                       (outcome["unknown_gui_exploration"] == "OBSERVATIONS_COMPLETE" and
                        (outcome["exploratory_clicks_performed"] < 1 or
                         outcome.get("unknown_gui_semantics") != "UNAPPROVED OBSERVATIONS ONLY")) or
@@ -311,7 +325,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
             row["unknown_gui_exploration"] = outcome.get("unknown_gui_exploration", "NOT RUN")
             row["abi_gui_parameter_crosscheck"] = outcome.get("abi_gui_parameter_crosscheck", "NOT RUN")
         except (OSError, ValueError, TypeError, KeyError,
-                json.JSONDecodeError, subprocess.TimeoutExpired) as error:
+                json.JSONDecodeError, subprocess.TimeoutExpired,
+                subprocess.CalledProcessError) as error:
             row["faults"].append(str(error))
         report["plugins"].append(row)
     report["passed_plugins"] = sum(x["status"] == "PASS" for x in report["plugins"])
@@ -349,7 +364,8 @@ def main():
                      per_plugin_timeout=args.per_plugin_timeout,
                      native_timeout=args.native_timeout)
     except (OSError, ValueError, TypeError, KeyError,
-            json.JSONDecodeError) as error:
+            json.JSONDecodeError, subprocess.TimeoutExpired,
+            subprocess.CalledProcessError) as error:
         args.out.mkdir(parents=True, exist_ok=True)
         report = {"schema": RESULT, "status": "FAIL",
                   "faults": [str(error)], "release_approved": False}

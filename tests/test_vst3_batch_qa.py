@@ -96,6 +96,97 @@ class BatchTests(unittest.TestCase):
             self.assertEqual(len(calls),2)
             self.assertFalse(report["release_approved"])
 
+    def test_child_raised_calledprocesserror_is_isolated_and_reported(self):
+        # P118 genuine batch orchestration: a failed native/test process
+        # may raise instead of returning a nonzero CompletedProcess.
+        with tempfile.TemporaryDirectory() as t:
+            root=Path(t)
+            selection,gui=setup(root)
+            items=load_selection(selection=selection)
+            calls=[]
+            def failed_first(cmd,**kwargs):
+                calls.append(cmd)
+                if len(calls)==1:
+                    raise subprocess.CalledProcessError(23,cmd)
+                return successful_child(cmd,**kwargs)
+            report=run(items,gui,root/"failed-child",runner=failed_first)
+            self.assertEqual(report["status"],"FAIL")
+            self.assertEqual([x["status"] for x in report["plugins"]],
+                             ["FAIL","PASS"])
+            self.assertEqual(len(calls),2)
+            saved=root/"failed-child"/"BATCH-QA-REPORT.json"
+            self.assertTrue(saved.is_file())
+            self.assertFalse(json.loads(saved.read_text())["release_approved"])
+
+    def test_stale_child_json_cannot_be_reused_as_fresh_success(self):
+        # P119: rerun with the same approved input and output directory.
+        # A child which now exits zero but writes NOTHING must not be
+        # credited for JSON produced by the previous successful run.
+        with tempfile.TemporaryDirectory() as t:
+            root=Path(t)
+            selection,gui=setup(root)
+            items=load_selection(selection=selection)
+            out=root/"reused-output"
+            before=run(items,gui,out,runner=successful_child)
+            self.assertEqual(before["passed_plugins"],2)
+            def no_new_child_evidence(cmd,**kwargs):
+                return FakeResult(0)
+            after=run(items,gui,out,runner=no_new_child_evidence)
+            self.assertEqual(after["status"],"FAIL")
+            self.assertEqual(after["passed_plugins"],0)
+            self.assertEqual(after["failed_plugins"],2)
+            self.assertFalse(after["release_approved"])
+            self.assertEqual(json.loads((out/"BATCH-QA-REPORT.json").read_text())["status"],"FAIL")
+
+    def test_requested_repeatability_cannot_be_silently_not_run_on_valid_editor(self):
+        # P122: P75 requests TWO real GUI exploration runs. A child claiming
+        # successful observations but zero repetitions / NOT RUN is not a
+        # valid observable repeatability PASS.
+        with tempfile.TemporaryDirectory() as t:
+            root=Path(t)
+            selection,gui=setup(root)
+            data=json.loads(selection.read_text(encoding="utf-8"))
+            data["plugins"]=data["plugins"][:1]
+            data["plugins"][0].update(
+                explore_unknown_gui=True, exploration_repeats=2,
+                exploration_max_points=2)
+            selection.write_text(json.dumps(data),encoding="utf-8")
+            items=load_selection(selection=selection)
+            def forged_not_run(cmd,**kwargs):
+                result=successful_child(cmd,**kwargs)
+                out_path=Path(cmd[cmd.index("--out")+1])/"UNIVERSAL-QA-RESULT.json"
+                evidence=json.loads(out_path.read_text(encoding="utf-8"))
+                evidence.update({
+                    "status":"INVENTORY_WITH_EXPLORATORY_OBSERVATIONS",
+                    "unknown_gui_exploration":"OBSERVATIONS_COMPLETE",
+                    "unknown_gui_repeatability":"NOT RUN",
+                    "unknown_gui_completed_repetitions":0,
+                    "unknown_gui_semantics":"UNAPPROVED OBSERVATIONS ONLY",
+                    "exploratory_clicks_performed":2
+                })
+                out_path.write_text(json.dumps(evidence),encoding="utf-8")
+                return result
+            reported=run(items,gui,root/"repeatability-false-pass",
+                         runner=forged_not_run)
+            self.assertEqual(reported["status"],"FAIL",
+                "P122 approved complete GUI observations despite zero "
+                "fresh-instance repetitions after explicit repeat opt-in")
+            self.assertEqual(reported["failed_plugins"],1)
+
+            def genuine_repeatable_child(cmd, **kwargs):
+                result=forged_not_run(cmd,**kwargs)
+                out_path=Path(cmd[cmd.index("--out")+1])/"UNIVERSAL-QA-RESULT.json"
+                evidence=json.loads(out_path.read_text(encoding="utf-8"))
+                evidence["unknown_gui_repeatability"]="REPRODUCIBLE_OBSERVATIONS"
+                evidence["unknown_gui_completed_repetitions"]=2
+                out_path.write_text(json.dumps(evidence),encoding="utf-8")
+                return result
+            good=run(items,gui,root/"repeatability-real",
+                     runner=genuine_repeatable_child)
+            self.assertEqual(good["status"],
+                "BATCH_EXPLORATORY_OBSERVATIONS_COMPLETE")
+            self.assertEqual(good["passed_plugins"],1)
+
     def test_forged_success_or_corrupted_module_cannot_pass(self):
         with tempfile.TemporaryDirectory() as t:
             root=Path(t)

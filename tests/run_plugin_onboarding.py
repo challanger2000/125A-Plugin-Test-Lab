@@ -7,6 +7,7 @@ review pack for the plugin-owning chat. No per-plugin Test Lab edits.
 """
 import argparse
 import json
+import subprocess
 from pathlib import Path
 
 from run_vst3_auto_discovery import discover as abi_discover, verify_bundle, digest
@@ -180,7 +181,8 @@ def run(bundle, gui_host, out, *, max_points=9, timeout=40,
                 raise ValueError("P73 existing native technical host found real plugin regression")
         if digest(dll) != dll_sha or digest(gui_host) != host_sha:
             raise ValueError("P72 module/host modified during read-only onboarding")
-    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError,
+            subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
         result = {"schema": SCHEMA, "status": "FAIL",
                   "verified_module_sha256": dll_sha,
                   "verified_gui_host_sha256": host_sha,
@@ -207,7 +209,8 @@ def main():
                      stress_host=a.stress_host,
                      max_points=a.max_points, timeout=a.timeout,
                      run_technical=a.run_technical_baseline)
-    except (OSError, ValueError, TypeError) as exc:
+    except (OSError, ValueError, TypeError,
+            subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
         a.out.mkdir(parents=True, exist_ok=True)
         result = {"schema": SCHEMA, "status": "FAIL",
                   "clicks_performed": 0, "release_approved": False,

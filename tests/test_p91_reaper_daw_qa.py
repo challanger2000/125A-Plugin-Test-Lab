@@ -78,9 +78,9 @@ class ReaperQATests(unittest.TestCase):
                 (self.root/"pass"/"125A_Reaper_Project.RPP").write_text(
                     "<REAPER_PROJECT 0.1\n>",encoding="utf-8")
                 return {"phase":"setup","note_count":"1",
-                        "fx_name":"VST3: 125A QA Synth","reaper_version":"7.x"}
+                        "fx_name":"VST3i: 125A QA Synth (125A)","reaper_version":"7.x"}
             return {"phase":"reload","note_count":"1",
-                    "fx_name":"VST3: 125A QA Synth",
+                    "fx_name":"VST3i: 125A QA Synth (125A)",
                     "pitch":"60","velocity":"100"}
         result=execute(self.plan,self.root/"pass",
                        script_template=self.test_template,
@@ -98,15 +98,60 @@ class ReaperQATests(unittest.TestCase):
         self.assertEqual(self.reaper.read_bytes(),
                          b"MOCK test binary, NOT real REAPER")
 
+    def test_foreign_plugin_fx_identity_must_not_pass(self):
+        # Auditor's deliberate wrong-FX test: the currently approved plan
+        # requests 125A QA Synth, but the DAW result reports a different
+        # VST3 instrument in BOTH save/reopen stages. A successful render
+        # does not establish that the requested plugin was instantiated.
+        def wrong_fx(command, status_file, timeout):
+            if status_file is None:
+                good_pcm(self.root / "foreign" / "125A_Reaper_Render.wav")
+                return {"exit_code": 0}
+            if status_file.name == "setup.status":
+                (self.root / "foreign" / "125A_Reaper_Project.RPP").write_text(
+                    "<REAPER_PROJECT 0.1\\n>", encoding="utf-8")
+                return {"phase": "setup", "note_count": "1",
+                        "fx_name": "VST3i: Totally Different Synth (OtherVendor)",
+                        "reaper_version": "7.83/x64"}
+            return {"phase": "reload", "note_count": "1",
+                    "fx_name": "VST3i: Totally Different Synth (OtherVendor)",
+                    "pitch": "60", "velocity": "100"}
+
+        outcome = execute(self.plan, self.root / "foreign",
+                          process_runner=wrong_fx)
+        self.assertEqual(outcome["status"], "FAIL",
+                         "P91 must reject a different loaded FX, even if PCM "
+                         "render and save/reload observations are good")
+
+    def test_nonzero_render_exit_with_valid_wav_must_fail(self):
+        # P117: an externally returned nonzero REAPER render result cannot
+        # be converted into a DAW PASS just because a valid WAV appeared.
+        def process(command, status_file, timeout):
+            if status_file is None:
+                good_pcm(self.root/"nonzero"/"125A_Reaper_Render.wav")
+                return {"exit_code": 42}
+            if status_file.name == "setup.status":
+                (self.root/"nonzero"/"125A_Reaper_Project.RPP").write_text(
+                    "<REAPER_PROJECT 0.1\\n>", encoding="utf-8")
+                return {"phase":"setup", "note_count":"1",
+                        "fx_name":"VST3i: 125A QA Synth (125A)",
+                        "reaper_version":"7.83/x64"}
+            return {"phase":"reload", "note_count":"1",
+                    "fx_name":"VST3i: 125A QA Synth (125A)",
+                    "pitch":"60", "velocity":"100"}
+        result=execute(self.plan, self.root/"nonzero", process_runner=process)
+        self.assertEqual(result["status"], "FAIL",
+                         "Nonzero REAPER exit is not successful rendering")
+
     def test_missing_render_or_fake_fx_rejected(self):
         def fake_process(command, status_file, timeout):
             if status_file and status_file.name=="setup.status":
                 (self.root/"fail"/"125A_Reaper_Project.RPP").write_text("RPP")
                 return {"phase":"setup","note_count":"1",
-                        "fx_name":"Simulated","reaper_version":"mock"}
+                        "fx_name":"VST3i: 125A QA Synth (125A)","reaper_version":"mock"}
             if status_file:
                 return {"phase":"reload","note_count":"1",
-                        "fx_name":"Simulated","pitch":"60","velocity":"100"}
+                        "fx_name":"VST3i: 125A QA Synth (125A)","pitch":"60","velocity":"100"}
             return {"exit_code":0}
         result=execute(self.plan,self.root/"fail",process_runner=fake_process)
         self.assertEqual(result["status"],"FAIL")
@@ -119,9 +164,9 @@ class ReaperQATests(unittest.TestCase):
             if status_file.name=="setup.status":
                 (self.root/"badreload"/"125A_Reaper_Project.RPP").write_text("RPP")
                 return {"phase":"setup","note_count":"1",
-                        "fx_name":"VST3: QA","reaper_version":"7.x"}
+                        "fx_name":"VST3i: 125A QA Synth (125A)","reaper_version":"7.x"}
             return {"phase":"reload","note_count":"1",
-                    "fx_name":"VST3: QA","pitch":"70","velocity":"100"}
+                    "fx_name":"VST3i: 125A QA Synth (125A)","pitch":"70","velocity":"100"}
         result=execute(self.plan,self.root/"badreload",process_runner=fake)
         self.assertEqual(result["status"],"FAIL")
         self.assertEqual(len(issued),2)

@@ -102,6 +102,26 @@ def verify_plan(plan):
     return executable, binary
 
 
+def observed_fx_matches_request(requested, actual):
+    """P113 display-name identity check. Does NOT prove which DLL was loaded.
+
+    REAPER can display VST3 instruments as 'VST3i:' and append a vendor
+    suffix to the approved 'VST3:' search name. Never accept an unrelated
+    plugin's name solely because both setup/reload stages agree with it.
+    """
+    if (not isinstance(requested, str) or not FX.fullmatch(requested)
+            or not isinstance(actual, str) or
+            not (actual.startswith("VST3: ") or actual.startswith("VST3i: "))):
+        return False
+    approved = requested[len("VST3: "):]
+    observed = actual.split(": ", 1)[1]
+    if not approved or "\r" in observed or "\n" in observed:
+        return False
+    if " (" in approved:
+        return observed == approved
+    return observed == approved or observed.startswith(approved + " (")
+
+
 def read_status(path):
     if not path.is_file() or not 10 <= path.stat().st_size <= 4096:
         return None
@@ -408,8 +428,9 @@ def execute(plan, out, *, timeout=90, script_template=None, process_runner=run_p
         report["genuine_reaper_process_launched"] = True
         expected_count = "1" if plan["test"].get("insert_note", True) else "0"
         if (setup.get("phase") != "setup" or setup.get("note_count") != expected_count
-                or not setup.get("fx_name") or not setup.get("reaper_version")
-                or not project.is_file()):
+                or not observed_fx_matches_request(
+                    plan["plugin"]["reaper_fx_name"], setup.get("fx_name"))
+                or not setup.get("reaper_version") or not project.is_file()):
             raise ValueError("P91 REAPER setup/save evidence incomplete")
         report["reaper_version"] = setup["reaper_version"]
         report["loaded_fx_name"] = setup["fx_name"]
@@ -423,13 +444,19 @@ def execute(plan, out, *, timeout=90, script_template=None, process_runner=run_p
                 (plan["test"].get("insert_note", True) and (
                     loaded.get("pitch") != str(plan["test"]["note"]) or
                     loaded.get("velocity") != str(plan["test"]["velocity"]))) or
-                loaded.get("fx_name") != setup["fx_name"]):
+                loaded.get("fx_name") != setup["fx_name"] or
+                not observed_fx_matches_request(
+                    plan["plugin"]["reaper_fx_name"], loaded.get("fx_name"))):
             raise ValueError("P91 real DAW reload changed stored instrument/MIDI")
         report["reloaded_project_verified"] = True
         if digest(project) != report["saved_project_sha256"]:
             raise ValueError("P91 project changed unexpectedly during reload")
         # CLI documented by ReaTeam; REAPER, not our host, renders the FX.
-        process_runner([str(exe), "-nosplash", "-renderproject", str(project)], None, timeout)
+        render_process = process_runner([str(exe), "-nosplash", "-renderproject", str(project)], None, timeout)
+        if (not isinstance(render_process, dict)
+                or type(render_process.get("exit_code")) is not int
+                or render_process["exit_code"] != 0):
+            raise ValueError("P117 actual REAPER render process did not exit successfully")
         if not rendered.is_file():
             raise ValueError("P91 real REAPER CLI render did not produce WAV")
         report["rendered_by_reaper_process"] = True

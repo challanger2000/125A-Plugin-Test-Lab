@@ -1,0 +1,191 @@
+name: P116 adversarial whole-repo automated test sweep (NOT FULL AUDIT)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/p116-full-repo-test-sweep.yml'
+      - 'tests/run_universal_qa.py'
+      - 'tests/run_plugin_onboarding.py'
+      - 'tests/test_universal_qa.py'
+      - 'tests/test_plugin_onboarding.py'
+      - 'docs/P113-FULL-LAB-AUDIT-2026-11-08.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  whole-repo-automated-sweep:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inventory every tracked source file, discover all Python tests, and syntax-check every Python source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path audit-evidence -Force | Out-Null
+          @'
+          import ast, hashlib, json, pathlib, subprocess, sys
+          root=pathlib.Path('.')
+          tracked=subprocess.check_output(['git','ls-files','-z']).decode('utf-8').split('\0')
+          tracked=[x for x in tracked if x]
+          output=[]
+          bad=[]
+          tests=0
+          for name in tracked:
+              path=root/name
+              data=path.read_bytes()
+              info={'path':name,'size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+              if name.endswith('.py'):
+                  try:
+                      code=ast.parse(data.decode('utf-8-sig'),filename=name)
+                      info['python_functions']=[n.name for n in ast.walk(code) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]
+                      info['python_tests']=[f for f in info['python_functions'] if f.startswith('test_')]
+                      tests+=len(info['python_tests'])
+                  except (SyntaxError,UnicodeError) as ex:
+                      bad.append({'path':name,'error':str(ex)})
+              output.append(info)
+          result={'schema':'125a-p116-repo-inventory-v1','commit':subprocess.check_output(['git','rev-parse','HEAD']).decode().strip(),'files':output,'python_test_functions':tests,'parse_errors':bad,'full_source_audit':'NOT VERIFIED','independent_reviewer':'NOT RUN','release_approved':False}
+          pathlib.Path('audit-evidence/full-source-inventory.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
+          print('P116 tracked files:',len(output),'Python test functions:',tests,'parse errors:',len(bad))
+          if bad: raise SystemExit(1)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'P116 whole tree parse/inventory FAIL' }
+      - name: Build all first-party native Test Lab executables on Windows x64 Release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S . -B build -G 'Visual Studio 17 2022' -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P116 native configure FAIL' }
+          cmake --build build --config Release --parallel 4 --target TestLabHost TestLabGUI TestLabStateStress TestLabRecovery TestLabInstanceIsolation TestLabRateBlock TestLabVoiceStress TestLabControllerRecovery TestLabGuiRecovery QAGuiClick
+          if ($LASTEXITCODE -ne 0) { throw 'P116 native source build FAIL' }
+          ctest --test-dir build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'P116 registered native CTests FAIL' }
+      - name: Execute ALL discovered Python unittest test_*.py modules under Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          @'
+          import ast, json, pathlib, sys, unittest
+          sys.path.insert(0,str(pathlib.Path("tests").resolve()))
+          eligible=[]
+          not_unittest=[]
+          for path in sorted(pathlib.Path("tests").glob("test_*.py")):
+              root=ast.parse(path.read_text(encoding="utf-8-sig"))
+              test_methods=[n for n in ast.walk(root)
+                            if isinstance(n,ast.ClassDef)
+                            and any(isinstance(f,(ast.FunctionDef,ast.AsyncFunctionDef))
+                                    and f.name.startswith("test_") for f in n.body)]
+              if test_methods:
+                  eligible.append(path.stem)
+              else:
+                  not_unittest.append(path.as_posix())
+          suite=unittest.defaultTestLoader.loadTestsFromNames(eligible)
+          result=unittest.TextTestRunner(verbosity=2).run(suite)
+          summary={"schema":"125a-p116-unittest-all-modules-v1",
+                   "unittest_modules":eligible,
+                   "cli_test_scripts_not_unittest_importable":not_unittest,
+                   "tests_run":result.testsRun,
+                   "failures":len(result.failures),
+                   "errors":len(result.errors),
+                   "skipped":len(result.skipped),
+                   "passed":result.wasSuccessful(),
+                   "release_approved":False}
+          pathlib.Path("audit-evidence/all-python-unittest-summary.json").write_text(
+              json.dumps(summary,indent=2)+"\n",encoding="utf-8")
+          print("P116 UNITTEST_SUMMARY",json.dumps(summary))
+          if not result.wasSuccessful(): sys.exit(1)
+          '@ | python - 2>&1 | Tee-Object -FilePath audit-evidence/all-python-unittest.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { throw 'P116 unit test modules FAIL; complete log and summary uploaded' }
+      - name: Execute independent standalone Python CLI oracle scripts with real process exit checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import json, os, pathlib, subprocess, sys
+          scripts = [
+              "test_audio_reference.py",
+              "test_awe_p48.py", "test_awe_p53.py",
+              "test_drumator_v15_acceptance.py",
+              "test_gui_change_regions.py", "test_gui_control_matrix.py",
+              "test_gui_exploration.py", "test_gui_export_contract.py",
+              "test_gui_roundtrip.py", "test_gui_workflow.py",
+              "test_instance_isolation.py", "test_live_state_replay.py",
+              "test_p32_stale_evidence.py", "test_p33_artifacts.py",
+              "test_p34_capture.py", "test_parameter_inventory.py",
+              "test_parameter_sweep.py", "test_parameter_text.py",
+              "test_playback_save_overlap.py", "test_plugin_quickcheck.py",
+              "test_product_acceptance.py", "test_product_dual_state.py",
+              "test_release_evidence_gate.py", "test_state_reload.py",
+              "test_user_report.py"
+          ]
+          # Do not silently count a standalone CLI test as executed if not
+          # explicitly listed here. The GUI BMP oracle requires actual
+          # native HWND capture and is separately exercised by P04.
+          full = set(x.name for x in pathlib.Path("tests").glob("test_*.py"))
+          unit = set(json.loads(pathlib.Path("audit-evidence/all-python-unittest-summary.json")
+                                .read_text())["unittest_modules"])
+          unit = set(x + ".py" for x in unit)
+          pending = full - unit - set(scripts)
+          if pending != {"test_native_gui_snapshot.py"}:
+              raise SystemExit("P116 uncatalogued standalone CLI: " + repr(sorted(pending)))
+          env = dict(os.environ, PYTHONOPTIMIZE="0")
+          if sys.flags.optimize:
+              raise SystemExit("P116 Python assert oracles must not run under -O")
+          rows = []
+          for script in scripts:
+              try:
+                  result = subprocess.run([sys.executable,"-B",str(pathlib.Path("tests")/script)],
+                                          capture_output=True,text=True,errors="replace",
+                                          timeout=120,env=env,check=False)
+                  row={"script":script,"returncode":result.returncode,
+                       "stdout_tail":result.stdout[-2400:],
+                       "stderr_tail":result.stderr[-2400:],
+                       "status":"PASS" if result.returncode==0 else "FAIL"}
+              except subprocess.TimeoutExpired as e:
+                  row={"script":script,"status":"FAIL","error":"120s timeout"}
+              rows.append(row)
+              print("P116 STANDALONE_ORACLE",script,row["status"],flush=True)
+          summary={"schema":"125a-p116-standalone-cli-v1","results":rows,
+                   "passed":sum(x["status"]=="PASS" for x in rows),
+                   "failed":sum(x["status"]=="FAIL" for x in rows),
+                   "native_gui_snapshot_bmp":"NOT RUN in this lane; P04 separately",
+                   "release_approved":False}
+          pathlib.Path("audit-evidence/standalone-python-cli-summary.json").write_text(
+              json.dumps(summary,indent=2)+"\n",encoding="utf-8")
+          if summary["failed"]: raise SystemExit(1)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'P116 standalone CLI oracle regressions failed' }
+      - name: Execute final standalone native HWND BMP snapshot oracle on real source-built GUI VST3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $bundle = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Click.vst3')
+          if ($exe.Count -ne 1 -or $bundle.Count -ne 1) {
+            throw 'P120 missing or ambiguous actual Windows native GUI host or VST3 fixture'
+          }
+          $bmp = 'audit-evidence/native-hwnd-fixture.bmp'
+          & $exe[0].FullName --snapshot-editor $bundle[0].FullName $bmp
+          if ($LASTEXITCODE -ne 0) { throw 'P120 native HWND pixel capture did not produce BMP' }
+          python -B tests/test_native_gui_snapshot.py $bmp
+          if ($LASTEXITCODE -ne 0) { throw 'P120 independent BMP pixel corruption oracle failed' }
+          $evidence = @{
+            schema = '125a-p120-native-snapshot-oracle-v1'
+            status = 'PASS'
+            source = 'actual Windows native HWND captured with compiled VST3 fixture'
+            host_sha256 = (Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            bmp_sha256 = (Get-FileHash $bmp -Algorithm SHA256).Hash.ToLowerInvariant()
+            image_oracle = 'GUI BMP primary color and corrupted-pixel negative verified'
+            third_party_gui_coverage = 'NOT VERIFIED'
+            release_approved = $false
+          } | ConvertTo-Json -Depth 8
+          Set-Content -LiteralPath 'audit-evidence/native-hwnd-snapshot-evidence.json' -Value $evidence -Encoding UTF8
+          Write-Host 'P120 real HWND BMP snapshot and final standalone test script PASS'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P116-whole-repo-native-and-python-source-test-evidence-NOT-full-audit
+          path: audit-evidence/
+          if-no-files-found: warn
