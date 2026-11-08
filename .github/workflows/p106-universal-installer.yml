@@ -8,6 +8,8 @@ on:
       - 'tests/p106_msi_fixture.wxs'
       - 'tests/p106-msi-marker.txt'
       - 'tests/Test-UniversalMSI.ps1'
+      - 'tests/Invoke-InstalledVst3QA.ps1'
+      - 'tests/Test-InstalledVst3Handoff.ps1'
       - 'docs/P106-UNIVERSAL-WINDOWS-INSTALLER.md'
       - '.github/workflows/p106-universal-installer.yml'
   workflow_dispatch:
@@ -16,7 +18,7 @@ permissions:
 jobs:
   source-built-exe-installer:
     runs-on: windows-2022
-    timeout-minutes: 12
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - name: Execute real harmless Windows EXE and adversarial refusal tests
@@ -34,6 +36,28 @@ jobs:
         run: |
           & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests/Test-UniversalMSI.ps1 -WorkingRoot (Join-Path $env:RUNNER_TEMP 'P106-safe-msi-fixture') -WixExecutable (Join-Path $env:RUNNER_TEMP 'p106-wix-tools/wix.exe')
           if ($LASTEXITCODE -ne 0) { throw "P106 actual MSI regressions failed: $LASTEXITCODE" }
+      - name: Configure pinned Steinberg Windows VST3 SDK (one small native fixture)
+        shell: pwsh
+        run: |
+          cmake -S . -B build-p106 -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P106 pinned SDK CMake configure failed' }
+      - name: Build real universal VST3 hosts and one clean plugin
+        shell: pwsh
+        run: |
+          cmake --build build-p106 --config Release --target TestLabHost TestLabGUI TestLabStateStress QASignalGood --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'P106 real VST3/host compilation failed' }
+      - name: Run actual EXE install to real Windows VST3 -> P74 host integration
+        shell: pwsh
+        run: |
+          $bundle = @(Get-ChildItem build-p106 -Recurse -Directory -Filter '125A_QA_SignalGood.vst3' | Where-Object { Test-Path (Join-Path $_.FullName 'Contents/x86_64-win/125A_QA_SignalGood.vst3') -PathType Leaf })
+          $gui = @(Get-ChildItem build-p106 -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $audio = @(Get-ChildItem build-p106 -Recurse -File -Filter '125A_Test_Lab_Host.exe')
+          $stress = @(Get-ChildItem build-p106 -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
+          if ($bundle.Count -ne 1 -or $gui.Count -ne 1 -or $audio.Count -ne 1 -or $stress.Count -ne 1) {
+            throw 'P106 source-built plugin or Windows native hosts missing/ambiguous'
+          }
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests/Test-InstalledVst3Handoff.ps1 -WorkingRoot (Join-Path $env:RUNNER_TEMP 'P106-real-installed-vst3') -SourceBundle $bundle[0].FullName -GuiHost $gui[0].FullName -AudioHost $audio[0].FullName -StressHost $stress[0].FullName -PythonExecutable (Get-Command python).Source
+          if ($LASTEXITCODE -ne 0) { throw "P106 real EXE -> real installed VST3 -> P74 functional QA failed: $LASTEXITCODE" }
       - name: Publish sandbox-only evidence (no installer binary)
         if: always()
         uses: actions/upload-artifact@v4
@@ -42,4 +66,7 @@ jobs:
           path: |
             ${{ runner.temp }}/P106-safe-fixture/*/P106-INSTALLER-RESULT.json
             ${{ runner.temp }}/P106-safe-msi-fixture/*/P106-INSTALLER-RESULT.json
+            ${{ runner.temp }}/P106-real-installed-vst3/*/P106-INSTALLER-RESULT.json
+            ${{ runner.temp }}/P106-real-installed-vst3/*/P106-POSTINSTALL-VST3-RESULT.json
+            ${{ runner.temp }}/P106-real-installed-vst3/*/P74-native/UNIVERSAL-QA-RESULT.json
           if-no-files-found: error
