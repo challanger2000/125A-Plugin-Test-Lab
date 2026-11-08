@@ -21,6 +21,25 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Parse all P106 PowerShell entrypoints before any installer runs
+        shell: pwsh
+        run: |
+          $files = @(
+            'tests/Invoke-UniversalInstaller.ps1',
+            'tests/Invoke-InstalledVst3QA.ps1',
+            'tests/Test-UniversalInstaller.ps1',
+            'tests/Test-UniversalMSI.ps1',
+            'tests/Test-InstalledVst3Handoff.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$errors) | Out-Null
+            if (@($errors).Count -gt 0) {
+              throw "P106 PowerShell syntax FAIL in $file : $($errors -join '; ')"
+            }
+          }
+          Write-Host 'P106 all 5 PowerShell entrypoints parsed without syntax errors'
       - name: Execute real harmless Windows EXE and adversarial refusal tests
         shell: pwsh
         run: |
