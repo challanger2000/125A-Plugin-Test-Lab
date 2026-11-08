@@ -41,10 +41,9 @@ def main():
     (folder / "ASIO-PROCESS-CONTEXT-COUNTERPROOF.json").write_text(
         json.dumps(report, indent=2)+"\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
-    if not mismatch:
-        print("[AUDIT] Source defect has been fixed; audit report must be updated")
-    else:
-        print("[AUDIT] Source mismatch reproduced. This is NOT native ASIO runtime evidence")
+    if mismatch:
+        raise AssertionError("P99 ASIO host writes projectTimeMusic but omits kProjectTimeMusicValid")
+    print("[AUDIT] Source contracts now agree. Actual ASIO driver still NOT RUN.")
 
 
 if __name__ == "__main__":
