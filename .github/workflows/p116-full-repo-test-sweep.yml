@@ -65,10 +65,39 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
-          python -m unittest discover -s tests -p 'test_*.py' -v 2>&1 | Tee-Object -FilePath audit-evidence/all-python-unittest.log
+          @'
+          import ast, json, pathlib, sys, unittest
+          sys.path.insert(0,str(pathlib.Path("tests").resolve()))
+          eligible=[]
+          not_unittest=[]
+          for path in sorted(pathlib.Path("tests").glob("test_*.py")):
+              root=ast.parse(path.read_text(encoding="utf-8-sig"))
+              test_methods=[n for n in ast.walk(root)
+                            if isinstance(n,ast.ClassDef)
+                            and any(isinstance(f,(ast.FunctionDef,ast.AsyncFunctionDef))
+                                    and f.name.startswith("test_") for f in n.body)]
+              if test_methods:
+                  eligible.append(path.stem)
+              else:
+                  not_unittest.append(path.as_posix())
+          suite=unittest.defaultTestLoader.loadTestsFromNames(eligible)
+          result=unittest.TextTestRunner(verbosity=2).run(suite)
+          summary={"schema":"125a-p116-unittest-all-modules-v1",
+                   "unittest_modules":eligible,
+                   "cli_test_scripts_not_unittest_importable":not_unittest,
+                   "tests_run":result.testsRun,
+                   "failures":len(result.failures),
+                   "errors":len(result.errors),
+                   "skipped":len(result.skipped),
+                   "passed":result.wasSuccessful(),
+                   "release_approved":False}
+          pathlib.Path("audit-evidence/all-python-unittest-summary.json").write_text(
+              json.dumps(summary,indent=2)+"\\n",encoding="utf-8")
+          print("P116 UNITTEST_SUMMARY",json.dumps(summary))
+          if not result.wasSuccessful(): sys.exit(1)
+          '@ | python - 2>&1 | Tee-Object -FilePath audit-evidence/all-python-unittest.log
           $code = $LASTEXITCODE
-          Write-Host "P116 full Python unittest discovery exit code: $code"
-          if ($code -ne 0) { throw 'P116 whole Python regression inventory FAIL – inspect uploaded full log' }
+          if ($code -ne 0) { throw 'P116 unit test modules FAIL; complete log and summary uploaded' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
