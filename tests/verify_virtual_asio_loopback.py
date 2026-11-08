@@ -195,6 +195,8 @@ def verify_pcm(trace_path, native_evidence_path, out):
     out.mkdir(parents=True, exist_ok=True)
     report = {"schema": SCHEMA, "status": "FAIL",
               "virtual_loopback_verified": False,
+              "pcm_content_verified": False,
+              "driver_execution_verified": False,
               "physical_asio_hardware_verified": False,
               "commercial_daw_verified": False,
               "release_approved": False, "faults": []}
@@ -229,7 +231,7 @@ def verify_pcm(trace_path, native_evidence_path, out):
         report["plugin_sha256"] = evidence["product_sha256"]
         report["executor_sha256"] = evidence["executor_sha256"]
         report["status"] = "VIRTUAL_ASIO_PCM_LOOPBACK_PASS"
-        report["virtual_loopback_verified"] = True
+        report["pcm_content_verified"] = True
     except (OSError, ValueError, TypeError, KeyError, UnicodeError,
             struct.error, json.JSONDecodeError, OverflowError) as error:
         report["faults"].append(str(error))
