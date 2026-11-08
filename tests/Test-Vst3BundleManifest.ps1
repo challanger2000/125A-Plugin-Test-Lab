@@ -60,6 +60,7 @@ try {
     }
     if ($entry.PSIsContainer) { continue }
     Assert-P110SingleLink $entry.FullName
+    Assert-P112NoAlternateStreams $entry.FullName
     $relative = $entry.FullName.Substring($root.TrimEnd('\').Length + 1).Replace('\','/')
     $key = $relative.ToLowerInvariant()
     if ($seen.ContainsKey($key)) { throw 'P109 case-colliding resource paths' }
