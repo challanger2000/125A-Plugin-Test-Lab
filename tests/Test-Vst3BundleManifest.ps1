@@ -15,7 +15,8 @@ try {
   $observedSha = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($approvedSha -cne $observedSha) { throw 'P109 independent source manifest hash mismatch' }
   $manifest = Get-Content -LiteralPath $source -Raw -Encoding UTF8 | ConvertFrom-Json
-  if ($manifest.schema -ne '125a-vst3-whole-bundle-sha256-v1' -or
+  if ($manifest.schema -ne '125a-vst3-whole-bundle-sha256-v2' -or
+      $null -eq $manifest.directories -or
       $null -eq $manifest.files -or @($manifest.files).Count -lt 1 -or
       @($manifest.files).Count -gt 3000) { throw 'P109 malformed whole-bundle manifest' }
   $base = Get-Item -LiteralPath $root -Force
@@ -25,6 +26,33 @@ try {
   }
   $entries = @(Get-ChildItem -LiteralPath $root -Recurse -Force -ErrorAction Stop)
   if ($entries.Count -gt 3000) { throw 'P109 VST3 inventory limit exceeded' }
+  # P111 directories are part of an installed VST3 bundle contract,
+  # including zero-byte/empty directories never represented by file hashes.
+  $actualDirectories = @{}
+  foreach ($entry in $entries) {
+    if (-not $entry.PSIsContainer) { continue }
+    $relativeDir = $entry.FullName.Substring($root.TrimEnd('\').Length + 1).Replace('\','/')
+    $key = $relativeDir.ToLowerInvariant()
+    if ($actualDirectories.ContainsKey($key)) { throw 'P111 duplicate installed bundle directories' }
+    $actualDirectories[$key] = $true
+  }
+  if (@($manifest.directories).Count -ne $actualDirectories.Count) {
+    throw 'P111 missing or extra installed VST3 directories'
+  }
+  $manifestDirectories = @{}
+  foreach ($dir in @($manifest.directories)) {
+    $relativeDir = [string]$dir
+    if (-not $relativeDir -or $relativeDir.StartsWith('/') -or
+        $relativeDir.Contains('\') -or $relativeDir -match '(^|/)\.\.(/|$)') {
+      throw 'P111 invalid approved bundle directory path'
+    }
+    $key = $relativeDir.ToLowerInvariant()
+    if ($manifestDirectories.ContainsKey($key) -or
+        -not $actualDirectories.ContainsKey($key)) {
+      throw 'P111 installed VST3 directory tree differs from approved source'
+    }
+    $manifestDirectories[$key] = $true
+  }
   $seen = @{}
   foreach ($entry in $entries) {
     if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
