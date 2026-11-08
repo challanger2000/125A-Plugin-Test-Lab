@@ -240,6 +240,10 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
             process = runner(cmd, capture_output=True, text=True,
                              errors="replace", check=False,
                              timeout=per_plugin_timeout)
+            if (not hasattr(process, "returncode") or
+                    not hasattr(process, "stdout") or
+                    not hasattr(process, "stderr")):
+                raise ValueError("P118 child process returned malformed completion evidence")
             (folder / "batch-child.log").write_text(
                 (process.stdout or "")[-32000:] + "\n" +
                 (process.stderr or "")[-32000:], encoding="utf-8")
@@ -311,7 +315,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
             row["unknown_gui_exploration"] = outcome.get("unknown_gui_exploration", "NOT RUN")
             row["abi_gui_parameter_crosscheck"] = outcome.get("abi_gui_parameter_crosscheck", "NOT RUN")
         except (OSError, ValueError, TypeError, KeyError,
-                json.JSONDecodeError, subprocess.TimeoutExpired) as error:
+                json.JSONDecodeError, subprocess.TimeoutExpired,
+                subprocess.CalledProcessError) as error:
             row["faults"].append(str(error))
         report["plugins"].append(row)
     report["passed_plugins"] = sum(x["status"] == "PASS" for x in report["plugins"])
@@ -349,7 +354,8 @@ def main():
                      per_plugin_timeout=args.per_plugin_timeout,
                      native_timeout=args.native_timeout)
     except (OSError, ValueError, TypeError, KeyError,
-            json.JSONDecodeError) as error:
+            json.JSONDecodeError, subprocess.TimeoutExpired,
+            subprocess.CalledProcessError) as error:
         args.out.mkdir(parents=True, exist_ok=True)
         report = {"schema": RESULT, "status": "FAIL",
                   "faults": [str(error)], "release_approved": False}
