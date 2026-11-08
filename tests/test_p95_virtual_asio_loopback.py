@@ -159,6 +159,18 @@ class P95VirtualLoopback(unittest.TestCase):
                 self.assertIn("signed stereo PCM", " ".join(result["faults"]))
                 self.assertFalse(result["driver_execution_verified"])
 
+    def test_sample_accurate_common_lag_not_multiple_of_256(self):
+        # A valid ASIO return may have non-256-aligned endpoint latency.
+        # The signed comparison must not falsely fail such a clean trace.
+        path = self.make_trace(delay=3073)
+        report = verify_pcm(path, self.proof, self.root / "odd-sample-lag")
+        self.assertEqual(report["status"], "VIRTUAL_ASIO_PCM_LOOPBACK_PASS",
+                         report["faults"])
+        self.assertEqual(report["metrics"]["signed_pcm_common_lag_frames"], 3073)
+        self.assertGreater(report["metrics"]["signed_pcm_l"], 0.99)
+        self.assertGreater(report["metrics"]["signed_pcm_r"], 0.99)
+        self.assertFalse(report["driver_execution_verified"])
+
     def test_zero_frame_delay_is_measured_as_zero(self):
         path = self.make_trace(delay=0)
         report = verify_pcm(path, self.proof, self.root/"zero-delay")
