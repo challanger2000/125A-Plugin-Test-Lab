@@ -95,3 +95,14 @@ Der vorstehende RED/Unit-GREEN-Nachweis wurde unabhängig von Unit-Mocks auch du
 - [**P114 GREEN Windows P74 #42517821020**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42517821020): Unit-Regressionsjob `fail-closed-contract` **SUCCESS** am Fixcommit `696894dcdc1ee5071acc1a2e5c2b4a2afee700e3`. Die echte native VST3-E2E-Jobauswertung separat erforderlich.
 
 **Scope:** Ein einzelner kontrollierter Timeoutfall beweist nicht vollständige Systemrobustheit bei `KeyboardInterrupt`, Prozess-Crash ohne Python-Catch, Betriebssystem-Ende, out-of-disk, Teilbaum-Kill oder jeglicher nicht erfasster Python-Exception. Solche Ereignisse bleiben `NOT VERIFIED`, nicht `PASS`.
+
+## P115 – P72 Onboarding verliert bei nativem Timeout seinen FAIL-Bericht
+
+**Quelle und Ursache:** `tests/run_plugin_onboarding.py` behandelte `OSError`, `ValueError`, `KeyError`, `TypeError` und JSON-Fehler, aber weder `subprocess.TimeoutExpired` noch `subprocess.CalledProcessError`. Ein aus einem nativen ABI-/GUI-Discovery-Subprozess propagierter Timeout konnte deshalb sowohl `run()` als auch die CLI verlassen, bevor `PLUGIN-ONBOARDING-RESULT.json` geschrieben wurde. Der GitHub-Workflow selbst wurde dabei rot, aber die **verbindliche strukturierte Fehlerevidenz fehlte**.
+
+- [**RED #42517976378**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42517976378): `test_native_discovery_timeout_must_emit_failure_report ... ERROR`, unaufgefangene `subprocess.TimeoutExpired`. Die Gegenprobe ruft echte `run()`-Logik auf und ersetzt ausschließlich den Discovery-Subprozess durch eine deterministische Zeitüberschreitung. Das frühere Testorakel hatte diesen Fall nicht erfasst.
+- **Fix SHA:** `f20a5001783bde9fdba81d17409f3890e06cae28`. Runner und CLI akzeptieren die zwei spezifischen `subprocess`-Fehlerklassen als bekannte FAIL-Anlässe und schreiben `status=FAIL`, `release_approved=false` und nichtleere `faults`.
+- [**P72 Windows Unit GREEN #42518105900**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42518105900): `negative-contracts` **SUCCESS**. [**P73 adversarial GREEN #42518105856**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42518105856) ebenfalls **SUCCESS**. Native VST3-E2E-Jobs separat zu prüfen.
+- [Issue #139](https://github.com/challanger2000/125A-Plugin-Test-Lab/issues/139) enthält Ursache, Testversagen und Nachweislinks.
+
+**Evidenzgrenze:** Eine definierte Python-Exception kontrolliert abzufangen ist nicht identisch mit Fehlerberichten nach hartem Prozessabbruch, Neustart, Dateisystem-/Speicherfehler oder beliebigen ungetesteten Exceptions. FULL AUDIT bleibt wegen erheblicher offenstehender Produktions- und Testquellen **NOT VERIFIED**.
