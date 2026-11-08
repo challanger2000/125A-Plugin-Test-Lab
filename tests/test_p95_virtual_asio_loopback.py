@@ -140,6 +140,25 @@ class P95VirtualLoopback(unittest.TestCase):
         self.assertFalse(result["pcm_content_verified"])
         self.assertFalse(result["driver_execution_verified"])
 
+    def test_inverted_return_polarity_cannot_pass(self):
+        # A negative waveform is not equivalent to the actual signed PCM,
+        # although its RMS envelope and transfer gain are unchanged.
+        for channels in ((2,), (2, 3)):
+            with self.subTest(channels=channels):
+                path = self.make_trace()
+                raw = path.read_bytes()
+                values = array("f")
+                values.frombytes(raw[24:])
+                for n in range(self.frames):
+                    for channel in channels:
+                        values[4*n + channel] = -values[4*n + channel]
+                path.write_bytes(raw[:24] + values.tobytes())
+                out = self.root / ("polarity-" + "-".join(map(str, channels)))
+                result = verify_pcm(path, self.proof, out)
+                self.assertEqual(result["status"], "FAIL", result)
+                self.assertIn("signed stereo PCM", " ".join(result["faults"]))
+                self.assertFalse(result["driver_execution_verified"])
+
     def test_zero_frame_delay_is_measured_as_zero(self):
         path = self.make_trace(delay=0)
         report = verify_pcm(path, self.proof, self.root/"zero-delay")
