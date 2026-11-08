@@ -159,6 +159,26 @@ class P95VirtualLoopback(unittest.TestCase):
                 self.assertIn("signed stereo PCM", " ".join(result["faults"]))
                 self.assertFalse(result["driver_execution_verified"])
 
+    def test_between_decimated_samples_polarity_corruption_fails(self):
+        # P104: old P103 signed match inspects just n % 32 == 0.
+        # Invert the other 31 of 32 captured frames while preserving
+        # exact energy, DC~0, every 256-frame RMS envelope and the
+        # emitted output reference. The verifier MUST reject it.
+        path = self.make_trace()
+        raw = path.read_bytes()
+        values = array("f")
+        values.frombytes(raw[24:])
+        delay = 3072
+        for n in range(delay, self.frames):
+            if (n - delay) % 32 != 0:
+                values[4*n + 2] = -values[4*n + 2]
+                values[4*n + 3] = -values[4*n + 3]
+        path.write_bytes(raw[:24] + values.tobytes())
+        result = verify_pcm(path, self.proof, self.root / "interstitial-polarity")
+        self.assertEqual(result["status"], "FAIL", result)
+        self.assertIn("full-resolution", " ".join(result["faults"]))
+        self.assertFalse(result["pcm_content_verified"])
+
     def test_sample_accurate_common_lag_not_multiple_of_256(self):
         # A valid ASIO return may have non-256-aligned endpoint latency.
         # The signed comparison must not falsely fail such a clean trace.
