@@ -168,3 +168,19 @@ $alteredManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $malicious
 $maliciousSha = (Get-FileHash -LiteralPath $maliciousManifest -Algorithm SHA256).Hash.ToLowerInvariant()
 Reject-Bundle 'parent-traversal-path' $maliciousManifest $maliciousSha
 Write-Host 'P110 traversal manifest rejected before native P74'
+
+# P112 negative proof: NTFS Alternate Data Streams do not change the
+# ordinary file content hash, yet may carry unapproved extra payloads.
+$originalHash = (Get-FileHash -LiteralPath $installedResource -Algorithm SHA256).Hash
+Set-Content -LiteralPath $installedResource -Stream 'P112Hidden' -Value 'P112-unapproved-side-content' -Encoding Ascii
+if ((Get-FileHash -LiteralPath $installedResource -Algorithm SHA256).Hash -cne $originalHash) {
+  throw 'P112 ADS fixture unexpectedly changed primary file bytes'
+}
+Reject-Bundle 'alternate-ntfs-stream' $sourceManifest $manifestSha
+$adsSourceManifest = Join-Path $WorkingRoot 'P112-should-not-create-manifest.json'
+& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Get-Vst3BundleManifest.ps1') -Bundle $dest -OutputFile $adsSourceManifest | Out-Null
+if ($LASTEXITCODE -eq 0 -or (Test-Path -LiteralPath $adsSourceManifest)) {
+  throw 'P112 source manifest generator accepted unapproved NTFS alternate stream'
+}
+Remove-Item -LiteralPath $installedResource -Stream 'P112Hidden' -ErrorAction Stop
+Write-Host 'P112 NTFS ADS mutation rejected by manifest generator and installed-bundle oracle'
