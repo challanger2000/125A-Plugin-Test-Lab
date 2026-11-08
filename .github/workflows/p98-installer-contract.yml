@@ -51,7 +51,10 @@ jobs:
           if (-not (Test-Path $good)) { throw 'Missing native fixture EXE' }
           $goodSha = (Get-FileHash $good -Algorithm SHA256).Hash
           & powershell -NoProfile -File tests/Invoke-InstallerInventory.ps1 -Installer $good -ExpectedSha256 $goodSha -OutputFolder (Join-Path $test 'positive') -ApproveExecution -TimeoutSeconds 30 -InventoryRoots (Join-Path $env:LOCALAPPDATA '125A_P98_Fixture')
-          if ($LASTEXITCODE -ne 0) { throw 'Actual harmless installer process failed' }
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content (Join-Path $test 'positive/INSTALLER-INVENTORY.json') -Raw -ErrorAction SilentlyContinue | Write-Output
+            throw 'Actual harmless installer process failed'
+          }
           $result = Get-Content (Join-Path $test 'positive/INSTALLER-INVENTORY.json') -Raw | ConvertFrom-Json
           if ($result.status -ne 'INSTALLER_EXECUTED_INVENTORY_CAPTURED' -or $result.exit_code -ne 0 -or $result.release_approved -ne $false) {
             throw 'Positive native Windows execution evidence invalid'
