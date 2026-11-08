@@ -98,6 +98,65 @@ jobs:
           '@ | python - 2>&1 | Tee-Object -FilePath audit-evidence/all-python-unittest.log
           $code = $LASTEXITCODE
           if ($code -ne 0) { throw 'P116 unit test modules FAIL; complete log and summary uploaded' }
+      - name: Execute independent standalone Python CLI oracle scripts with real process exit checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import json, os, pathlib, subprocess, sys
+          scripts = [
+              "test_audio_reference.py",
+              "test_awe_p48.py", "test_awe_p53.py",
+              "test_drumator_v15_acceptance.py",
+              "test_gui_change_regions.py", "test_gui_control_matrix.py",
+              "test_gui_exploration.py", "test_gui_export_contract.py",
+              "test_gui_roundtrip.py", "test_gui_workflow.py",
+              "test_instance_isolation.py", "test_live_state_replay.py",
+              "test_p32_stale_evidence.py", "test_p33_artifacts.py",
+              "test_p34_capture.py", "test_parameter_inventory.py",
+              "test_parameter_sweep.py", "test_parameter_text.py",
+              "test_playback_save_overlap.py", "test_plugin_quickcheck.py",
+              "test_product_acceptance.py", "test_product_dual_state.py",
+              "test_release_evidence_gate.py", "test_state_reload.py",
+              "test_user_report.py"
+          ]
+          # Do not silently count a standalone CLI test as executed if not
+          # explicitly listed here. The GUI BMP oracle requires actual
+          # native HWND capture and is separately exercised by P04.
+          full = set(x.name for x in pathlib.Path("tests").glob("test_*.py"))
+          unit = set(json.loads(pathlib.Path("audit-evidence/all-python-unittest-summary.json")
+                                .read_text())["unittest_modules"])
+          unit = set(x + ".py" for x in unit)
+          pending = full - unit - set(scripts)
+          if pending != {"test_native_gui_snapshot.py"}:
+              raise SystemExit("P116 uncatalogued standalone CLI: " + repr(sorted(pending)))
+          env = dict(os.environ, PYTHONOPTIMIZE="0")
+          if sys.flags.optimize:
+              raise SystemExit("P116 Python assert oracles must not run under -O")
+          rows = []
+          for script in scripts:
+              try:
+                  result = subprocess.run([sys.executable,"-B",str(pathlib.Path("tests")/script)],
+                                          capture_output=True,text=True,errors="replace",
+                                          timeout=120,env=env,check=False)
+                  row={"script":script,"returncode":result.returncode,
+                       "stdout_tail":result.stdout[-2400:],
+                       "stderr_tail":result.stderr[-2400:],
+                       "status":"PASS" if result.returncode==0 else "FAIL"}
+              except subprocess.TimeoutExpired as e:
+                  row={"script":script,"status":"FAIL","error":"120s timeout"}
+              rows.append(row)
+              print("P116 STANDALONE_ORACLE",script,row["status"],flush=True)
+          summary={"schema":"125a-p116-standalone-cli-v1","results":rows,
+                   "passed":sum(x["status"]=="PASS" for x in rows),
+                   "failed":sum(x["status"]=="FAIL" for x in rows),
+                   "native_gui_snapshot_bmp":"NOT RUN in this lane; P04 separately",
+                   "release_approved":False}
+          pathlib.Path("audit-evidence/standalone-python-cli-summary.json").write_text(
+              json.dumps(summary,indent=2)+"\\n",encoding="utf-8")
+          if summary["failed"]: raise SystemExit(1)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'P116 standalone CLI oracle regressions failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
