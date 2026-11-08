@@ -1,0 +1,50 @@
+name: P100 native Windows ASIO instrument MIDI callback host
+on:
+  push:
+    branches: [qa/p100-asio-instrument-midi]
+permissions:
+  contents: read
+jobs:
+  build-negative:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned reference ASIO headers for build only
+        shell: pwsh
+        run: |
+          git clone --no-checkout https://github.com/audiosdk/asio.git asio-sdk
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO SDK unavailable' }
+          git -C asio-sdk checkout --detach 496a0765b8bb9c26f764f22f9a9712a937177db2
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO SDK pin failed' }
+          if ((git -C asio-sdk rev-parse HEAD).Trim() -cne '496a0765b8bb9c26f764f22f9a9712a937177db2') { throw 'Unexpected SDK revision' }
+      - name: Build native ASIO host
+        shell: pwsh
+        run: |
+          cmake -S . -B build-p100 -G 'Visual Studio 17 2022' -A x64 "-DASIO_SDK_DIR=$env:GITHUB_WORKSPACE/asio-sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO host configure failure' }
+          cmake --build build-p100 --config Release --parallel 4 --target TestLabPhysicalASIO
+          if ($LASTEXITCODE -ne 0) { throw 'P100 native ASIO host build failure' }
+      - name: Fail-closed physical device negative and converter selftest
+        shell: pwsh
+        run: |
+          $exe=(Get-ChildItem build-p100 -Filter '125A_Test_Lab_Physical_ASIO.exe' -Recurse -File | Select-Object -First 1).FullName
+          if (-not $exe) { throw 'P100 executor missing' }
+          & $exe --sample-format-selftest
+          if ($LASTEXITCODE -ne 0) { throw 'P100 sample conversion selftest failed' }
+          New-Item -Force -ItemType Directory artifacts/P100 | Out-Null
+          $nonce='0123456789abcdef0123456789abcdef0123456789abcdef'
+          $args=@('--physical-asio-probe','--plugin','C:/does-not-exist/Plugin.vst3','--driver-name','Unregistered P100 Dummy','--driver-clsid','{00000000-0000-0000-0000-000000000000}','--rate','44100','--frames','256','--callbacks','500','--nonce',$nonce,'--out','artifacts/P100/must-not-exist.json','--midi-note','48','--midi-out','artifacts/P100/invalid-midi.json')
+          & $exe @args
+          if ($LASTEXITCODE -eq 0 -or (Test-Path 'artifacts/P100/must-not-exist.json') -or (Test-Path 'artifacts/P100/invalid-midi.json')) { throw 'False ASIO/MIDI PASS without a driver or actual plug-in' }
+          "P100_SOURCE_SHA=$env:GITHUB_SHA" | Set-Content artifacts/P100/provenance.txt
+          'REAL_ASIO_HARDWARE=NOT_RUN' | Add-Content artifacts/P100/provenance.txt
+          'REAL_MIDI_ASIO_PCM=NOT_RUN' | Add-Content artifacts/P100/provenance.txt
+          'RELEASE=NO_GO' | Add-Content artifacts/P100/provenance.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P100-Native-ASIO-MIDI-Host-Build-Only
+          path: artifacts/P100
+          if-no-files-found: warn
+          retention-days: 14

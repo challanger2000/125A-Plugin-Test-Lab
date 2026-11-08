@@ -11,6 +11,7 @@
 
 #include "public.sdk/source/vst/hosting/module.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
+#include "public.sdk/source/vst/hosting/eventlist.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
@@ -140,6 +141,7 @@ struct Processing {
     std::vector<AudioBusBuffers> inputBuses, outputBuses;
     ProcessContext context{};
     ProcessData data{};
+    EventList midiEvents{4}; // allocated before ASIO starts; no callback allocation
 
     void prepare(IComponent* component, int frames, double rate) {
         auto build = [&](BusDirection direction, std::vector<NativeBus>& buses,
@@ -185,6 +187,7 @@ struct Processing {
         data.inputs = inputBuses.empty() ? nullptr : inputBuses.data();
         data.outputs = outputBuses.empty() ? nullptr : outputBuses.data();
         data.processContext = &context;
+        data.inputEvents = &midiEvents;
     }
 };
 
@@ -323,6 +326,9 @@ struct Engine {
     std::array<ASIOSampleType, 2> sampleTypes{};
 #endif
     int frames{}, rate{};
+    int midiPitch=-1;
+    uint64_t emittedNoteOn=0, emittedNoteOff=0, audibleSamples=0;
+    float observedPeak=0.f;
     std::atomic<uint64_t> asioCallbacks{0};
     std::atomic<uint64_t> processedCallbacks{0};
     std::atomic<uint64_t> deadlineMisses{0};
@@ -383,7 +389,35 @@ struct Engine {
             p.context.projectTimeSamples = static_cast<int64>(framePosition);
             p.context.projectTimeMusic = static_cast<double>(framePosition) *
                                          120. / (60. * rate);
-            ok = processor->process(p.data) == kResultOk;
+            p.midiEvents.clear();
+            bool eventValid=true;
+            if(midiPitch>=0) {
+                const auto cb=framePosition/static_cast<uint64_t>(frames);
+                const auto cycle=std::max<uint64_t>(2u,static_cast<uint64_t>(rate/frames));
+                if(cb%cycle==0u) {
+                    Event on{};on.type=Event::kNoteOnEvent;on.sampleOffset=0;
+                    on.noteOn.channel=0;on.noteOn.pitch=static_cast<int16_t>(midiPitch);
+                    on.noteOn.velocity=100.f/127.f;on.noteOn.noteId=47;
+                    eventValid=p.midiEvents.addEvent(on)==kResultOk;
+                    ++emittedNoteOn;
+                } else if(cb%cycle==cycle/2u) {
+                    Event off{};off.type=Event::kNoteOffEvent;off.sampleOffset=0;
+                    off.noteOff.channel=0;off.noteOff.pitch=static_cast<int16_t>(midiPitch);
+                    off.noteOff.noteId=47;off.noteOff.velocity=0.f;
+                    eventValid=p.midiEvents.addEvent(off)==kResultOk;
+                    ++emittedNoteOff;
+                }
+            }
+            ok=eventValid&&processor->process(p.data)==kResultOk;
+            if(ok&&midiPitch>=0)for(size_t ch=0;ch<2;++ch) {
+                for(float v:p.outputs[0].channels[ch]) {
+                    if(!std::isfinite(v)){ok=false;break;}
+                    const float a=std::abs(v);
+                    if(a>1.e-6f)++audibleSamples;
+                    observedPeak=std::max(observedPeak,a);
+                }
+                if(!ok)break;
+            }
             if (ok) for (size_t ch = 0; ch < 2; ++ch) {
                 auto* target = asioBuffers[ch].buffers[index];
                 if (!target) { ok = false; break; }
@@ -451,6 +485,8 @@ struct Arguments {
 #endif
     std::string name, clsid, nonce;
     int rate{}, frames{}, callbacks{};
+    int midiPitch=-1;
+    std::filesystem::path midiOut;
 };
 Arguments parse(int argc, char** argv) {
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
@@ -477,6 +513,18 @@ Arguments parse(int argc, char** argv) {
     args.callbacks = parseInteger(requireArg(argc, argv, "--callbacks"), 200, 1000);
 #else
     args.callbacks = parseInteger(requireArg(argc, argv, "--callbacks"), 100, 200000);
+    for(int i=1;i<argc;++i)if(std::strcmp(argv[i],"--midi-note")==0) {
+        ensure(i+1<argc,"missing --midi-note value");
+        args.midiPitch=parseInteger(argv[++i],0,127);
+    }
+    for(int i=1;i<argc;++i)if(std::strcmp(argv[i],"--midi-out")==0) {
+        ensure(i+1<argc,"missing --midi-out value");
+        args.midiOut=std::filesystem::u8path(argv[++i]);
+    }
+    ensure((args.midiPitch>=0)==!args.midiOut.empty(),
+           "MIDI instrumentation requires both --midi-note and --midi-out");
+    ensure(args.midiOut.empty()||args.midiOut!=args.output,
+           "ASIO and MIDI evidence paths must be distinct");
 #endif
     ensure(args.rate == 44100 || args.rate == 48000 || args.rate == 96000,
            "unsupported ASIO sample rate");
@@ -491,6 +539,37 @@ Arguments parse(int argc, char** argv) {
            args.plugin.extension() == ".vst3", "physical test requires exact .vst3 DLL");
     return args;
 }
+
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+void writeMidiProof(const Arguments& a,const Engine& e,
+                    const std::string& moduleHash,const std::string& exeHash) {
+    if(a.midiPitch<0)return;
+    ensure(e.emittedNoteOn>=1&&e.emittedNoteOff>=1&&
+           e.audibleSamples>=100&&e.observedPeak>0.0001f,
+           "ASIO-instrument callbacks did not render independently observed audio");
+    std::ofstream out(a.midiOut,std::ios::binary|std::ios::trunc);
+    ensure(out.good(),"Cannot open independent MIDI/PCM proof");
+    out<<"{\n"
+       <<"  \"schema\": \"125a-physical-asio-instrument-midi-v1\",\n"
+       <<"  \"nonce\": \""<<a.nonce<<"\",\n"
+       <<"  \"product_sha256\": \""<<moduleHash<<"\",\n"
+       <<"  \"executor_sha256\": \""<<exeHash<<"\",\n"
+       <<"  \"asio_driver_name\": \""<<escapeJSON(a.name)<<"\",\n"
+       <<"  \"sample_rate\": "<<a.rate<<",\n"
+       <<"  \"buffer_frames\": "<<a.frames<<",\n"
+       <<"  \"midi_note\": "<<a.midiPitch<<",\n"
+       <<"  \"note_ons\": "<<e.emittedNoteOn<<",\n"
+       <<"  \"note_offs\": "<<e.emittedNoteOff<<",\n"
+       <<"  \"nonzero_pcm_samples\": "<<e.audibleSamples<<",\n"
+       <<"  \"peak_before_safety_ceiling\": "<<e.observedPeak<<",\n"
+       <<"  \"physical_asio_callback_source\": true,\n"
+       <<"  \"daw_session_verified\": false,\n"
+       <<"  \"release_approved\": false\n"
+       <<"}\n";
+    out.flush();
+    ensure(out.good(),"Independent MIDI/PCM proof write failed");
+}
+#endif
 
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
 void writeLoopbackTrace(const Arguments& args, const Engine& engine) {
@@ -630,6 +709,7 @@ int run(const Arguments& a) {
                 engine.processing = &audio;
                 engine.frames = a.frames;
                 engine.rate = a.rate;
+                engine.midiPitch = a.midiPitch;
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
                 engine.maxRecordedFrames =
                     static_cast<uint64_t>(a.callbacks + 32) * a.frames;
@@ -721,6 +801,9 @@ int run(const Arguments& a) {
                        "ASIO plugin/executor changed during real callback processing");
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
                 writeLoopbackTrace(a, engine);
+#endif
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                writeMidiProof(a,engine,moduleHash,executorHash);
 #endif
                 proof(a, engine, moduleHash, executorHash);
             } catch (...) {
