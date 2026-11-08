@@ -56,7 +56,9 @@ function Get-P185Analysis {
   Assert-P185 ($ExpectedHostHash -cmatch '^[0-9a-f]{64}$' -and $ExpectedProductHash -cmatch '^[0-9a-f]{64}$' -and $a.executor_sha256 -ceq $ExpectedHostHash -and $a.product_sha256 -ceq $ExpectedProductHash -and $a.binary_identity_after -eq $true) 'SHA_MISMATCH'
   Assert-P185 ($a.driver_clsid -ceq $ExpectedDriverClsid) 'DRIVER_MISMATCH'
   Assert-P185 ($c.child_pid -gt 0 -and $c.child_pid -eq $a.pid -and -not $c.timeout) 'PID_MISMATCH_OR_TIMEOUT'
-  Assert-P185 ($c.marker_enable -eq 0 -and $c.decode_errors -eq 0 -and $c.cswitches -gt 0) 'ETW_NOT_AVAILABLE_OR_UNDECODABLE'
+  Assert-P185 ($c.marker_enable -eq 0) 'ETW_MARKER_ENABLE_FAILED'
+  Assert-P185 ($c.decode_errors -eq 0) 'ETW_DECODE_ERRORS'
+  Assert-P185 ($c.cswitches -gt 0) 'ETW_ZERO_CONTEXT_SWITCHES'
   foreach($t in @($c.kernel,$c.user)) {
     Assert-P185 ($t.start -eq 0 -and $t.stop -eq 0 -and $t.open -eq 0 -and $t.process -eq 0) 'ETW_NOT_AVAILABLE'
     Assert-P185 ($t.events_lost -eq 0 -and $t.buffers_lost -eq 0 -and $t.session_events_lost -eq 0 -and $t.session_buffers_lost -eq 0) 'ETW_LOSS'
@@ -131,3 +133,5 @@ function Get-P185Analysis {
     limitation='Scheduled time includes host, driver and interrupt work; it is not isolated DSP CPU time. Provider proximity is not causation. Pre-armed callbacks are unobserved. No warmup exclusion.'
   }
 }
+
+. (Join-Path $PSScriptRoot 'P185-DIAGNOSTICS.ps1')

@@ -1,3 +1,14 @@
+# P186 current work — precise ETW failures and truthful reference progress
+
+Branch `fix/p186-etw-diagnostics`, baseline `1425a5d86aaf228f16e03de55df182f38d990c32`.
+[AWE issue #92](https://github.com/challanger2000/125A-AWE-Synthesizer/issues/92),
+[scope, original-defect reproduction and evidence](docs/P186-ETW-DIAGNOSTICS.md).
+The owner has now attempted P185; its old default physical NOT_RUN is not proof
+of no callbacks. Owner capture.json/asio.json are still NOT_PROVIDED here.
+P186 diagnoses existing files without a new hardware test. Native Windows 11
+adaptation is deferred until actual counters are known; native src/CMake unchanged.
+Windows P186 acceptance pending. Hardware cause INCONCLUSIVE, release NO_GO.
+
 # P185 current work — independent native ETW / ASIO diagnostics
 
 **Branch:** `feature/p185-independent-etw-asio`, baseline

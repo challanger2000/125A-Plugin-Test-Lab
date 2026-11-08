@@ -1,0 +1,105 @@
+name: P186 evidence state and precise ETW diagnostics Windows acceptance
+on:
+  push:
+    branches: [fix/p186-etw-diagnostics]
+permissions:
+  contents: read
+  pull-requests: write
+concurrency:
+  group: p186-lab-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve all native decoding and ASIO assumptions pending owner raw data
+        shell: pwsh
+        run: |
+          git diff --exit-code 59762ae67a5878f4bade2e000672497acde4f763 -- src CMakeLists.txt
+          if ($LASTEXITCODE -ne 0) { throw 'P186 must not adapt native schemas before owner counters are known' }
+      - name: Exact external ASIO SDK
+        shell: pwsh
+        run: |
+          git clone --no-checkout https://github.com/audiosdk/asio.git asio-sdk
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO clone failed' }
+          git -C asio-sdk checkout --detach 496a0765b8bb9c26f764f22f9a9712a937177db2
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO pin failed' }
+      - name: Build all Test Lab targets on Windows x64
+        shell: pwsh
+        run: |
+          cmake -S . -B build-p185 -G 'Visual Studio 17 2022' -A x64 "-DASIO_SDK_DIR=$env:GITHUB_WORKSPACE/asio-sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'Configure failed' }
+          if ((git -C build-p185/_deps/vst3sdk-src rev-parse HEAD).Trim() -cne '3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96') { throw 'VST3 SDK mismatch' }
+          cmake --build build-p185 --config Release --parallel 4 2>&1 | Tee-Object build-log.txt
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content build-log.txt | Select-String 'error [A-Z]+[0-9]+|fatal error' | Select-Object -First 12 | ForEach-Object { Write-Host "::error::$($_.Line)" }
+            throw 'Native build failed'
+          }
+      - name: Entire CTest and Python regressions
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force evidence | Out-Null
+          ctest --test-dir build-p185 -C Release --output-on-failure 2>&1 | Tee-Object evidence/ctest.txt
+          if ($LASTEXITCODE -ne 0) { throw 'CTest regression failed' }
+          python tests/p185_python_regression.py 2>&1 | Tee-Object evidence/python-tests.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Python regression failed' }
+      - name: Existing real VST3 PCM and GUI snapshot regressions
+        shell: pwsh
+        run: |
+          $gui=(Get-ChildItem build-p185 -Recurse -File -Filter 125A_Test_Lab_GUI.exe).FullName
+          $fixture=(Get-ChildItem build-p185 -Recurse -Directory -Filter 125A_QA_GUI_Click.vst3).FullName
+          & $gui --snapshot-editor $fixture evidence/editor.bmp
+          if ($LASTEXITCODE -ne 0) { throw 'Actual GUI snapshot failed' }
+          python tests/test_native_gui_snapshot.py evidence/editor.bmp
+          if ($LASTEXITCODE -ne 0) { throw 'Native GUI oracle failed' }
+          $hostExe=(Get-ChildItem build-p185 -Recurse -File -Filter 125A_Test_Lab_Host.exe).FullName
+          $good=(Get-ChildItem build-p185 -Recurse -Directory -Filter 125A_QA_SignalGood.vst3).FullName
+          & $hostExe --render $good evidence/good.wav
+          if ($LASTEXITCODE -ne 0) { throw 'Real VST3 render failed' }
+          python tests/verify_render.py evidence/good.wav
+          if ($LASTEXITCODE -ne 0) { throw 'Independent PCM oracle failed' }
+      - name: Actual native ETW and ASIO host controls in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          try { & ./tests/p185_windows.ps1 -Build build-p185 -Evidence evidence } catch { Write-Host "::error::P185_NATIVE $($_.Exception.Message) $($_.ScriptStackTrace)"; throw }
+          if ($LASTEXITCODE -ne 0) { throw 'P185 actual native controls failed' }
+      - name: P186 original-defect reproduction and precise evidence-state adversarial tests
+        shell: powershell
+        run: |
+          try { & ./tests/p186_reporting.ps1 -Evidence evidence } catch { Write-Host "::error::P186_REPORTING $($_.Exception.Message) $($_.ScriptStackTrace)"; throw }
+          $cases=Get-Content evidence/P186-REPORTING-TESTS.json -Raw | ConvertFrom-Json
+          if ($cases.Count -ne 42 -or @($cases | Where-Object {$_.status -cne 'PASS' -or $_.hardware -cne 'NOT_RUN'}).Count) { throw 'P186 evidence-state controls incomplete' }
+      - name: Actual offline-only ZIP and Windows BAT failure paths
+        shell: powershell
+        run: |
+          try {
+            $p=Get-Content evidence/synthetic-profile.json -Raw | ConvertFrom-Json
+            @{schema='125a-p186-source-profiles-v1';profiles=@($p)} | ConvertTo-Json -Depth 8 | Set-Content evidence/synthetic-profiles.json
+            & ./tools/p186/Build-P186-Package.ps1 -Destination package -ProfilePath evidence/synthetic-profiles.json -TestlabSource $env:GITHUB_SHA
+            Compress-Archive -Path package/* -DestinationPath P186-SYNTHETIC-CI-FIXTURE.zip
+            Expand-Archive P186-SYNTHETIC-CI-FIXTURE.zip 'P186 BAT path with spaces'
+            & ./tests/p186_package.ps1 -Package 'P186 BAT path with spaces' -Raw 'evidence/legacy/synthetic-never-hardware' -Evidence evidence
+            if ($LASTEXITCODE -ne 0) { throw 'P186 actual BAT regression failed' }
+            Copy-Item P186-SYNTHETIC-CI-FIXTURE.zip evidence/
+            @{source=$env:GITHUB_SHA;windows_build='PASS';reporting_cases=42;new_hardware_test='NOT_RUN';owner_raw='NOT_PROVIDED';release_approved=$false} | ConvertTo-Json | Set-Content evidence/P186-CI.json
+            Write-Host "::notice::P186_WINDOWS source=$env:GITHUB_SHA reporting_cases=42 actual_BAT=PASS owner_raw=NOT_PROVIDED new_hardware=NOT_RUN release=NO_GO"
+            exit 0
+          } catch { Write-Host "::error::P186_PACKAGE $($_.Exception.Message) $($_.ScriptStackTrace)"; throw }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        id: evidence
+        with:
+          name: P186-TestLab-Windows-Evidence
+          path: |
+            evidence/*.json
+            evidence/*.txt
+            evidence/P186-SYNTHETIC-CI-FIXTURE.zip
+            evidence/legacy/P185-ADVERSARIAL.json
+            evidence/native-etw-local/*.json
+            evidence/native-etw-local/*.csv
+          if-no-files-found: error
+          retention-days: 30

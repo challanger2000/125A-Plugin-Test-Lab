@@ -86,12 +86,12 @@ try {
   $raw=Join-Path $out 'RAW-LOCAL-ONLY'
   $argv=@('--physical-asio-probe','--plugin',$plugin,'--driver-name',$selected.Name,'--driver-clsid',$selected.CLSID,'--rate','44100','--frames','512','--callbacks','1000','--nonce',$nonce,'--out',(Join-Path $raw 'strict-proof.json'),'--midi-note','48','--midi-out',(Join-Path $raw 'midi.json'),'--diagnostic-out',(Join-Path $raw 'diagnostic.json'),'--timing-trace-out',(Join-Path $raw 'p181.json'),'--p185-out',(Join-Path $raw 'asio.json'))
   $rc=Invoke-P185Native $etw (@('--capture',$raw,$nonce,'--',$hostExe)+$argv) (Join-Path $out 'capture.log')
-  if(-not (Test-Path (Join-Path $raw 'capture.json'))){throw 'ETW_CAPTURE_FAILED'}
-  $capture=Read-P185Json (Join-Path $raw 'capture.json')
-  $report.etw_loss=@{kernel_events=$capture.kernel.events_lost;kernel_buffers=$capture.kernel.buffers_lost;kernel_session_events=$capture.kernel.session_events_lost;kernel_session_buffers=$capture.kernel.session_buffers_lost;provider_events=$capture.user.events_lost;provider_buffers=$capture.user.buffers_lost;provider_session_events=$capture.user.session_events_lost;provider_session_buffers=$capture.user.session_buffers_lost}
-  if($capture.kernel.start -ne 0 -or $capture.user.start -ne 0 -or $capture.marker_enable -ne 0){throw 'ETW_NOT_AVAILABLE'}
-  if(-not (Test-Path (Join-Path $raw 'asio.json'))){throw 'ASIO_OBSERVATION_NOT_AVAILABLE'}
-  $analysis=Get-P185Analysis $raw $nonce $manifest.files.'125A_Test_Lab_Physical_ASIO.exe' $manifest.files.'125A_QA_ASIO_Reference_MIDI.vst3' $selected.CLSID $manifest.testlab_source
+  $profile=[PSCustomObject]@{source_sha=$manifest.testlab_source;executor_sha256=$manifest.files.'125A_Test_Lab_Physical_ASIO.exe';product_sha256=$manifest.files.'125A_QA_ASIO_Reference_MIDI.vst3';driver_clsid=$selected.CLSID}
+  $assessment=Get-P186Assessment -Directory $raw -Profile $profile -ExpectedNonce $nonce -Correlate
+  foreach($entry in $assessment.report.GetEnumerator()){$report[$entry.Key]=$entry.Value}
+  Save-P185 # Preserve attempt/reference evidence before any later failure path.
+  $analysis=$assessment.analysis
+  if($null -eq $analysis){Write-Host ('P186 Diagnose: '+$report.error_code+'; '+$report.physical_asio);exit 3}
   $analysis | ConvertTo-Json -Depth 15 | Set-Content -LiteralPath (Join-Path $out 'P185-AGGREGATE-LOCAL.json') -Encoding UTF8
   $report.status='INCONCLUSIVE';$report.physical_asio='OBSERVED_REFERENCE_ONLY';$report.strict_full_run=$analysis.strict_full_run
   $report.correlation=$analysis.correlation;$report.callbacks=$analysis.callbacks;$report.sample_rate=$analysis.sample_rate;$report.frames=$analysis.frames

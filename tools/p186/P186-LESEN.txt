@@ -1,0 +1,29 @@
+P186 - vorhandene P185-Daten auswerten, KEIN neuer Hardwaretest
+
+ZIP vollstaendig in einen beschreibbaren Ordner entpacken.
+P186-EXISTING-RUN.bat starten (keine Administratorrechte erforderlich).
+Den Ordner des bereits gespeicherten P185-LOCAL-Laufs angeben; alternativ dessen
+RAW-LOCAL-ONLY-Ordner. Vor allem capture.json und asio.json werden benoetigt.
+Es wird KEIN ASIO-Geraet gestartet, KEIN Ton gespielt und KEIN ETW neu aufgezeichnet.
+Die Originaldateien werden nur gelesen. Keine ROM-/SF2-/ETL-Abfrage, keine Installation.
+
+Ergebnis: P186-RESULT-.../P186-ACCEPTANCE.json.
+Diese kompakte Datei unterscheidet Decoderfehler, fehlende Kontextwechsel und
+Start-/Rechtefehler, ohne einen gestarteten Referenzversuch als NOT_RUN zu verlieren.
+Die ASIO-Beobachtung wird vor dem hoeheren Nachweis der ETW-Korrelation geprueft.
+Nicht zusammenpassende PID/Nonce/Binaeridentitaeten werden nicht als bestaetigte
+Callbacks ausgegeben. Keine Audio-, Echtzeit- oder Releasefreigabe.
+
+Nicht bekannte Quell-/Binaerstaende werden abgewiesen. Dieses AWE-Paket enthaelt
+nur das gepruefte Quellprofil des originalen P185-Artefakts. Die acht Verlustzaehler
+sind kein Beweis fuer fehlerfreie Decodierung. Ursache bleibt INCONCLUSIVE.
+
+ETL-Dateien und Originalmedien bleiben lokal; es gibt keinen automatischen Upload.
+Die vorhandenen CSV-Dateien koennen lokal fuer die bisherige strenge Korrelation
+verwendet werden. Fehlen sie, bleibt diese Korrelation NOT_VERIFIED.
+Nur bei Bedarf capture.json und asio.json fuer weitere Diagnose bereitstellen;
+keine ETL-, ROM- oder SF2-Dateien ungefragt weitergeben.
+
+Optional nur Paketpruefung: P186-EXISTING-RUN.bat -CheckOnly
+Automatisierbar: P186-EXISTING-RUN.bat -ExistingRun "voller alter P185-LOCAL-Pfad"
+Rueckgabecode 3 bedeutet Diagnose/INCONCLUSIVE, niemals eine Releasefreigabe.
