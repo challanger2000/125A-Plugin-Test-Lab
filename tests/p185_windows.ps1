@@ -34,6 +34,8 @@ for($i=0;$i -lt 2;$i++){
   $m=$marks[$i];$b=$w.markers[$i]
   Assert-P185 ($b.result -eq 0 -and [long]$m.pid -eq $w.pid -and [long]$m.tid -eq $w.tid -and $m.nonce -ceq $nonce -and [long]$m.sequence -eq $i+1 -and [long]$m.qpc -ge $b.before -and [long]$m.qpc -le $b.after) 'ACTUAL_QPC_BRACKETS_FAILED'
 }
+$threadLife=@(Import-Csv (Join-Path $native 'threads.csv'))
+Assert-P185 (@($threadLife | Where-Object {[long]$_.pid -eq $w.pid -and [int]$_.opcode -eq 2 -and [long]$_.qpc -ge $w.markers[1].after}).Count -gt 0) 'ACTUAL_KERNEL_END_COVERAGE_MISSING'
 $switches=@(Import-Csv (Join-Path $native 'cswitch.csv'))
 $sleeps=@($switches | Where-Object {[long]$_.old_tid -eq $w.tid -and [int]$_.old_state -eq 5 -and [int]$_.wait_reason -eq 4})
 Assert-P185 ($sleeps.Count -gt 0) 'ACTUAL_SLEEP_WAIT_NOT_SEEN'

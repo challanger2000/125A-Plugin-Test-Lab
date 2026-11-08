@@ -79,6 +79,7 @@ function Get-P185Analysis {
   $switches=@(Import-Csv -LiteralPath (Join-Path $Directory 'cswitch.csv'))
   Assert-P185 ($switches.Count -eq $c.cswitches) 'SWITCH_COUNT_MISMATCH'
   $threads=@(Import-Csv -LiteralPath (Join-Path $Directory 'threads.csv'))
+  Assert-P185 (@($threads | Where-Object {[long]$_.pid -eq $a.pid -and [int]$_.opcode -eq 2 -and [long]$_.qpc -ge $a.markers[1].after}).Count -gt 0) 'KERNEL_END_COVERAGE_MISSING'
   $ready=@(Import-Csv -LiteralPath (Join-Path $Directory 'ready.csv'))
   $activity=@(Import-Csv -LiteralPath (Join-Path $Directory 'activity.csv'))
   $bySwitch=@{};$byThread=@{};$byReady=@{}

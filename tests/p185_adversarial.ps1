@@ -15,7 +15,7 @@ function Reset-Fixture {
   $baseC | Set-Content (Join-Path $dir 'capture.json');$baseA | Set-Content (Join-Path $dir 'asio.json')
   "qpc,pid,tid,nonce,sequence`n20,70,40,$nonce,1`n2000020,70,40,$nonce,2" | Set-Content (Join-Path $dir 'markers.csv')
   "qpc,cpu,old_tid,new_tid,old_state,wait_reason`n1000,0,0,42,1,0" | Set-Content (Join-Path $dir 'cswitch.csv')
-  "qpc,opcode,pid,tid`n900,1,70,42" | Set-Content (Join-Path $dir 'threads.csv')
+  "qpc,opcode,pid,tid`n900,1,70,42`n2100000,2,70,42" | Set-Content (Join-Path $dir 'threads.csv')
   'qpc,tid,cpu' | Set-Content (Join-Path $dir 'ready.csv')
   'qpc,cpu,provider,event_id,opcode,initial_time_valid,initial_time' | Set-Content (Join-Path $dir 'activity.csv')
 }
@@ -43,8 +43,9 @@ Reject 'binary changed during audio' {$a.binary_identity_after=$false} 'SHA_MISM
 Reject 'driver' {$a.driver_clsid='wrong'} 'DRIVER_MISMATCH'
 Reject 'pid' {$c.child_pid=71} 'PID_MISMATCH_OR_TIMEOUT'
 Reject 'timeout' {$c.timeout=$true} 'PID_MISMATCH_OR_TIMEOUT'
+Reject 'truncated kernel tail' {"qpc,opcode,pid,tid`n900,1,70,42" | Set-Content (Join-Path $dir 'threads.csv')} 'KERNEL_END_COVERAGE_MISSING'
 Reject 'wrong tid' {$a.callbacks[0].tid=99} 'TID_OWNERSHIP_MISMATCH'
-Reject 'wrong owner' {"qpc,opcode,pid,tid`n900,1,71,42" | Set-Content (Join-Path $dir 'threads.csv')} 'TID_OWNERSHIP_MISMATCH'
+Reject 'wrong owner' {"qpc,opcode,pid,tid`n900,1,71,42`n2100000,2,70,42" | Set-Content (Join-Path $dir 'threads.csv')} 'TID_OWNERSHIP_MISMATCH'
 Reject 'thread terminated' {Add-Content (Join-Path $dir 'threads.csv') '99000,2,70,42'} 'TID_OWNERSHIP_MISMATCH'
 Reject 'thread reused' {Add-Content (Join-Path $dir 'threads.csv') '100050,1,71,42'} 'TID_REUSE_DURING_CALLBACK'
 Reject 'qpc frequency' {$c.kernel.frequency=1000001} 'QPC_CLOCK_MISMATCH'
