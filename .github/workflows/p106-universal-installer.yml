@@ -11,6 +11,7 @@ on:
       - 'tests/Invoke-InstalledVst3QA.ps1'
       - 'tests/Test-InstalledVst3Handoff.ps1'
       - 'tests/Get-Vst3BundleManifest.ps1'
+      - 'tests/Test-Vst3BundleManifest.ps1'
       - 'docs/P106-UNIVERSAL-WINDOWS-INSTALLER.md'
       - '.github/workflows/p106-universal-installer.yml'
   workflow_dispatch:
@@ -31,7 +32,8 @@ jobs:
             'tests/Test-UniversalInstaller.ps1',
             'tests/Test-UniversalMSI.ps1',
             'tests/Test-InstalledVst3Handoff.ps1',
-            'tests/Get-Vst3BundleManifest.ps1'
+            'tests/Get-Vst3BundleManifest.ps1',
+            'tests/Test-Vst3BundleManifest.ps1'
           )
           foreach ($file in $files) {
             $tokens = $null
@@ -41,7 +43,7 @@ jobs:
               throw "P106 PowerShell syntax FAIL in $file : $($errors -join '; ')"
             }
           }
-          Write-Host 'P106 all 6 PowerShell entrypoints parsed without syntax errors'
+          Write-Host 'P106 all 7 PowerShell entrypoints parsed without syntax errors'
       - name: Execute real harmless Windows EXE and adversarial refusal tests
         shell: pwsh
         run: |
