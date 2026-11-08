@@ -42,7 +42,7 @@ A timeout attempts to kill the main installer process; independently spawned chi
 
 `tests/Test-UniversalInstaller.ps1` builds a harmless real C# EXE into `RUNNER_TEMP`, then executes it through the production PowerShell adapter. It checks: inspection without execution; wrong input SHA refusal; unsigned policy refusal; absent consent refusal; actual process launch with exact installed marker bytes; stale marker rejection; zero process exit with no installation artifact rejection; and real nonzero exit rejection.
 
-The GitHub-hosted Windows regression **never installs arbitrary third-party vendor binaries**, and it does not test a real MSI transaction, admin/UAC interaction, registry writes, restart, bundled driver or product VST3. Treat those as explicit `NOT RUN` gates until a trusted source and isolated environment are available.
+The GitHub-hosted Windows regression **never installs arbitrary third-party vendor binaries**. It builds a harmless real per-user MSI using pinned WiX 6.0.2 and runs the genuine Windows Installer (`msiexec`) transaction. Four additional controls verify MSI inspection, execution consent, exact newly-installed bytes and stale-file rejection. It does **not** establish a manufacturer's MSI compatibility, UAC interaction, reboot, device drivers or real customer-VST3 installer behavior; those remain `NOT RUN`.
 
 ## P106 minimum evidence matrix
 
@@ -51,9 +51,25 @@ The GitHub-hosted Windows regression **never installs arbitrary third-party vend
 | Exact EXE bytes, signature and consent enforced | Source-built EXE negative controls | NOT RUN |
 | Installer process launched, exit recorded | Actual harmless EXE | NOT RUN |
 | Declared output bytes verified; no false zero-exit PASS | Actual marker and no-op negative | NOT RUN |
-| MSI installation through msiexec | Source reviewed only | NOT RUN |
+| MSI installation through msiexec | Genuine inert per-user MSI installation; four Windows tests | Vendor MSI NOT RUN |
 | Registry / installed VST3 inventory | API executes on Windows fixture | Actual vendor effects NOT RUN |
-| Installed VST3 load/GUI/DSP/state | Separate P74/P75 bridge documented | NOT RUN |
+| Installed VST3 load/GUI/DSP/state | P106 → P74 genuine host handoff implemented; requires successful Windows execution | Customer plugin NOT RUN |
 | Real user DAW or hardware install | None | NOT RUN |
 
 **No FULL AUDIT, QA PASS, product release or general arbitrary-installer compatibility claim.**
+
+## P106 genuine install → existing universal VST3 QA
+
+`tests/Invoke-InstalledVst3QA.ps1` is the fail-closed handoff. It accepts only a **successful P106 Run report** with verified installed artifact SHA-256, the exact installed module path, the actual Windows VST3 directory-bundle layout, and independent expected module hash. Only then does it invoke the existing `tests/run_universal_qa.py` P74 runner, using supplied real native GUI/audio/state hosts. It verifies the P74 result's exact module hash, required native coverage and no-release-approval flag, then checks the installed DLL hash once more after testing. Without audio and stress hosts it only establishes a read-only VST3 inventory, not audio functionality.
+
+On an isolated Windows build machine containing the native P74 hosts and Python provided by the CI runner:
+
+```powershell
+powershell.exe -NoProfile -File tests\Invoke-InstalledVst3QA.ps1 -InstallationReport 'C:\QA\InstallEvidence\P106-INSTALLER-RESULT.json' -Vst3Bundle 'C:\QA\Installed\Plugin.vst3' -InstalledModule 'C:\QA\Installed\Plugin.vst3\Contents\x86_64-win\Plugin.vst3' -ExpectedModuleSha256 '<64-hex-output-sha256>' -GuiHost 'C:\QA\125A_Test_Lab_GUI.exe' -AudioHost 'C:\QA\125A_Test_Lab_Host.exe' -StressHost 'C:\QA\125A_Test_Lab_State_Stress.exe' -PythonExecutable 'C:\Path\To\python.exe' -RunTechnicalBaseline -OutputFolder 'C:\QA\NativeAfterInstall'
+```
+
+No Python is needed on the **owner's PC** when QA is executed entirely by GitHub Windows Actions; the connected P74 runner itself uses Python on the test runner.
+
+`tests/Test-InstalledVst3Handoff.ps1` compiles a **real Windows VST3 with genuine audio and project-state paths** (the existing source-built `QAStateMode0` fixture), invokes the harmless P106 installer to copy the *entire bundle* to a fresh location, then runs **P74 against that installed copy, not the build output**. The final case deliberately supplies an incorrect installed-module SHA and requires rejection **before** P74 starts.
+
+**Scope:** Installer controls + actual P74 tests of the source-built plugin can demonstrate the generic infrastructure. A customer/product installer, every GUI control, licensed DAW, actual ASIO hardware and commercial release are NOT RUN. A standalone JSON installation report is an auditable handoff, not a tamper-proof certificate against an adversary able to edit files on the local machine. Run the entire chain only in a trusted, disposable Windows test environment.
