@@ -34,20 +34,21 @@ jobs:
           Write-Output 'P98 fail-closed negative checks passed; NO installer executed.'
           # Build a harmless source-defined executable: proves actual Windows process execution
           # and that a newly installed file is captured in the inventory.
-          $cs = @'
+          $project = Join-Path $test 'harmless-app'
+          dotnet new console --framework net8.0 -o $project --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create harmless fixture project' }
+          $source = @'
           using System;
           using System.IO;
-          public class HarmlessInstaller {
-            public static int Main(string[] args) {
-              var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "125A_P98_Fixture");
-              Directory.CreateDirectory(dir);
-              File.WriteAllText(Path.Combine(dir, "fixture-installed.txt"), "p98-fixture-ok");
-              return 0;
-            }
-          }
+          var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "125A_P98_Fixture");
+          Directory.CreateDirectory(dir);
+          File.WriteAllText(Path.Combine(dir, "fixture-installed.txt"), "p98-fixture-ok");
           '@
-          Add-Type -TypeDefinition $cs -OutputAssembly (Join-Path $test 'harmless.exe') -OutputType ConsoleApplication
-          $good = Join-Path $test 'harmless.exe'
+          Set-Content -LiteralPath (Join-Path $project 'Program.cs') -Value $source -Encoding UTF8
+          dotnet publish $project -c Release -r win-x64 --self-contained false -p:UseAppHost=true -o (Join-Path $test 'published')
+          if ($LASTEXITCODE -ne 0) { throw 'Could not build harmless native Windows process fixture' }
+          $good = Join-Path $test 'published/harmless-app.exe'
+          if (-not (Test-Path $good)) { throw 'Missing native fixture EXE' }
           $goodSha = (Get-FileHash $good -Algorithm SHA256).Hash
           & powershell -NoProfile -File tests/Invoke-InstallerInventory.ps1 -Installer $good -ExpectedSha256 $goodSha -OutputFolder (Join-Path $test 'positive') -ApproveExecution -TimeoutSeconds 30
           if ($LASTEXITCODE -ne 0) { throw 'Actual harmless installer process failed' }
