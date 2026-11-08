@@ -173,6 +173,20 @@ class BatchTests(unittest.TestCase):
                 "fresh-instance repetitions after explicit repeat opt-in")
             self.assertEqual(reported["failed_plugins"],1)
 
+            def genuine_repeatable_child(cmd, **kwargs):
+                result=forged_not_run(cmd,**kwargs)
+                out_path=Path(cmd[cmd.index("--out")+1])/"UNIVERSAL-QA-RESULT.json"
+                evidence=json.loads(out_path.read_text(encoding="utf-8"))
+                evidence["unknown_gui_repeatability"]="REPRODUCIBLE_OBSERVATIONS"
+                evidence["unknown_gui_completed_repetitions"]=2
+                out_path.write_text(json.dumps(evidence),encoding="utf-8")
+                return result
+            good=run(items,gui,root/"repeatability-real",
+                     runner=genuine_repeatable_child)
+            self.assertEqual(good["status"],
+                "BATCH_EXPLORATORY_OBSERVATIONS_COMPLETE")
+            self.assertEqual(good["passed_plugins"],1)
+
     def test_forged_success_or_corrupted_module_cannot_pass(self):
         with tempfile.TemporaryDirectory() as t:
             root=Path(t)
