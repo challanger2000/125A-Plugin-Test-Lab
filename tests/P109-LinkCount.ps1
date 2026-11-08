@@ -51,3 +51,21 @@ function Assert-P110SingleLink([string]$file) {
     throw 'P110 source or installed VST3 contains an NTFS hard-linked resource'
   }
 }
+
+# P112: A primary-file SHA-256 ignores NTFS Alternate Data Streams (ADS).
+# Reject ALL named streams; only the unnamed default ':$DATA' is permitted.
+# This runs in Windows PowerShell 5.1 using the NTFS FileSystem provider.
+function Assert-P112NoAlternateStreams([string]$file) {
+  $streams = @(Get-Item -LiteralPath $file -Stream * -ErrorAction Stop)
+  if ($streams.Count -lt 1) { throw 'P112 could not enumerate NTFS streams; fail closed' }
+  $defaults = 0
+  foreach ($stream in $streams) {
+    $name = [string]$stream.Stream
+    if ($name -eq ':$DATA') {
+      $defaults++
+    } else {
+      throw ('P112 unapproved NTFS alternate data stream found: ' + $name)
+    }
+  }
+  if ($defaults -ne 1) { throw 'P112 unexpected or missing default NTFS stream' }
+}
