@@ -237,6 +237,10 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                     cmd += ["--dense-gui-grid", str(entry["dense_gui_grid"])]
                 if entry.get("crosscheck_abi_gui", False):
                     cmd += ["--crosscheck-abi-gui"]
+            # P119: each batch may reuse its output root. An unchanged
+            # successful JSON from a PRIOR child run is never new evidence.
+            result_path = folder / "UNIVERSAL-QA-RESULT.json"
+            result_path.unlink(missing_ok=True)
             process = runner(cmd, capture_output=True, text=True,
                              errors="replace", check=False,
                              timeout=per_plugin_timeout)
