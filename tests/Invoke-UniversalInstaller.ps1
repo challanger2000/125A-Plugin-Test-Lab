@@ -116,7 +116,9 @@ try {
     $program = $path
     $arguments = $InstallerArguments
   }
-  $process = Start-Process -FilePath $program -ArgumentList $arguments -WorkingDirectory ([IO.Path]::GetDirectoryName($path)) -PassThru -ErrorAction Stop
+  $startOptions = @{ FilePath = $program; WorkingDirectory = [IO.Path]::GetDirectoryName($path); PassThru = $true; ErrorAction = 'Stop' }
+  if ($arguments) { $startOptions.ArgumentList = $arguments }
+  $process = Start-Process @startOptions
   $report.installer_executed = $true
   $report.process_id = $process.Id
   if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
@@ -138,8 +140,8 @@ try {
   if ($ExpectedArtifactSha256 -and $report.expected_artifact_sha256 -cne $ExpectedArtifactSha256.ToLowerInvariant()) {
     throw 'Installed artifact exists but expected SHA256 does not match'
   }
-  $report.expected_artifact_verified = $true
-  $report.status = 'INSTALLATION_ARTIFACT_VERIFIED'
+  $report.expected_artifact_verified = [bool]$ExpectedArtifactSha256
+  $report.status = if ($ExpectedArtifactSha256) { 'INSTALLATION_ARTIFACT_VERIFIED' } else { 'ARTIFACT_PRESENT_HASH_NOT_VERIFIED' }
   Publish-Report
   exit 0
 } catch {
