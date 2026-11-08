@@ -73,3 +73,13 @@
 | Full release / Merge aller offenen Änderungen | **NO-GO** |
 
 **Daher:** Dieser dokumentierte Pass ist ein wichtiger *Teil* des adversarialen Gesamtaudits, aber weder ein abgeschlossener unabhängiger FULL AUDIT noch eine Berechtigung, blind in `main` zu mergen.
+
+## P113 echte DAW-Abnahme NACH Fix (zusätzliche Windows-Belege)
+
+Der vorstehende RED/Unit-GREEN-Nachweis wurde unabhängig von Unit-Mocks auch durch beide **echten** REAPER-Workflows ergänzt (jeder startete eine tatsächlich installierte REAPER-7.83-Windows-Instanz):
+
+- [**P91 REAPER genuine Windows #42516682023**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42516682023): **SUCCESS**. `REAL_REAPER_DAW_PIPELINE_PASS`, beobachteter Name `VST3i: 125A GUI Click Fixture (125A Internal Test Infrastructure)` entspricht dem genehmigten Suchnamen `VST3: 125A GUI Click Fixture`; erwartungsgemäß Stille `rms=0.0`. Setup, Save, Reload und REAPER-Render wurden erneut geprüft.
+- [**P92 REAPER genuine Windows #42516681858**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42516681858): **SUCCESS**. Echtes source-built MIDI-VST3 bei vorhandener Note: `rms=0.0806226`, `peak=0.1999999`, `audible_in_render=true`. Derselbe Prozess und dieselbe VST3 bei **fehlender Note**: `rms=0.0`, `peak=0`, `audible_in_render=false`; der Workflow verglich beide kausal und meldete `P92 genuine REAPER audio causality PASS; audible MIDI vs silent no-note`. Beide API/CLI- und Unit-Testjobs erfolgreich.
+- [**P91 Windows unit #42516681961**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42516681961): **SUCCESS**, inklusive P113-Fremd-Effekt-Negativkontrolle.
+
+**Erweitertes Gate-Urteil:** P91/P92 echte REAPER-Lade-/Save-/Reload- und MIDI-Audio-Kausalitätsprüfung mit nach dem P113-Fix beobachtetem, genehmigten **Anzeigenamen: PASS für die beiden Testfixtures**. Trotzdem bleibt `loaded_module_file_provenance=NOT INDEPENDENTLY VERIFIED` ausdrücklich im REAPER-Report, und echte physische ASIO-Hardware `NOT RUN`. Echte Tests sind kein vollständiger unabhängiger Quell-Audit der 319 Repository-Dateien.
