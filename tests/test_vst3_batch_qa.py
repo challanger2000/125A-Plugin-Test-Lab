@@ -138,6 +138,41 @@ class BatchTests(unittest.TestCase):
             self.assertFalse(after["release_approved"])
             self.assertEqual(json.loads((out/"BATCH-QA-REPORT.json").read_text())["status"],"FAIL")
 
+    def test_requested_repeatability_cannot_be_silently_not_run_on_valid_editor(self):
+        # P122: P75 requests TWO real GUI exploration runs. A child claiming
+        # successful observations but zero repetitions / NOT RUN is not a
+        # valid observable repeatability PASS.
+        with tempfile.TemporaryDirectory() as t:
+            root=Path(t)
+            selection,gui=setup(root)
+            data=json.loads(selection.read_text(encoding="utf-8"))
+            data["plugins"]=data["plugins"][:1]
+            data["plugins"][0].update(
+                explore_unknown_gui=True, exploration_repeats=2,
+                exploration_max_points=2)
+            selection.write_text(json.dumps(data),encoding="utf-8")
+            items=load_selection(selection=selection)
+            def forged_not_run(cmd,**kwargs):
+                result=successful_child(cmd,**kwargs)
+                out_path=Path(cmd[cmd.index("--out")+1])/"UNIVERSAL-QA-RESULT.json"
+                evidence=json.loads(out_path.read_text(encoding="utf-8"))
+                evidence.update({
+                    "status":"INVENTORY_WITH_EXPLORATORY_OBSERVATIONS",
+                    "unknown_gui_exploration":"OBSERVATIONS_COMPLETE",
+                    "unknown_gui_repeatability":"NOT RUN",
+                    "unknown_gui_completed_repetitions":0,
+                    "unknown_gui_semantics":"UNAPPROVED OBSERVATIONS ONLY",
+                    "exploratory_clicks_performed":2
+                })
+                out_path.write_text(json.dumps(evidence),encoding="utf-8")
+                return result
+            reported=run(items,gui,root/"repeatability-false-pass",
+                         runner=forged_not_run)
+            self.assertEqual(reported["status"],"FAIL",
+                "P122 approved complete GUI observations despite zero "
+                "fresh-instance repetitions after explicit repeat opt-in")
+            self.assertEqual(reported["failed_plugins"],1)
+
     def test_forged_success_or_corrupted_module_cannot_pass(self):
         with tempfile.TemporaryDirectory() as t:
             root=Path(t)
