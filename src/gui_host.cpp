@@ -1371,7 +1371,7 @@ int captureHostParameterSequence(const std::string& pluginPath,
                 require(controller.ptr,"P98 fresh-view controller not instantiated");
                 std::ofstream report(out/"host-values.tsv",std::ios::trunc);
                 require(report.good(),"P98 fresh-view report unavailable");
-                report<<"step\\trequested\\tobserved\\tbitmap\\n";
+                report<<"step\trequested\tobserved\tbitmap\n";
                 for(size_t i=0;i<values.size();++i) {
                     const double wanted=values[i];
                     require(controller.ptr->setParamNormalized(id,wanted)==kResultTrue,
@@ -1381,8 +1381,8 @@ int captureHostParameterSequence(const std::string& pluginPath,
                             "P98 fresh-view exact controller param mismatch");
                     const auto file="step-"+std::to_string(i)+".bmp";
                     runView(controller.ptr,1,false,0,-1,-1,1.0,out/file);
-                    report<<i<<"\\t"<<std::setprecision(17)<<wanted<<"\\t"
-                          <<actual<<"\\t"<<file<<"\\n";
+                    report<<i<<"\t"<<std::setprecision(17)<<wanted<<"\t"
+                          <<actual<<"\t"<<file<<"\n";
                     std::cout<<"[PASS] P98 fresh HWND editor state "<<i
                              <<" param="<<id<<" actual="<<actual<<"\n";
                 }
