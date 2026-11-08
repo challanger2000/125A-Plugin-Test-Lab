@@ -116,9 +116,12 @@ void WINAPI event(EVENT_RECORD* r){
             else ++d.decodeErrors;
         }return;
     }
-    if(IsEqualGUID(id,perfGuid)&&(op==51||op==66||op==67||op==68||op==69)){
-        uint64_t begin=0;const auto valid=number(r,L"InitialTime",begin);
-        d.activity<<t<<','<<cpu<<",KERNEL_DPC_ISR,0,"<<unsigned(op)<<','<<valid<<','<<begin<<'\n';return;
+    if(IsEqualGUID(id,perfGuid)){
+        // Microsoft DPC: 66/68/69; ISR: 67. Unknown opcodes are not DPC proof.
+        const bool documented=op==66||op==67||op==68||op==69;
+        uint64_t begin=0;const auto valid=documented&&number(r,L"InitialTime",begin);
+        d.activity<<t<<','<<cpu<<','<<(documented?"KERNEL_DPC_ISR":"KERNEL_PERFINFO_UNCLASSIFIED")
+            <<",0,"<<unsigned(op)<<','<<valid<<','<<begin<<'\n';return;
     }
     // Keep only provider GUID/event metadata here. Personal payloads remain local in ETL.
     // Reject all unrequested providers; no name-based causal attribution.
@@ -199,6 +202,17 @@ int capture(const fs::path& out,const std::wstring& nonce,const std::vector<std:
 }
 int wmain(int argc,wchar_t** argv){try{
     if(argc==4&&std::wstring(argv[1])==L"--workload")return workload(argv[2],ascii(argv[3]));
+    if(argc==3&&std::wstring(argv[1])==L"--decoder-selftest"){
+        fs::path out=argv[2];check(!fs::exists(out),"Decoder fixture directory must be fresh");fs::create_directories(out);
+        { Decode d(out,GetCurrentProcessId());EVENT_RECORD r{};r.UserContext=&d;
+          r.EventHeader.ProviderId=perfGuid;r.EventHeader.EventDescriptor.Opcode=51;
+          r.EventHeader.TimeStamp.QuadPart=p185::qpc();event(&r);
+          check(d.decodeErrors==0,"Unknown opcode must not require an invented TDH schema"); }
+        std::ifstream f(out/"activity.csv");std::stringstream bytes;bytes<<f.rdbuf();
+        check(bytes.str().find("KERNEL_PERFINFO_UNCLASSIFIED,0,51,0,0")!=std::string::npos&&
+              bytes.str().find("KERNEL_DPC_ISR")==std::string::npos,"Unknown kernel opcode falsely labelled DPC/ISR");
+        std::cout<<"[PASS] synthetic unknown-opcode decoder negative; physical ASIO NOT_RUN\n";return 0;
+    }
     if(argc==4&&std::wstring(argv[1])==L"--denied-selftest"){
         HANDLE token{},restricted{};check(OpenProcessToken(GetCurrentProcess(),TOKEN_DUPLICATE|TOKEN_QUERY,&token)!=0,"Open restricted-token source failed");
         BYTE sid[SECURITY_MAX_SID_SIZE]{};DWORD n=sizeof(sid);CreateWellKnownSid(WinBuiltinAdministratorsSid,nullptr,sid,&n);

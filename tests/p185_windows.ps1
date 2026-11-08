@@ -21,6 +21,8 @@ Assert-P185 ($badCode -ne 0 -and ($log -join "`n") -match 'setProcessing\(true\)
 $missing=Join-Path $Evidence 'must-not-exist.json';$obs=Join-Path $Evidence 'no-observation.json'
 & $hostExe --physical-asio-probe --plugin $reference --driver-name 'P185 unregistered negative' --driver-clsid '{00000000-0000-0000-0000-000000000000}' --rate 44100 --frames 512 --callbacks 1000 --nonce $nonce --out $missing --diagnostic-out (Join-Path $Evidence 'no-diagnostic.json') --timing-trace-out (Join-Path $Evidence 'no-p181.json') --p185-out $obs
 Assert-P185 ($LASTEXITCODE -ne 0 -and -not (Test-Path $missing) -and -not (Test-Path $obs)) 'MISSING_DRIVER_FALSE_HARDWARE_PROOF'
+& $exe --decoder-selftest (Join-Path $Evidence 'decoder-negative')
+Assert-P185 ($LASTEXITCODE -eq 0) 'UNKNOWN_OPCODE_FALSE_DPC_ATTRIBUTION'
 $native=Join-Path $Evidence 'native-etw-local'
 & $exe --selftest $native $nonce
 Assert-P185 ($LASTEXITCODE -eq 0) 'ACTUAL_NATIVE_ETW_CONTROL_FAILED'
@@ -45,7 +47,7 @@ Assert-P185 ($LASTEXITCODE -eq 0) 'ACTUAL_PRIVILEGE_NEGATIVE_FAILED'
 # Refuse existing directory instead of reusing old ETL or replacing an owned trace.
 & $exe --selftest $native $nonce
 Assert-P185 ($LASTEXITCODE -eq 2) 'STALE_DIRECTORY_ACCEPTED'
-@{native_etw_control='PASS';qpc_brackets='PASS';real_sleep_cswitch='PASS';restricted_token_negative='PASS';missing_driver_negative='PASS';reference_lifecycle='PASS';broken_reference='REJECTED';physical_asio='NOT_RUN';release_approved=$false} | ConvertTo-Json | Set-Content (Join-Path $Evidence 'P185-WINDOWS-CONTROLS.json')
+@{unknown_opcode_negative='PASS';native_etw_control='PASS';qpc_brackets='PASS';real_sleep_cswitch='PASS';restricted_token_negative='PASS';missing_driver_negative='PASS';reference_lifecycle='PASS';broken_reference='REJECTED';physical_asio='NOT_RUN';release_approved=$false} | ConvertTo-Json | Set-Content (Join-Path $Evidence 'P185-WINDOWS-CONTROLS.json')
 Write-Host '[PASS] actual Windows ETW control/negative tests; physical ASIO NOT RUN'
 
 exit 0 # Clear the deliberately rejected stale-directory native exit.
