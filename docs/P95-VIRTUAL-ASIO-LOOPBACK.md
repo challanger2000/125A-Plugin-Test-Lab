@@ -15,6 +15,12 @@ The independent Python P95 analyzer requires:
 
 Result `VIRTUAL_ASIO_LOOPBACK_PASS` is virtual driver evidence **only**. It does **not** approve physical ASIO hardware, a commercial DAW, actual external USB hardware, or any product release. No cloud mock test produces this result legitimately. The Linux unit tests explicitly fabricate PCM only to verify the oracle accepts the correct 317/557 Hz stimulus and rejects silent, swapped, truncated, wrong-rate, wrong-source-frequency and +12.041 dB return-gain traces. A separate 0-sample delay boundary must report 0, not 256. These tests do NOT run a Windows audio driver or authorize product release.
 
+## P101: PCM content is not proof of driver execution
+
+The standalone `verify_virtual_asio_loopback.py` can evaluate deliberately fabricated PCM and JSON callback metadata. Its successful status `VIRTUAL_ASIO_PCM_LOOPBACK_PASS` means **PCM content agrees with the P95 stimulus/return contract only**. The standalone report deliberately sets `pcm_content_verified=true`, `driver_execution_verified=false` and `virtual_loopback_verified=false`, even if the content is correct. Never treat this report, even with plausible driver metadata, as proof of a running ASIO driver.
+
+Only `run_virtual_asio_loopback.py` may report `VIRTUAL_ASIO_LOOPBACK_PASS`, after the separately consented native executable returns successfully, the fresh nonce, exact native/module hashes, real callback counts and PCM evidence are checked, and the content-only verifier passes. That top-level report alone records `driver_execution_verified=true` for the **virtual** driver session; this is not physical hardware, a commercial DAW or release certification. Synthetic regression fixtures must always leave driver execution false.
+
 ## Real Windows run
 
 A dedicated isolated Windows 11 runner must have ASIO4ALL and VB-CABLE installed, rebooted, with both VB-CABLE playback and recording channels enabled **in the ASIO4ALL device selection panel**. This is a kernel driver requirement, not a Python dependency. The ASIO4ALL driver must expose at least two ASIO inputs and two ASIO outputs. Configure repository variable `VIRTUAL_ASIO_RUNNER_ENABLED=YES_ISOLATED`, and dedicate a private Windows x64 self-hosted runner with label `125A-VIRTUAL-ASIO` (never a personal daily-use PC attached to a public repository).
