@@ -5,11 +5,11 @@ $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '../tools/p185/P185-ANALYZE.ps1')
 New-Item -ItemType Directory -Force -Path $Evidence | Out-Null
 $dir=Join-Path $Evidence 'synthetic-never-hardware';New-Item -ItemType Directory -Force $dir | Out-Null
-$nonce='0123456789abcdef0123456789abcdef0123456789abcdef';$sha='a'*64;$product='b'*64;$clsid='{00000000-0000-0000-0000-000000000001}'
+$nonce='0123456789abcdef0123456789abcdef0123456789abcdef';$sha='a'*64;$product='b'*64;$source='c'*40;$clsid='{00000000-0000-0000-0000-000000000001}'
 $trace=@{start=0;stop=0;open=0;process=0;events_lost=0;buffers_lost=0;session_events_lost=0;session_buffers_lost=0;frequency=1000000;clock=1}
-$baselineCapture=@{schema='125a-p185-native-etw-v1';nonce=$nonce;child_pid=70;child_exit=0;timeout=$false;marker_enable=0;decode_errors=0;cswitches=1;kernel=$trace;user=$trace;providers=@()}
+$baselineCapture=@{schema='125a-p185-native-etw-v1';source_sha=$source;nonce=$nonce;child_pid=70;child_exit=0;timeout=$false;marker_enable=0;decode_errors=0;cswitches=1;kernel=$trace;user=$trace;providers=@()}
 $callbacks=@();for($i=0;$i -lt 100;$i++){$callbacks+=@{index=$i;tid=42;buffer=$i%2;start=100000+$i*12000;end=100100+$i*12000;ok=$true;gap=$false}}
-$baselineAsio=@{schema='125a-p185-asio-observation-v1';nonce=$nonce;pid=70;qpc_frequency=1000000;executor_sha256=$sha;product_sha256=$product;driver_clsid=$clsid;binary_identity_after=$true;sample_rate=44100;frames=512;requested=100;actual=100;complete=$true;gap_count=0;execution_overruns=0;xrun_messages=0;process_failures=0;rate_changes=0;markers=@(@{sequence=1;before=10;after=30;result=0;tid=40},@{sequence=2;before=2000010;after=2000030;result=0;tid=40});lifecycle=@{create_before=100;create_after=200;active=300;processing=400;armed=500;start_before=600;start_after=20000;stop_before=1900000;stop_after=1950000};callbacks=$callbacks}
+$baselineAsio=@{schema='125a-p185-asio-observation-v1';source_sha=$source;nonce=$nonce;pid=70;qpc_frequency=1000000;executor_sha256=$sha;product_sha256=$product;driver_clsid=$clsid;binary_identity_after=$true;sample_rate=44100;frames=512;requested=100;actual=100;complete=$true;gap_count=0;execution_overruns=0;xrun_messages=0;process_failures=0;rate_changes=0;markers=@(@{sequence=1;before=10;after=30;result=0;tid=40},@{sequence=2;before=2000010;after=2000030;result=0;tid=40});lifecycle=@{create_before=100;create_after=200;active=300;processing=400;armed=500;start_before=600;start_after=20000;stop_before=1900000;stop_after=1950000};callbacks=$callbacks}
 $baseC=$baselineCapture | ConvertTo-Json -Depth 15;$baseA=$baselineAsio | ConvertTo-Json -Depth 15
 function Reset-Fixture {
   $baseC | Set-Content (Join-Path $dir 'capture.json');$baseA | Set-Content (Join-Path $dir 'asio.json')
@@ -19,7 +19,7 @@ function Reset-Fixture {
   'qpc,tid,cpu' | Set-Content (Join-Path $dir 'ready.csv')
   'qpc,cpu,provider,event_id,opcode,initial_time_valid,initial_time' | Set-Content (Join-Path $dir 'activity.csv')
 }
-function Analyze { Get-P185Analysis $dir $nonce $sha $product $clsid }
+function Analyze { Get-P185Analysis $dir $nonce $sha $product $clsid $source }
 $tests=[Collections.Generic.List[object]]::new()
 Reset-Fixture
 $good=Analyze
@@ -35,6 +35,7 @@ function Reject([string]$Name,[scriptblock]$Mutate,[string]$Expected) {
   Assert-P185 ($errorCode -ceq $Expected) ('NEGATIVE_DID_NOT_KILL_'+$Name+'_'+$errorCode)
   $tests.Add(@{case=$Name;status='PASS';rejected=$errorCode;hardware='NOT_RUN'})
 }
+Reject 'source sha' {$a.source_sha='d'*40} 'SOURCE_SHA_MISMATCH'
 Reject 'nonce' {$a.nonce='f'*48} 'NONCE_MISMATCH'
 Reject 'sha' {$a.product_sha256='c'*64} 'SHA_MISMATCH'
 Reject 'binary changed during audio' {$a.binary_identity_after=$false} 'SHA_MISMATCH'

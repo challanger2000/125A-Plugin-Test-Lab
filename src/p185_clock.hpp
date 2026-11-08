@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 namespace p185 {
+inline constexpr char sourceSha[]=P185_TESTLAB_SOURCE;
 inline constexpr GUID provider{0x7a51f185,0x4130,0x4990,{0x91,0x85,0x12,0x5a,0x00,0x00,0x01,0x85}};
 inline int64_t qpc() { LARGE_INTEGER v{}; QueryPerformanceCounter(&v); return v.QuadPart; }
 struct Marker { int64_t before{},after{}; ULONG result=ERROR_INVALID_HANDLE; DWORD tid{}; };

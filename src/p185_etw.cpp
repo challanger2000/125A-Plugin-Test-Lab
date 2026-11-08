@@ -34,11 +34,12 @@ std::wstring quote(const std::wstring& s){ // CommandLineToArgvW inverse, includ
     r.append(2*n,L'\\');return r+L'"';
 }
 struct Provider {GUID id{};std::wstring name;ULONG enable=ERROR_NOT_SUPPORTED;};
-std::vector<Provider> providers(){
+std::vector<Provider> providers(ULONG& status){
+    status=ERROR_NOT_READY;
     ULONG n=0;const auto first=TdhEnumerateProviders(nullptr,&n);
-    if(first!=ERROR_INSUFFICIENT_BUFFER||n>16*1024*1024)return {};
+    if(first!=ERROR_INSUFFICIENT_BUFFER||n>16*1024*1024){status=first;return {};}
     std::vector<BYTE> data(n);auto* list=reinterpret_cast<PROVIDER_ENUMERATION_INFO*>(data.data());
-    if(TdhEnumerateProviders(list,&n)!=ERROR_SUCCESS)return {};
+    status=TdhEnumerateProviders(list,&n);if(status!=ERROR_SUCCESS)return {};
     std::vector<Provider> result;
     for(ULONG i=0;i<list->NumberOfProviders;++i){const auto& p=list->TraceProviderInfoArray[i];
         if(p.ProviderNameOffset>=n)continue;
@@ -157,7 +158,7 @@ int capture(const fs::path& out,const std::wstring& nonce,const std::vector<std:
     const auto prefix=L"125A-P185-"+nonce;
     Session kernel(out/"kernel.etl",prefix+L"-K",true);
     Session user(out/"providers.etl",prefix+L"-U",false);
-    auto ps=providers();ULONG markerEnable=ERROR_NOT_READY;DWORD childPid=0,childExit=DWORD(-1);bool timeout=false;
+    ULONG inventoryStatus{};auto ps=providers(inventoryStatus);ULONG markerEnable=ERROR_NOT_READY;DWORD childPid=0,childExit=DWORD(-1);bool timeout=false;
     if(kernel.start==ERROR_SUCCESS&&user.start==ERROR_SUCCESS){
         markerEnable=EnableTraceEx2(user.handle,&p185::provider,EVENT_CONTROL_CODE_ENABLE_PROVIDER,5,0,0,0,nullptr);
         for(auto& p:ps)p.enable=EnableTraceEx2(user.handle,&p.id,EVENT_CONTROL_CODE_ENABLE_PROVIDER,5,~0ULL,0,0,nullptr);
@@ -185,7 +186,7 @@ int capture(const fs::path& out,const std::wstring& nonce,const std::vector<std:
     kernel.close();user.close();Decode d(out,childPid);for(const auto& p:ps)if(p.enable==0)d.observed.insert(guidText(p.id));
     TraceResult kr{},ur{};if(kernel.start==0)kr=decode(out/"kernel.etl",d);if(user.start==0)ur=decode(out/"providers.etl",d);
     std::ofstream o(out/"capture.json");
-    o<<"{\"schema\":\"125a-p185-native-etw-v1\",\"nonce\":\""<<ascii(nonce.c_str())<<"\",\"child_pid\":"<<childPid
+    o<<"{\"schema\":\"125a-p185-native-etw-v1\",\"source_sha\":\""<<p185::sourceSha<<"\",\"provider_inventory_result\":"<<inventoryStatus<<",\"nonce\":\""<<ascii(nonce.c_str())<<"\",\"child_pid\":"<<childPid
      <<",\"child_exit\":"<<childExit<<",\"timeout\":"<<(timeout?"true":"false")<<",\"marker_enable\":"<<markerEnable
      <<",\"events\":"<<d.events<<",\"cswitches\":"<<d.cswitches<<",\"decode_errors\":"<<d.decodeErrors<<",\"kernel\":";
     traceJson(o,kr,kernel);o<<",\"user\":";traceJson(o,ur,user);o<<",\"providers\":[";
@@ -211,7 +212,7 @@ int wmain(int argc,wchar_t** argv){try{
         check(rc==ERROR_ACCESS_DENIED||rc==ERROR_PRIVILEGE_NOT_HELD,"Restricted kernel trace unexpectedly allowed");return 0;
     }
     if(argc==3&&std::wstring(argv[1])==L"--capabilities"){
-        std::ofstream o(argv[2]);auto ps=providers();o<<"{\"native_etw_api\":true,\"provider_count\":"<<ps.size()<<",\"physical_asio\":\"NOT_RUN\",\"capture_privilege\":\"NOT_PROBED\"}";return o.good()?0:1;
+        std::ofstream o(argv[2]);ULONG inventoryStatus{};auto ps=providers(inventoryStatus);o<<"{\"native_etw_api\":true,\"source_sha\":\""<<p185::sourceSha<<"\",\"provider_inventory_result\":"<<inventoryStatus<<",\"provider_count\":"<<ps.size()<<",\"physical_asio\":\"NOT_RUN\",\"capture_privilege\":\"NOT_PROBED\"}";return o.good()?0:1;
     }
     check(argc>=4,"Usage: --capture NEW-DIRECTORY NONCE -- EXE ARGS | --selftest NEW-DIRECTORY NONCE");
     std::wstring nonce=argv[3];check(nonce.size()==48&&std::all_of(nonce.begin(),nonce.end(),[](wchar_t c){return(c>=L'a'&&c<=L'f')||(c>=L'0'&&c<=L'9');}),"Invalid nonce");

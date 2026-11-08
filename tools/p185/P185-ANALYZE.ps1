@@ -47,10 +47,11 @@ function Get-P185Window([object[]]$Switches,[object[]]$Ready,[long]$Thread,[long
   @{complete=$consistent;off_ticks=$off;ready_ticks=$readyTicks;waiting_ticks=$waiting;unknown_ticks=$unknown}
 }
 function Get-P185Analysis {
-  param([string]$Directory,[string]$ExpectedNonce,[string]$ExpectedHostHash,[string]$ExpectedProductHash,[string]$ExpectedDriverClsid)
+  param([string]$Directory,[string]$ExpectedNonce,[string]$ExpectedHostHash,[string]$ExpectedProductHash,[string]$ExpectedDriverClsid,[string]$ExpectedTestlabSource)
   $c=Read-P185Json (Join-Path $Directory 'capture.json')
   $a=Read-P185Json (Join-Path $Directory 'asio.json')
   Assert-P185 ($c.schema -ceq '125a-p185-native-etw-v1' -and $a.schema -ceq '125a-p185-asio-observation-v1') 'WRONG_SCHEMA'
+  Assert-P185 ($ExpectedTestlabSource -cmatch '^[0-9a-f]{40}$' -and $c.source_sha -ceq $ExpectedTestlabSource -and $a.source_sha -ceq $ExpectedTestlabSource) 'SOURCE_SHA_MISMATCH'
   Assert-P185 ($ExpectedNonce -cmatch '^[0-9a-f]{48}$' -and $c.nonce -ceq $ExpectedNonce -and $a.nonce -ceq $ExpectedNonce) 'NONCE_MISMATCH'
   Assert-P185 ($ExpectedHostHash -cmatch '^[0-9a-f]{64}$' -and $ExpectedProductHash -cmatch '^[0-9a-f]{64}$' -and $a.executor_sha256 -ceq $ExpectedHostHash -and $a.product_sha256 -ceq $ExpectedProductHash -and $a.binary_identity_after -eq $true) 'SHA_MISMATCH'
   Assert-P185 ($a.driver_clsid -ceq $ExpectedDriverClsid) 'DRIVER_MISMATCH'

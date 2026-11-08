@@ -12,7 +12,7 @@ void writeP185(const Arguments& a,const Engine& e,const P185Lifecycle& life,
     const size_t count=std::min(actual,e.trace.size());
     size_t missing=0; for(size_t i=0;i<count;++i)if(!e.trace[i].recorded)++missing;
     std::ofstream o(a.p185Out,std::ios::binary);
-    o<<"{\"schema\":\"125a-p185-asio-observation-v1\",\"nonce\":\""<<a.nonce
+    o<<"{\"schema\":\"125a-p185-asio-observation-v1\",\"source_sha\":\""<<p185::sourceSha<<"\",\"nonce\":\""<<a.nonce
      <<"\",\"pid\":"<<GetCurrentProcessId()<<",\"qpc_frequency\":"<<e.qpcFrequency
      <<",\"product_sha256\":\""<<moduleHash<<"\",\"executor_sha256\":\""<<executorHash
      <<"\",\"driver_clsid\":\""<<escapeJSON(a.clsid)<<"\",\"sample_rate\":"<<a.rate

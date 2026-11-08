@@ -48,9 +48,11 @@ try {
       }
     })
   }
+  $rc=Invoke-P185Native $etw @('--capabilities',(Join-Path $out 'capabilities.json')) (Join-Path $out 'preflight.log')
+  if($rc -ne 0){throw 'ETW_CAPABILITY_QUERY_FAILED'}
+  $etwCaps=Read-P185Json (Join-Path $out 'capabilities.json')
+  if($etwCaps.source_sha -cne $manifest.testlab_source){throw 'SOURCE_SHA_MISMATCH'}
   if($CheckOnly) {
-    $rc=Invoke-P185Native $etw @('--capabilities',(Join-Path $out 'capabilities.json')) (Join-Path $out 'preflight.log')
-    if($rc -ne 0){throw 'ETW_CAPABILITY_QUERY_FAILED'}
     $report.error_code='CHECK_ONLY_NO_AUDIO_OR_CAPTURE';Save-P185
     Write-Host 'P185 Paketintegritaet geprueft. Audio und ETW-Aufzeichnung: NOT RUN.'
     exit 0
@@ -84,7 +86,7 @@ try {
   $capture=Read-P185Json (Join-Path $raw 'capture.json')
   if($capture.kernel.start -ne 0 -or $capture.user.start -ne 0 -or $capture.marker_enable -ne 0){throw 'ETW_NOT_AVAILABLE'}
   if(-not (Test-Path (Join-Path $raw 'asio.json'))){throw 'ASIO_OBSERVATION_NOT_AVAILABLE'}
-  $analysis=Get-P185Analysis $raw $nonce $manifest.files.'125A_Test_Lab_Physical_ASIO.exe' $manifest.files.'125A_QA_ASIO_Reference_MIDI.vst3' $selected.CLSID
+  $analysis=Get-P185Analysis $raw $nonce $manifest.files.'125A_Test_Lab_Physical_ASIO.exe' $manifest.files.'125A_QA_ASIO_Reference_MIDI.vst3' $selected.CLSID $manifest.testlab_source
   $analysis | ConvertTo-Json -Depth 15 | Set-Content -LiteralPath (Join-Path $out 'P185-AGGREGATE-LOCAL.json') -Encoding UTF8
   $report.status='INCONCLUSIVE';$report.physical_asio='OBSERVED_REFERENCE_ONLY';$report.strict_full_run=$analysis.strict_full_run
   $report.correlation=$analysis.correlation;$report.callbacks=$analysis.callbacks;$report.sample_rate=$analysis.sample_rate;$report.frames=$analysis.frames

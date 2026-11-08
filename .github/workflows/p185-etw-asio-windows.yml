@@ -87,6 +87,7 @@ jobs:
             source=$env:GITHUB_SHA;windows_build='PASS';package_bat='PASS';physical_asio='NOT_RUN';awe_realtime='NOT_RUN';release_approved=$false
           } | ConvertTo-Json | Set-Content evidence/P185-CI.json
           Write-Host "::notice::P185 WINDOWS PACKAGE VERIFIED; source=$env:GITHUB_SHA; physical ASIO NOT_RUN; release NO_GO"
+          exit 0 # The verified tamper negative deliberately returned native exit 3.
       - uses: actions/upload-artifact@v4
         if: always()
         id: evidence
@@ -96,6 +97,8 @@ jobs:
             evidence/*.json
             evidence/*.txt
             evidence/P185-TestLab-Windows.zip
+            evidence/native-etw-local/*.json
+            evidence/native-etw-local/*.csv
           if-no-files-found: error
           retention-days: 30
       - name: Draft review request only, no merge

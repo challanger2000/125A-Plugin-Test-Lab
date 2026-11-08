@@ -432,6 +432,21 @@ if(ASIO_SDK_DIR)
 endif()
 
 
+# Bind native P185 records to the exact configured source, including archive builds.
+set(P185_SOURCE_REVISION "" CACHE STRING "Exact Test Lab source commit for a source archive")
+if(NOT P185_SOURCE_REVISION)
+  execute_process(COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse HEAD
+      OUTPUT_VARIABLE P185_SOURCE_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE
+      RESULT_VARIABLE P185_GIT_RESULT)
+endif()
+string(LENGTH "${P185_SOURCE_REVISION}" P185_SHA_LENGTH)
+if(NOT P185_SHA_LENGTH EQUAL 40 OR NOT P185_SOURCE_REVISION MATCHES "^[0-9a-f]+$")
+  message(FATAL_ERROR "P185 requires an exact 40-hex source revision")
+endif()
+if(TARGET TestLabPhysicalASIO)
+  target_compile_definitions(TestLabPhysicalASIO PRIVATE P185_TESTLAB_SOURCE="${P185_SOURCE_REVISION}")
+endif()
+
 # P185 independent native ETW controller and TDH consumer, no ADK/runtime installer.
 add_executable(TestLabETW src/p185_etw.cpp)
 set_target_properties(TestLabETW PROPERTIES OUTPUT_NAME "125A_Test_Lab_ETW")
@@ -440,3 +455,4 @@ target_compile_definitions(TestLabETW PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
 if(MSVC)
   target_compile_options(TestLabETW PRIVATE /W4 /permissive- /utf-8)
 endif()
+target_compile_definitions(TestLabETW PRIVATE P185_TESTLAB_SOURCE="${P185_SOURCE_REVISION}")
