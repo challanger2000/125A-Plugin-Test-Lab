@@ -1,0 +1,77 @@
+name: P116 adversarial whole-repo automated test sweep (NOT FULL AUDIT)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/p116-full-repo-test-sweep.yml'
+      - 'tests/run_universal_qa.py'
+      - 'tests/run_plugin_onboarding.py'
+      - 'tests/test_universal_qa.py'
+      - 'tests/test_plugin_onboarding.py'
+      - 'docs/P113-FULL-LAB-AUDIT-2026-11-08.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  whole-repo-automated-sweep:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inventory every tracked source file, discover all Python tests, and syntax-check every Python source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path audit-evidence -Force | Out-Null
+          @'
+          import ast, hashlib, json, pathlib, subprocess, sys
+          root=pathlib.Path('.')
+          tracked=subprocess.check_output(['git','ls-files','-z']).decode('utf-8').split('\0')
+          tracked=[x for x in tracked if x]
+          output=[]
+          bad=[]
+          tests=0
+          for name in tracked:
+              path=root/name
+              data=path.read_bytes()
+              info={'path':name,'size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+              if name.endswith('.py'):
+                  try:
+                      code=ast.parse(data.decode('utf-8-sig'),filename=name)
+                      info['python_functions']=[n.name for n in ast.walk(code) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]
+                      info['python_tests']=[f for f in info['python_functions'] if f.startswith('test_')]
+                      tests+=len(info['python_tests'])
+                  except (SyntaxError,UnicodeError) as ex:
+                      bad.append({'path':name,'error':str(ex)})
+              output.append(info)
+          result={'schema':'125a-p116-repo-inventory-v1','commit':subprocess.check_output(['git','rev-parse','HEAD']).decode().strip(),'files':output,'python_test_functions':tests,'parse_errors':bad,'full_source_audit':'NOT VERIFIED','independent_reviewer':'NOT RUN','release_approved':False}
+          pathlib.Path('audit-evidence/full-source-inventory.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
+          print('P116 tracked files:',len(output),'Python test functions:',tests,'parse errors:',len(bad))
+          if bad: raise SystemExit(1)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'P116 whole tree parse/inventory FAIL' }
+      - name: Build all first-party native Test Lab executables on Windows x64 Release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S . -B build -G 'Visual Studio 17 2022' -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P116 native configure FAIL' }
+          cmake --build build --config Release --parallel 4 --target TestLabHost TestLabGUI TestLabStateStress TestLabRecovery TestLabInstanceIsolation TestLabRateBlock TestLabVoiceStress TestLabControllerRecovery TestLabGuiRecovery
+          if ($LASTEXITCODE -ne 0) { throw 'P116 native source build FAIL' }
+          ctest --test-dir build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'P116 registered native CTests FAIL' }
+      - name: Execute ALL discovered Python unittest test_*.py modules under Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          python -m unittest discover -s tests -p 'test_*.py' -v 2>&1 | Tee-Object -FilePath audit-evidence/all-python-unittest.log
+          $code = $LASTEXITCODE
+          Write-Host "P116 full Python unittest discovery exit code: $code"
+          if ($code -ne 0) { throw 'P116 whole Python regression inventory FAIL – inspect uploaded full log' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P116-whole-repo-native-and-python-source-test-evidence-NOT-full-audit
+          path: audit-evidence/
+          if-no-files-found: warn
