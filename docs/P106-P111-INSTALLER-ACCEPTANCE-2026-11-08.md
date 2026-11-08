@@ -77,3 +77,21 @@
 - **Merge/FINAL/Gumroad/Produktfreigabe: NICHT erteilt.** PR #132 bleibt Draft; keine Änderung an `main`.
 
 Diese Abnahme dokumentiert ein nachweislich bestandenes Teilziel **und** einen aus den zuvor grünen Tests aufgedeckten Fehler. Sie bescheinigt weder Fehlerfreiheit noch ungetestete Hersteller-, DAW- oder Hardwarefunktionen.
+
+---
+
+## Nachaudit P112 – weitere nachgewiesene False-PASS-Lücke
+
+**Nachtrag zur ursprünglichen P106–P111-Abnahme:** Der damalige Status bezog sich ausdrücklich auf die damals geprüften Pfade; er wird nicht rückwirkend als umfassende Bundle-Isolation ausgelegt.
+
+**Ausgangslage:** P109/P110 hashte reguläre Dateiinhalte und erkannte NTFS-Hardlinks, aber **keine benannten NTFS Alternate Data Streams (ADS)**. Ein unbefugter `P112Hidden`-Stream an einem unveränderten Ressourcendateipfad änderte den primären SHA-256-Hash nicht.
+
+**Adversariale Eigen-Gegenprobe:** Auf dem echten Windows-2022-Runner wurde `P112Hidden` an einer tatsächlich installierten Ressource erzeugt. [P112 RED #42497526541](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42497526541) zeigte nach funktionierendem EXE/MSI/P74-Positivpfad den Fehler `P109 modified alternate-ntfs-stream falsely accepted`.
+
+**Korrektur:** `tests/P109-LinkCount.ps1` prüft nun zusätzlich via Windows FileSystem-Streamauflistung `Get-Item -Stream *`, dass jede Datei ausschließlich den namenlosen `:$DATA`-Stream besitzt. Prüfpfade in `tests/Get-Vst3BundleManifest.ps1` und `tests/Test-Vst3BundleManifest.ps1` verwenden den neuen Checker vor Hashing/Manifest-PASS. Unerwartete benannte Streams führen **fail-closed** zu FAIL.
+
+**Nachweis:** [P112 GREEN #42497870451](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42497870451) **SUCCESS** auf genauem Codecommit `bf0501a4d7f5bc539f0152084f0299cf7bc25160`: positive source-built EXE/MSI → installierte VST3/P74-GUI/ABI/Audio/State weiterhin PASS, P107/P109/P110/P111-Regressionsfälle bestehen weiter. Derselbe versteckte `P112Hidden`-Stream wird bei der **Quelle und dem installierten Bundle** erkannt und vor P74 zurückgewiesen.
+
+**Weshalb alte grüne Tests nicht genügten:** Ihre Vergleichsdomäne umfasste Dateinamen, reguläre Bytes, Verzeichnisliste, Links und normale Hashes – **nicht** den Windows-Dateisystemzustand außerhalb des primären Datenstroms. Die ursprünglichen Positivfälle enthielten keine benannten Streams.
+
+**Gate:** P112-ADS-Regression **PASS**, Gesamtaudit/Testlabor-Release **NO-GO**. Produktfremde Installer, UAC, Neustart, echter DAW/ASIO-Test, Child-Prozess-Kontrolle und unabhängige Zweitprüfung bleiben **NOT RUN**. Der konservative ADS-Checker kann legitime `Zone.Identifier`-Streams verweigern; das ist dokumentierte restriktive Policy, keine geprüfte universelle Herstellerkompatibilität.
