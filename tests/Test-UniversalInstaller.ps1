@@ -20,7 +20,7 @@ function Invoke-Case([string]$Name,[int]$ExpectedExit,[string]$ExpectedStatus,[s
   if ($report.status -ne $ExpectedStatus -or $report.release_approved -ne $false -or $report.vst3_qa_executed -ne $false) {
     throw "$Name false evidence: $($report | ConvertTo-Json -Depth 7)"
   }
-  Write-Output "$Name : $ExpectedStatus"
+  Write-Host "$Name : $ExpectedStatus"
   return $report
 }
 $arg = '"' + $marker + '"'
