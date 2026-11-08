@@ -42,6 +42,7 @@ jobs:
           'REAL_ASIO_HARDWARE=NOT_RUN' | Add-Content artifacts/P100/provenance.txt
           'REAL_MIDI_ASIO_PCM=NOT_RUN' | Add-Content artifacts/P100/provenance.txt
           'RELEASE=NO_GO' | Add-Content artifacts/P100/provenance.txt
+          exit 0 # GitHub pwsh must not propagate the intentionally rejected native exit code
       - uses: actions/upload-artifact@v4
         if: always()
         with:
