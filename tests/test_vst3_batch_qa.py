@@ -118,6 +118,26 @@ class BatchTests(unittest.TestCase):
             self.assertTrue(saved.is_file())
             self.assertFalse(json.loads(saved.read_text())["release_approved"])
 
+    def test_stale_child_json_cannot_be_reused_as_fresh_success(self):
+        # P119: rerun with the same approved input and output directory.
+        # A child which now exits zero but writes NOTHING must not be
+        # credited for JSON produced by the previous successful run.
+        with tempfile.TemporaryDirectory() as t:
+            root=Path(t)
+            selection,gui=setup(root)
+            items=load_selection(selection=selection)
+            out=root/"reused-output"
+            before=run(items,gui,out,runner=successful_child)
+            self.assertEqual(before["passed_plugins"],2)
+            def no_new_child_evidence(cmd,**kwargs):
+                return FakeResult(0)
+            after=run(items,gui,out,runner=no_new_child_evidence)
+            self.assertEqual(after["status"],"FAIL")
+            self.assertEqual(after["passed_plugins"],0)
+            self.assertEqual(after["failed_plugins"],2)
+            self.assertFalse(after["release_approved"])
+            self.assertEqual(json.loads((out/"BATCH-QA-REPORT.json").read_text())["status"],"FAIL")
+
     def test_forged_success_or_corrupted_module_cannot_pass(self):
         with tempfile.TemporaryDirectory() as t:
             root=Path(t)
