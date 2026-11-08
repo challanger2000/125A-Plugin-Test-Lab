@@ -1324,6 +1324,126 @@ int observeOwnedDialog(const std::string& pluginPath, int x, int y,
     throw std::runtime_error("P60 no VST3 audio class");
 }
 
+
+/*
+ * P98 generic real VST3 Host -> Controller -> attached live editor test.
+ * Unlike a source-text assertion, it produces separate actual HWND BMPs
+ * for consecutive, independently supplied host parameter values.  The
+ * product GUI is not altered or instrumented.  No DAW/ASIO claim.
+ */
+int captureHostParameterSequence(const std::string& pluginPath,
+                                 ParamID id, const std::string& csv,
+                                 const std::filesystem::path& out) {
+    std::vector<double> values;
+    std::stringstream input(csv);
+    std::string cell;
+    while (std::getline(input, cell, ',')) {
+        require(!cell.empty(), "P98 empty host parameter sequence entry");
+        const auto value = std::stod(cell);
+        require(std::isfinite(value) && value >= 0.0 && value <= 1.0,
+                "P98 parameter sequence value outside 0..1");
+        values.push_back(value);
+    }
+    require(values.size() >= 3 && values.size() <= 24,
+            "P98 needs 3..24 actual, ordered host values");
+    std::filesystem::create_directories(out);
+    std::string error;
+    auto module=Module::create(pluginPath,error);
+    require(bool(module), ("P98 actual VST3 module unavailable: "+error).c_str());
+    HostApplication host;
+    auto factory=module->getFactory();
+    factory.setHostContext(&host);
+    for(const auto& cls : factory.classInfos()) {
+        if(cls.category()!=kVstAudioEffectClass) continue;
+        auto component=factory.createInstance<IComponent>(cls.ID());
+        require(bool(component),"P98 real product processor instantiation failed");
+        require(component->initialize(&host)==kResultOk,
+                "P98 real product processor initialize failed");
+        {
+            Controller controller;
+            acquireController(component.get(),factory,&host,controller);
+            require(controller.ptr!=nullptr,"P98 no real VST3 controller");
+            bool exposed=false;
+            for(int32 i=0;i<controller.ptr->getParameterCount();++i) {
+                ParameterInfo info{};
+                if(controller.ptr->getParameterInfo(i,info)==kResultOk &&
+                   info.id==id && (info.flags&ParameterInfo::kCanAutomate))
+                    exposed=true;
+            }
+            require(exposed,"P98 target host parameter not advertised as automatable");
+            IPlugView* view=controller.ptr->createView(ViewType::kEditor);
+            require(view!=nullptr,"P98 product editor does not exist");
+            HostFrame* frame=nullptr;
+            bool attached=false,frameSet=false;
+            try {
+                ViewRect bounds{};
+                require(view->getSize(&bounds)==kResultTrue &&
+                        view->isPlatformTypeSupported(kPlatformTypeHWND)==kResultTrue,
+                        "P98 requires native Win32 VST3 editor");
+                Window window(bounds);
+                frame=new HostFrame(window.get());
+                require(view->setFrame(frame)==kResultTrue,
+                        "P98 setting real editor host frame failed");
+                frameSet=true;
+                require(view->attached(window.get(),kPlatformTypeHWND)==kResultTrue,
+                        "P98 attaching real editor failed");
+                attached=true;
+                ShowWindow(window.get(),SW_SHOWNA);
+                UpdateWindow(window.get());
+                pump(300);
+                std::ofstream report(out/"host-values.tsv",std::ios::trunc);
+                require(report.good(),"P98 cannot create output report");
+                report<<"step\trequested\tobserved\tbitmap\n";
+                HWND child=GetWindow(window.get(),GW_CHILD);
+                require(child && IsWindow(child),"P98 no actual VST3 child HWND");
+                for(size_t i=0;i<values.size();++i) {
+                    const double wanted=values[i];
+                    require(controller.ptr->setParamNormalized(id,wanted)==kResultTrue,
+                            "P98 host parameter setParamNormalized failed");
+                    pump(320); // wait for real editor VSTGUI idle synchronization
+                    const double observed=controller.ptr->getParamNormalized(id);
+                    require(std::isfinite(observed) &&
+                            std::abs(observed-wanted)<0.000001,
+                            "P98 controller failed exact host-parameter roundtrip");
+                    InvalidateRect(child,nullptr,TRUE);
+                    require(UpdateWindow(child)!=FALSE,
+                            "P98 native HWND invalidation/repaint failed");
+                    pump(70);
+                    const auto bmp="step-"+std::to_string(i)+".bmp";
+                    captureEditorBmp(child,out/bmp);
+                    report<<i<<"\t"<<std::setprecision(17)<<wanted<<"\t"
+                          <<observed<<"\t"<<bmp<<"\n";
+                    std::cout<<"[PASS] P98 real HWND step "<<i
+                             <<" host parameter "<<id<<" = "<<observed
+                             <<" BMP="<<bmp<<"\n";
+                }
+                require(report.good(),"P98 host values report write failed");
+                report.close();
+                require(view->removed()==kResultTrue,
+                        "P98 real editor removal failed");
+                attached=false;
+                require(view->setFrame(nullptr)==kResultTrue,
+                        "P98 real editor frame cleanup failed");
+                frameSet=false;
+                frame->release();frame=nullptr;
+            } catch(...) {
+                if(attached)(void)view->removed();
+                if(frameSet)(void)view->setFrame(nullptr);
+                if(frame)frame->release();
+                view->release();
+                throw;
+            }
+            view->release();
+            controller.close();
+        }
+        require(component->terminate()==kResultOk,
+                "P98 real product processor termination failed");
+        std::cout<<"P98_REAL_HOST_PARAMETER_SNAPSHOTS_PASS\n";
+        return 0;
+    }
+    throw std::runtime_error("P98 no real VST3 processor class");
+}
+
 int run(const std::string& pluginPath, bool checkClick, ParamID paramID,
         int clickX = -1, int clickY = -1, double expectedValue = 1.0,
         const std::filesystem::path& screenshot = {},
@@ -3203,6 +3323,10 @@ int main(int argc, char** argv) {
         if (argc == 4 && std::string(argv[1]) == "--inventory-hwnd-tree")
             return run(argv[2], false, 0, -1, -1, 1.0, {}, 0.0,
                        std::filesystem::path(argv[3]));
+        if (argc == 6 && std::string(argv[1]) == "--capture-host-param-sequence") {
+            const auto id=static_cast<ParamID>(std::stoul(argv[3]));
+            return captureHostParameterSequence(argv[2],id,argv[4],argv[5]);
+        }
         if (argc == 4 && std::string(argv[1]) == "--snapshot-editor")
             return run(argv[2], false, 0, -1, -1, 1.0,
                        std::filesystem::path(argv[3]));
@@ -3210,7 +3334,7 @@ int main(int argc, char** argv) {
             return run(argv[2], false, 0);
         if (argc == 4 && std::string(argv[1]) == "--prove-click")
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
-        std::cerr << "Usage: 125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"                  << "       125A_Test_Lab_GUI --gui-workflow <plugin.vst3> <approved-actions.tsv> <report.tsv> <screenshots-dir>\n"
+        std::cerr << "Usage: 125A_Test_Lab_GUI --capture-host-param-sequence <plugin.vst3> <param-id> <csv-0-to-1-values> <bmp-dir>\\n"\n                  << "       125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"                  << "       125A_Test_Lab_GUI --gui-workflow <plugin.vst3> <approved-actions.tsv> <report.tsv> <screenshots-dir>\n"
                   << "       125A_Test_Lab_GUI --explore-gui-click <plugin.vst3> <x> <y> <native.tsv> <baseline-a.bmp> <baseline-b.bmp> <after.bmp>\n"
                   << "       125A_Test_Lab_GUI --explore-gui-sham <plugin.vst3> <x> <y> <native.tsv> <baseline-a.bmp> <baseline-b.bmp> <after.bmp>\n"
                   << "       125A_Test_Lab_GUI --gui-observe-roundtrip <plugin.vst3> <x> <y> <native.tsv> <before-a.bmp> <before-b.bmp> <after-click1.bmp> <after-click2.bmp>\n"
