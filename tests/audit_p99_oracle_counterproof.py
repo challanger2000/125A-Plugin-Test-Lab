@@ -24,6 +24,9 @@ def run():
     try:
         positive = verify_pcm(f.make_trace(), f.proof, f.root / "audit-correct")
         assert positive["status"] == "VIRTUAL_ASIO_PCM_LOOPBACK_PASS", positive
+        assert positive["pcm_content_verified"] is True
+        assert positive["driver_execution_verified"] is False
+        assert positive["virtual_loopback_verified"] is False
         wrong = array("f")
         delay = 3072
         frames = f.frames
