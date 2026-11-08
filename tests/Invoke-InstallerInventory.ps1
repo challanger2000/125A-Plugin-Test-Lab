@@ -33,7 +33,7 @@ function Snapshot-Registry {
   if(Test-Path $key){
    Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
     $p=Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue
-    if($p){$lines+= [ordered]@{key=$_.Name;name=[string]$p.DisplayName;version=[string]$p.DisplayVersion;location=[string]$p.InstallLocation}}
+    if($p){$lines+= [ordered]@{key=$_.Name;name=[string]($p.PSObject.Properties['DisplayName'].Value);version=[string]($p.PSObject.Properties['DisplayVersion'].Value);location=[string]($p.PSObject.Properties['InstallLocation'].Value)}}
    }
   }
  }
