@@ -57,8 +57,9 @@ function Capture-Uninstall {
     if (-not (Test-Path -LiteralPath $p)) { continue }
     foreach ($key in @(Get-ChildItem -LiteralPath $p -ErrorAction Stop)) {
       $v = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop
-      if ($v.DisplayName) {
-        $entries += ([string]$key.Name + '|' + [string]$v.DisplayName + '|' + [string]$v.DisplayVersion)
+      if ($v.PSObject.Properties['DisplayName'] -and $v.DisplayName) {
+        $version = if ($v.PSObject.Properties['DisplayVersion']) { [string]$v.DisplayVersion } else { '' }
+        $entries += ([string]$key.Name + '|' + [string]$v.DisplayName + '|' + $version)
       }
     }
   }
