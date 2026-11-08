@@ -7,6 +7,7 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'P109-LinkCount.ps1')
 try {
   $root = (Resolve-Path -LiteralPath $Bundle -ErrorAction Stop).ProviderPath
   $source = (Resolve-Path -LiteralPath $ExpectedManifest -ErrorAction Stop).ProviderPath
@@ -30,6 +31,7 @@ try {
       throw 'P109 linked/junction resource rejected'
     }
     if ($entry.PSIsContainer) { continue }
+    Assert-P110SingleLink $entry.FullName
     $relative = $entry.FullName.Substring($root.TrimEnd('\').Length + 1).Replace('\','/')
     $key = $relative.ToLowerInvariant()
     if ($seen.ContainsKey($key)) { throw 'P109 case-colliding resource paths' }
