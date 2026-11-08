@@ -55,8 +55,7 @@ jobs:
           if ($result.status -ne 'INSTALLER_EXECUTED_INVENTORY_CAPTURED' -or $result.exit_code -ne 0 -or $result.release_approved -ne $false) {
             throw 'Positive native Windows execution evidence invalid'
           }
-          if (@($result.added | Where-Object { $_ -match '125A_P98_Fixture.*fixture-installed.txt
- }).Count -ne 1) {
+          if (@($result.added | Where-Object { $_ -match '125A_P98_Fixture.*fixture-installed\\.txt$' }).Count -ne 1) {
             throw 'Actual installed file was not detected'
           }
           Write-Output 'P98 real harmless EXE execution and installed-file inventory PASS.'
