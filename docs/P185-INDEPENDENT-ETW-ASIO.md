@@ -1,4 +1,4 @@
-# P185 independent ETW / ASIO investigation (implementation candidate)
+# P185 independent ETW / ASIO investigation (checked Windows tooling)
 
 Task: [AWE issue #91](https://github.com/challanger2000/125A-AWE-Synthesizer/issues/91).
 Engineering rules fully read at `bc26392ec7ea9f20f074bff84bbc47ab439d5fe0`, including
@@ -66,6 +66,8 @@ requires exactly two actual provider events with matching nonce, sequence, PID,
 TID, and timestamps within both QPC brackets. PerfFreq and clock type must match
 both ETL headers and the callback clock. Maximum bracket width is 10 ms; otherwise
 correlation is INCONCLUSIVE. Both startup and end markers must bound all callbacks.
+Kernel thread-end coverage must also extend beyond the last marker, independently
+of the user-provider trace. A deliberately truncated kernel tail is rejected.
 There is no empirical offset fitted to make a trace appear aligned.
 
 ETW APIs are built into Windows; ADK/WPR is not required by this implementation.
@@ -113,7 +115,41 @@ observations, not proof of scheduler/USB responsibility for an unobserved gap.
 
 Self-challenge review, not an independent human or second-agent audit. Native
 runtime permissions/ETW success and actual package tests must complete before a
-Windows package is described as checked. Current status pending those runs.
+Windows package is described as checked. **Executed:** final code `8db0bea5d0888324aa4b33af3676d689900f1f2a`,
+[Windows Actions 42530025112](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42530025112),
+all native targets compiled, both CTests passed; 67 existing Python scripts plus
+one actual native HWND/BMP regression passed. The real reference lifecycle and
+its broken setProcessing control, existing ASIO conversion/buffer/trace selftests,
+unregistered-driver rejection, actual two-session ETW capture, QPC brackets,
+CSwitch sleep interval, post-marker kernel thread end, restricted-token denial
+and stale-directory refusal passed. All **36** positive/adversarial cases passed
+under Windows PowerShell 5.1; their fixture results remain hardware NOT_RUN.
+The real unpacked package BAT passed from a path with spaces; cancellation
+returned 2, altered source failed integrity with 3. No local ASIO device or
+physical hardware was exercised by those controls.
+
+Also executed locally: 67 standalone Python scripts, PowerShell parser checks
+for all 23 workflow script blocks, all 36 arithmetic/adversarial cases under a
+checksum-verified portable Microsoft PowerShell 7.4.6. These supplement the
+actual Windows PowerShell 5.1 evidence, not replace it.
+
+The existing ASIO callback body is byte-for-byte unchanged from Test Lab baseline
+`b2f06baf9a0734132228abc67f1da7576357f694`; extracted-body SHA256
+`a31e4c7ee22f9943c58e99db2bb0ca7f6a662cafa8a5d6545539450d4f6906fa`.
+AWE `src/` and CMake are unchanged from P184. The exact bundled ASIO SDK source
+archive and tracked Test Lab source contain no ROM, SF2 or installer executables.
+
+Corrected test/instrumentation issues: standalone argparse tests cannot be run
+through indiscriminate unittest discovery; expected native negative exits must
+be cleared after verifying them; binary/source/nonce/PID/TID/clock identity and
+kernel end coverage are required before reconciliation. These are tooling fixes;
+no AWE audio-engine defect or device-specific root cause is claimed.
+
+Draft PR creation was actually attempted. GitHub returned
+`GitHub Actions is not permitted to create or approve pull requests`.
+The local GitHub API route is also unavailable (`Forbidden`); no repository
+permission was changed. The branch and concrete review body remain available.
+No PR has been represented as created or merged.
 
 ## Primary API references
 
@@ -125,3 +161,19 @@ MicrosoftDocs/sdk-api sources. Existing ASIO API reviewed against the pinned SDK
 not an invented replacement. Exact documentation URLs are reproducible from
 https://github.com/MicrosoftDocs/win32/tree/docs/desktop-src/ETW and
 https://github.com/MicrosoftDocs/sdk-api/blob/docs/sdk-api-src/content/evntrace/ns-evntrace-trace_logfile_header.md.
+
+## Remaining limits / decision
+
+Physical P185 at the Yamaha Steinberg interface: **NOT_RUN**. Device-specific
+scheduler/DPC/ISR/USB/ASIO attribution: **INCONCLUSIVE**. AWE target-machine
+realtime: **NOT_RUN**, existing P184 strict full-run **NO-GO** unchanged.
+A second independent human review, proprietary DAW and analog output remain
+**NOT_RUN**. FULL AUDIT and release approval have not been granted.
+
+ETW and added control-thread observations can perturb a cold start. Absence of a
+gap in one observed reference run is no fix proof. Optional provider availability
+and driver schemas vary by machine; proximity or a waiting state is insufficient
+for root-cause attribution. Raw ETLs may contain system/private path information
+and stay local. Force-killing the recorder can leave an owned ETW session until
+logoff/reboot; normal completion/handled Ctrl+C stops owned sessions, and an owned
+job object prevents the child audio stream surviving the controller.

@@ -4,7 +4,16 @@
 `b2f06baf9a0734132228abc67f1da7576357f694` (P183/P184 ASIO lineage).
 [AWE task #91](https://github.com/challanger2000/125A-AWE-Synthesizer/issues/91),
 [method, complete scope and limits](docs/P185-INDEPENDENT-ETW-ASIO.md).
-Windows acceptance is pending the new workflow; no unexecuted gate is PASS.
+**Checked native/tool source:** `8db0bea5d0888324aa4b33af3676d689900f1f2a`.
+[Windows run 42530025112](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42530025112):
+all targets compiled, 2/2 CTests, 67 standalone Python test scripts plus the real
+native GUI bitmap test, actual ETW/QPC/CSwitch/restricted-token controls,
+36 independent positive/adversarial cases, and unpacked ZIP/BAT integrity,
+cancel and tamper checks passed. These are software/control tests.
+The subsequent documentation commit does not change the tested binaries.
+Draft PR creation was attempted and blocked by the repository setting:
+`GitHub Actions is not permitted to create or approve pull requests`.
+The review text is prepared in [P185-DRAFT-PR.md](docs/P185-DRAFT-PR.md).
 Physical P185 ASIO: **NOT_RUN**; cause **INCONCLUSIVE**; release **NO-GO**.
 P184 A/B/A is completed and is not repeated. Existing full-run timing gate,
 AWE sound core and reference signal stay unchanged. User runtime is one portable
