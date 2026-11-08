@@ -83,6 +83,50 @@ class P95VirtualLoopback(unittest.TestCase):
         self.assertFalse(report["commercial_daw_verified"])
         self.assertFalse(report["release_approved"])
 
+    def test_deliberately_wrong_oscillator_frequency_must_fail(self):
+        # Do not mistake a valid return of WRONG source music for a good
+        # QA oscillator. Change only original output + its returned input.
+        from array import array
+        frames, rate, delay = self.frames, self.rate, 3072
+        signals = ([], [])
+        for n in range(frames):
+            t = n / rate
+            gates = (((0x6d4e92b5 >> (int(t/.061) % 32)) & 1),
+                     ((0xb39a4d27 >> (int(t/.083) % 32)) & 1))
+            signals[0].append(.040*gates[0]*math.sin(2*math.pi*911*t))
+            signals[1].append(.055*gates[1]*math.sin(2*math.pi*1277*t))
+        values = array("f")
+        for n in range(frames):
+            values.extend((signals[0][n], signals[1][n],
+                           signals[0][n-delay]*.84 if n >= delay else 0.,
+                           signals[1][n-delay]*.72 if n >= delay else 0.))
+        path = self.root / "wrong-source.f32"
+        path.write_bytes(struct.pack("<8sIIII", MAGIC, rate, frames,
+                                     self.block, 4)+values.tobytes())
+        report = verify_pcm(path, self.proof, self.root/"wrong-source-result")
+        self.assertEqual(report["status"], "FAIL")
+        self.assertIn("source PCM differs", " ".join(report["faults"]))
+
+    def test_fourfold_input_gain_is_rejected(self):
+        path = self.make_trace()
+        values = array("f")
+        raw = path.read_bytes()
+        values.frombytes(raw[24:])
+        for n in range(self.frames):
+            values[4*n+2] *= 4
+            values[4*n+3] *= 4
+        path.write_bytes(raw[:24]+values.tobytes())
+        report = verify_pcm(path, self.proof, self.root/"gain-result")
+        self.assertEqual(report["status"], "FAIL")
+        self.assertIn("return gain", " ".join(report["faults"]))
+
+    def test_zero_frame_delay_is_measured_as_zero(self):
+        path = self.make_trace(delay=0)
+        report = verify_pcm(path, self.proof, self.root/"zero-delay")
+        self.assertEqual(report["status"], "VIRTUAL_ASIO_PCM_LOOPBACK_PASS",
+                         report["faults"])
+        self.assertEqual(report["metrics"]["latency_frames_estimate"], 0)
+
     def test_silence_is_not_a_loopback(self):
         path = self.make_trace(silence=True)
         report = verify_pcm(path, self.proof, self.root / "silent")
