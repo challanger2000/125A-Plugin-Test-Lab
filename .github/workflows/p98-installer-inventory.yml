@@ -1,0 +1,64 @@
+name: P98 isolated installer inventory
+on:
+  workflow_dispatch:
+    inputs:
+      approve_install:
+        description: 'Execute SHA256-pinned installer on disposable Windows runner'
+        type: boolean
+        default: false
+        required: true
+      installer_sha256:
+        description: 'Full approved SHA256 (64 hex characters)'
+        type: string
+        required: false
+permissions:
+  contents: read
+jobs:
+  installer-inventory:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      ENABLED: ${{ vars.P98_INSTALLER_LAB_ENABLED }}
+      INSTALLER_URL: ${{ secrets.P98_INSTALLER_URL }}
+      APPROVED: ${{ inputs.approve_install }}
+      EXPECTED_SHA: ${{ inputs.installer_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail-closed consent and source checks
+        shell: pwsh
+        run: |
+          if ($env:APPROVED -ne 'true' -or $env:ENABLED -ne 'YES_DISPOSABLE' -or $env:EXPECTED_SHA -notmatch '^[0-9a-fA-F]{64}$' -or -not $env:INSTALLER_URL) {
+            Write-Output 'P98 NOT RUN: missing explicit approval, disposable-environment flag, checksum, or secure download URL'
+            'P98_STATUS=NOT_RUN' | Out-File -FilePath $env:GITHUB_ENV -Append
+            exit 0
+          }
+          'P98_STATUS=APPROVED' | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Retrieve exact approved installer and check SHA256
+        if: env.P98_STATUS == 'APPROVED'
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'p98-installer'
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          $file = Join-Path $target 'installer.exe'
+          Invoke-WebRequest -Uri $env:INSTALLER_URL -OutFile $file -MaximumRedirection 3
+          if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ine $env:EXPECTED_SHA) { throw 'SHA256 mismatch' }
+      - name: Run installer with bounded timeout and collect inventory
+        if: env.P98_STATUS == 'APPROVED'
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'p98-installer'
+          & powershell -NoProfile -File tests/Invoke-InstallerInventory.ps1 -Installer (Join-Path $target 'installer.exe') -ExpectedSha256 $env:EXPECTED_SHA -OutputFolder (Join-Path $target 'report') -ApproveExecution -TimeoutSeconds 240
+          if ($LASTEXITCODE -ne 0) { throw 'P98 installer inventory failed' }
+      - name: Delete downloaded EXE
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'p98-installer/installer.exe') -Force -ErrorAction SilentlyContinue
+      - name: Upload short-retention evidence (paths may be sensitive)
+        if: always() && env.P98_STATUS == 'APPROVED'
+        uses: actions/upload-artifact@v4
+        with:
+          name: P98-installer-inventory
+          path: ${{ runner.temp }}/p98-installer/report/INSTALLER-INVENTORY.json
+          if-no-files-found: warn
+          retention-days: 1
