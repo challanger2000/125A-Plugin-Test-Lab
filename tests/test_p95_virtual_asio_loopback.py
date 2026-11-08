@@ -123,6 +123,23 @@ class P95VirtualLoopback(unittest.TestCase):
         self.assertEqual(report["status"], "FAIL")
         self.assertIn("return gain", " ".join(report["faults"]))
 
+    def test_full_wave_rectified_input_cannot_pass_as_transparent_audio(self):
+        # Full-wave rectification preserves every input RMS envelope window,
+        # thus it defeated the previous unsigned envelope-only oracle.
+        path = self.make_trace()
+        raw = path.read_bytes()
+        values = array("f")
+        values.frombytes(raw[24:])
+        for n in range(self.frames):
+            values[4*n+2] = abs(values[4*n+2])
+            values[4*n+3] = abs(values[4*n+3])
+        path.write_bytes(raw[:24] + values.tobytes())
+        result = verify_pcm(path, self.proof, self.root / "rectified-return")
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("DC offset", " ".join(result["faults"]))
+        self.assertFalse(result["pcm_content_verified"])
+        self.assertFalse(result["driver_execution_verified"])
+
     def test_zero_frame_delay_is_measured_as_zero(self):
         path = self.make_trace(delay=0)
         report = verify_pcm(path, self.proof, self.root/"zero-delay")
