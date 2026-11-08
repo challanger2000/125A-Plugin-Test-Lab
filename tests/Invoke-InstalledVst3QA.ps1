@@ -90,67 +90,7 @@ try {
   }
   if ($ExpectedBundleManifest -or $ExpectedBundleManifestSha256) {
     if (-not $ExpectedBundleManifest -or
-        $ExpectedBundleManifestSha256 -notmatch '^[a-fA-F0-9]{64}
-  $result.installed_module_sha256_verified = $true
-  $result.installed_module_sha256 = $actualHash
-  $gui = (Resolve-Path -LiteralPath $GuiHost -ErrorAction Stop).ProviderPath
-  $python = (Resolve-Path -LiteralPath $PythonExecutable -ErrorAction Stop).ProviderPath
-  $runner = Join-Path $PSScriptRoot 'run_universal_qa.py'
-  if (-not (Test-Path -LiteralPath $runner -PathType Leaf)) { throw 'P74 native VST3 QA runner missing' }
-  $qaOut = Join-Path $destination 'P74-native'
-  $arguments = @($runner,'--plugin',$bundle,'--gui-host',$gui,'--out',$qaOut)
-  if ($RunTechnicalBaseline) {
-    if (-not $AudioHost -or -not $StressHost) {
-      throw 'Technical VST3 gate requires actual audio and stress hosts'
-    }
-    $audio = (Resolve-Path -LiteralPath $AudioHost -ErrorAction Stop).ProviderPath
-    $stress = (Resolve-Path -LiteralPath $StressHost -ErrorAction Stop).ProviderPath
-    $arguments += @('--audio-host',$audio,'--stress-host',$stress,'--run-technical-baseline')
-  }
-  $result.p74_executed = $true
-  & $python @arguments | Out-Null
-  $code = $LASTEXITCODE
-  $qaFile = Join-Path $qaOut 'UNIVERSAL-QA-RESULT.json'
-  if ($code -ne 0 -or -not (Test-Path -LiteralPath $qaFile -PathType Leaf)) {
-    throw 'P74 subprocess failed or did not produce native VST3 evidence'
-  }
-  $qa = Get-Content -LiteralPath $qaFile -Raw -Encoding UTF8 | ConvertFrom-Json
-  $acceptable = if ($RunTechnicalBaseline) { 'TECHNICAL_BASELINE_PASS' } else { 'INVENTORY_COMPLETE' }
-  if ($qa.schema -ne '125a-universal-vst3-qa-pipeline-v1' -or
-      $qa.status -ne $acceptable -or
-      $qa.verified_module_sha256 -cne $actualHash -or
-      $qa.verified_gui_host_sha256 -cne (Get-FileHash -LiteralPath $gui -Algorithm SHA256).Hash.ToLowerInvariant() -or
-      $qa.discovery -ne 'PASS' -or
-      $qa.faults.Count -ne 0 -or
-      $qa.real_asio_hardware -ne 'NOT RUN' -or
-      $qa.commercial_daw_session -ne 'NOT RUN' -or
-      $qa.approved_product_cases -ne 'NOT DECLARED' -or
-      $qa.required_feature_coverage -ne 'NOT DECLARED' -or
-      $qa.release_approved -ne $false) {
-    throw 'P74 independent native VST3 identity or acceptance disagrees'
-  }
-  if ($RunTechnicalBaseline -and $qa.native_technical -ne 'PASS') {
-    throw 'P74 native technical VST3 checks not passed'
-  }
-  if ((Get-FileHash -LiteralPath $module -Algorithm SHA256).Hash.ToLowerInvariant() -cne $actualHash) {
-    throw 'Installed VST3 changed while P74 inspected it'
-  }
-  if ($result.whole_bundle_integrity -eq 'VERIFIED_BEFORE_P74') {
-    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $checker -Bundle $bundle -ExpectedManifest $ExpectedBundleManifest -ExpectedManifestSha256 $ExpectedBundleManifestSha256 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'P109 bundle content changed during P74' }
-    $result.whole_bundle_integrity = 'VERIFIED'
-  }
-  $result.p74_result = $qa.status
-  $result.vst3_technical_baseline = if ($RunTechnicalBaseline) { 'PASS' } else { 'NOT RUN' }
-  $result.status = if ($RunTechnicalBaseline) { 'INSTALL_AND_NATIVE_TECHNICAL_PASS' } else { 'INSTALL_AND_NATIVE_INVENTORY_COMPLETE' }
-  Produce
-  exit 0
-} catch {
-  $result.faults = @([string]$_.Exception.Message)
-  if (Test-Path -LiteralPath $destination -PathType Container) { Produce }
-  exit 1
-}
-) {
+        $ExpectedBundleManifestSha256 -notmatch '^[a-fA-F0-9]{64}$') {
       throw 'P109 requires separately pinned source bundle manifest and SHA256'
     }
     $checker = Join-Path $PSScriptRoot 'Test-Vst3BundleManifest.ps1'
@@ -202,6 +142,11 @@ try {
   }
   if ((Get-FileHash -LiteralPath $module -Algorithm SHA256).Hash.ToLowerInvariant() -cne $actualHash) {
     throw 'Installed VST3 changed while P74 inspected it'
+  }
+  if ($result.whole_bundle_integrity -eq 'VERIFIED_BEFORE_P74') {
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $checker -Bundle $bundle -ExpectedManifest $ExpectedBundleManifest -ExpectedManifestSha256 $ExpectedBundleManifestSha256 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'P109 bundle content changed during P74' }
+    $result.whole_bundle_integrity = 'VERIFIED'
   }
   $result.p74_result = $qa.status
   $result.vst3_technical_baseline = if ($RunTechnicalBaseline) { 'PASS' } else { 'NOT RUN' }
