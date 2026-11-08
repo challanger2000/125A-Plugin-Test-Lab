@@ -1,0 +1,34 @@
+name: P98 installer fail-closed regression
+on:
+  pull_request:
+    paths:
+      - 'tests/Invoke-InstallerInventory.ps1'
+      - '.github/workflows/p98-installer-*.yml'
+      - 'docs/P98-INSTALLER-INVENTORY.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  negative-gates:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise denial and wrong-hash without ever running EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $test = Join-Path $env:RUNNER_TEMP 'p98-test'
+          New-Item -ItemType Directory -Path $test -Force | Out-Null
+          $fake = Join-Path $test 'fixture.exe'
+          [IO.File]::WriteAllBytes($fake, [byte[]](1,2,3,4))
+          $sha = (Get-FileHash $fake -Algorithm SHA256).Hash
+          & powershell -NoProfile -File tests/Invoke-InstallerInventory.ps1 -Installer $fake -ExpectedSha256 $sha -OutputFolder (Join-Path $test 'denied')
+          if ($LASTEXITCODE -ne 1) { throw 'Missing consent unexpectedly accepted' }
+          $denied = Get-Content (Join-Path $test 'denied/INSTALLER-INVENTORY.json') -Raw | ConvertFrom-Json
+          if ($denied.status -ne 'FAIL' -or $denied.execution_approved -ne $false -or $denied.release_approved -ne $false) { throw 'Denial evidence invalid' }
+          & powershell -NoProfile -File tests/Invoke-InstallerInventory.ps1 -Installer $fake -ExpectedSha256 ('0' * 64) -OutputFolder (Join-Path $test 'wronghash') -ApproveExecution
+          if ($LASTEXITCODE -ne 1) { throw 'Wrong checksum unexpectedly accepted' }
+          $mismatch = Get-Content (Join-Path $test 'wronghash/INSTALLER-INVENTORY.json') -Raw | ConvertFrom-Json
+          if ($mismatch.status -ne 'FAIL' -or $mismatch.error -notmatch 'SHA256 mismatch' -or $mismatch.release_approved -ne $false) { throw 'Checksum evidence invalid' }
+          Write-Output 'P98 fail-closed negative checks passed; NO installer executed.'
