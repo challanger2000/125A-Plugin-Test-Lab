@@ -18,6 +18,16 @@ $bundle = (Resolve-Path -LiteralPath $SourceBundle).ProviderPath
 $dest = Join-Path $WorkingRoot ([IO.Path]::GetFileName($bundle))
 $sourceDll = Join-Path $bundle ('Contents\x86_64-win\' + [IO.Path]::GetFileName($bundle))
 if (-not (Test-Path -LiteralPath $sourceDll -PathType Leaf)) { throw 'P106 actual source-built VST3 is missing its DLL' }
+# One independent non-module resource is intentionally part of the
+# source-built fixture. A DLL-only SHA must not be enough to prove it.
+$sourceResource = Join-Path $bundle 'Contents\Resources\P109-fixture-resource.txt'
+New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($sourceResource)) -Force | Out-Null
+$sourceBytes = [Text.Encoding]::ASCII.GetBytes('P109-approved-resource-content')
+[IO.File]::WriteAllBytes($sourceResource, $sourceBytes)
+$sourceManifest = Join-Path $WorkingRoot 'P109-expected-source-manifest.json'
+& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Get-Vst3BundleManifest.ps1') -Bundle $bundle -OutputFile $sourceManifest | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'P109 could not establish independent source bundle manifest' }
+$manifestSha = (Get-FileHash -LiteralPath $sourceManifest -Algorithm SHA256).Hash.ToLowerInvariant()
 $destModule = Join-Path $dest ('Contents\x86_64-win\' + [IO.Path]::GetFileName($bundle))
 $moduleHash = (Get-FileHash -LiteralPath $sourceDll -Algorithm SHA256).Hash.ToLowerInvariant()
 $installerHash = (Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -31,12 +41,16 @@ $baseArgs = @('-InstallationReport',$report,'-Vst3Bundle',$dest,
               '-InstalledModule',$destModule,'-ExpectedModuleSha256',$moduleHash,
               '-GuiHost',$GuiHost,'-PythonExecutable',$PythonExecutable,
               '-AudioHost',$AudioHost,'-StressHost',$StressHost,
+              '-ExpectedBundleManifest',$sourceManifest,
+              '-ExpectedBundleManifestSha256',$manifestSha,
               '-RunTechnicalBaseline')
 & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $postScript @baseArgs -OutputFolder $qaOut | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'P106 installed REAL VST3 did not pass P74 host and technical QA' }
 $proof = Get-Content -LiteralPath (Join-Path $qaOut 'P106-POSTINSTALL-VST3-RESULT.json') -Raw | ConvertFrom-Json
 if ($proof.status -ne 'INSTALL_AND_NATIVE_TECHNICAL_PASS' -or
     $proof.installed_module_sha256_verified -ne $true -or
+    $proof.whole_bundle_integrity -ne 'VERIFIED' -or
+    $proof.whole_bundle_file_count -lt 2 -or
     $proof.p74_executed -ne $true -or
     $proof.vst3_technical_baseline -ne 'PASS' -or
     $proof.release_approved -ne $false) { throw 'P106 bridge reported false-positive native technical evidence' }
@@ -75,3 +89,32 @@ foreach ($mutation in $mutations) {
   }
   Write-Host "P107 tampered $($mutation.id) rejected before P74"
 }
+
+# P109 independently protect extra resources, not just executable bytes.
+$installedResource = Join-Path $dest 'Contents\Resources\P109-fixture-resource.txt'
+if (-not (Test-Path -LiteralPath $installedResource -PathType Leaf)) {
+  throw 'P109 installer failed to include the expected resource file'
+}
+function Reject-Bundle([string]$case,[string]$manifestPath,[string]$manifestHash) {
+  $testOut = Join-Path $WorkingRoot ('p109-' + $case)
+  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $postScript -InstallationReport $report -Vst3Bundle $dest -InstalledModule $destModule -ExpectedModuleSha256 $moduleHash -GuiHost $GuiHost -PythonExecutable $PythonExecutable -ExpectedBundleManifest $manifestPath -ExpectedBundleManifestSha256 $manifestHash -OutputFolder $testOut | Out-Null
+  if ($LASTEXITCODE -eq 0) { throw "P109 modified $case falsely accepted" }
+  $result = Get-Content -LiteralPath (Join-Path $testOut 'P106-POSTINSTALL-VST3-RESULT.json') -Raw | ConvertFrom-Json
+  if ($result.status -ne 'FAIL' -or $result.p74_executed -ne $false -or
+      $result.whole_bundle_integrity -eq 'VERIFIED') {
+    throw "P109 modified $case reached native P74"
+  }
+  Write-Host "P109 $case rejected before native P74"
+}
+[IO.File]::WriteAllBytes($installedResource, [Text.Encoding]::ASCII.GetBytes('P109-corrupted'))
+Reject-Bundle 'altered-resource' $sourceManifest $manifestSha
+[IO.File]::WriteAllBytes($installedResource, $sourceBytes)
+Remove-Item -LiteralPath $installedResource
+Reject-Bundle 'missing-resource' $sourceManifest $manifestSha
+[IO.File]::WriteAllBytes($installedResource, $sourceBytes)
+$surprise = Join-Path $dest 'Contents\Resources\P109-unexpected-resource.txt'
+[IO.File]::WriteAllBytes($surprise, [Text.Encoding]::ASCII.GetBytes('unapproved'))
+Reject-Bundle 'extra-resource' $sourceManifest $manifestSha
+Remove-Item -LiteralPath $surprise
+Reject-Bundle 'wrong-manifest-hash' $sourceManifest ('0' * 64)
+Write-Host 'P109 full bundle resources authenticated on positive and all four negative controls'
