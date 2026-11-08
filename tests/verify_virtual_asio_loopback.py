@@ -66,7 +66,7 @@ def envelope(samples, channel, frames, window=256):
 
 def normalized_correlation(a, b, lag):
     # a is earlier ASIO output. b is later ASIO input. Lag is nonnegative.
-    if lag <= 0 or lag >= len(a) or len(a) != len(b):
+    if lag < 0 or lag >= len(a) or len(a) != len(b):
         return -1.
     n = len(a) - lag
     av = a[:n]
@@ -81,23 +81,71 @@ def normalized_correlation(a, b, lag):
     return cross / math.sqrt(power_a * power_b)
 
 
+def verify_known_source_signal(trace):
+    """Independent frozen P95 test specification, not output-to-input matching.
+
+    The built QA fixture must produce a 317 Hz / 557 Hz phase-locked, gated
+    stereo signal, starting at phase zero after activation. Check *every*
+    emitted sample, not only the coarse amplitude envelope. This function is
+    specific to the P95 fixture; do not apply it to arbitrary customer VST3s.
+    """
+    rate, frames, samples = trace["rate"], trace["frames"], trace["samples"]
+    patterns = (0x6d4e92b5, 0xb39a4d27)
+    cells = (0.061, 0.083)
+    hz = (317., 557.)
+    amplitude = (0.040, 0.055)
+    max_deviation = 0.
+    sum_error_sq = [0., 0.]
+    sum_ref_sq = [0., 0.]
+    for n in range(frames):
+        t = n / rate
+        for ch in (0, 1):
+            gate = (patterns[ch] >> (int(t / cells[ch]) % 32)) & 1
+            expected = (amplitude[ch] * math.sin(2. * math.pi * hz[ch] * t)
+                        if gate else 0.)
+            actual = samples[4*n + ch]
+            error = abs(actual - expected)
+            max_deviation = max(max_deviation, error)
+            sum_error_sq[ch] += error * error
+            sum_ref_sq[ch] += expected * expected
+    relative = [
+        math.sqrt(sum_error_sq[ch] / max(sum_ref_sq[ch], 1.e-15))
+        for ch in (0, 1)
+    ]
+    # Float32 arithmetic differs slightly between compilers/CPUs; allow
+    # minute float roundoff, but reject wrong frequencies, channels, silence,
+    # phase resets, drifting DSP clock, mutated envelopes and level.
+    if max_deviation > 0.0001 or max(relative) > 0.003:
+        raise ValueError("P95 emitted VST3 source PCM differs from independently "
+                         "declared 317/557 Hz, channel gate and phase contract")
+    return {
+        "reference_hz_l": hz[0],
+        "reference_hz_r": hz[1],
+        "source_max_sample_error": round(max_deviation, 9),
+        "source_relative_rms_error_l": round(relative[0], 8),
+        "source_relative_rms_error_r": round(relative[1], 8),
+        "source_contract": "PASS"
+    }
+
+
 def analyze(trace):
     rate, frames, s = trace["rate"], trace["frames"], trace["samples"]
     env = [envelope(s, ch, frames) for ch in range(4)]
     if len(env[0]) < 250:
         raise ValueError("P95 too little true ASIO audio for reliable loopback")
+    source_metrics = verify_known_source_signal(trace)
     rms = [math.sqrt(sum(v*v for v in e) / len(e)) for e in env]
     if min(rms[:2]) < .008:
         raise ValueError("P95 source VST3 generated no sufficiently audible stereo signature")
     if min(rms[2:]) < .003:
         raise ValueError("P95 VB-CABLE did not return meaningful signal on both input channels")
-    # Coarse timing evidence: loopback must follow output by at least one 256
-    # frame window. Maximum alignment lag one second, no fixed ASIO latency.
+    # Coarse timing evidence: include zero-lag in a 256-frame envelope grid.
+    # Maximum alignment lag one second, no fixed ASIO latency.
     longest = min(len(env[0]) // 3, int(rate / 256))
     searches = []
     for expected, captured in ((0, 2), (1, 3), (0, 3), (1, 2)):
         scores = [(normalized_correlation(env[expected], env[captured], lag),
-                   lag) for lag in range(1, longest + 1)]
+                   lag) for lag in range(0, longest + 1)]
         searches.append(max(scores))
     (corr_l, lag_l), (corr_r, lag_r), (wrong_l, _), (wrong_r, _) = searches
     if min(corr_l, corr_r) < .75:
@@ -106,7 +154,27 @@ def analyze(trace):
         raise ValueError("P95 left and right channel latencies diverge")
     if corr_l < wrong_r + .15 or corr_r < wrong_l + .15:
         raise ValueError("P95 swapped or ambiguous VB-CABLE stereo routing")
+    # Measure transfer gain at the independently selected aligned lag.
+    # The QA fixture's expected 0.84/0.72 return gain is a test simulation;
+    # the live virtual cable is expected to be approximately transparent.
+    # Allow +/- 3 dB per channel to accommodate real endpoint settings,
+    # but never accept an unapproved +12 dB or 4x return-gain distortion.
+    gains_db = []
+    for out_ch, in_ch, lag in ((0, 2, lag_l), (1, 3, lag_r)):
+        src = env[out_ch][:len(env[out_ch]) - lag]
+        dst = env[in_ch][lag:]
+        src_energy = sum(x*x for x in src)
+        dst_energy = sum(y*y for y in dst)
+        if src_energy <= 1.e-12 or dst_energy <= 1.e-12:
+            raise ValueError("P95 insufficient audio energy for return gain")
+        db = 10. * math.log10(dst_energy / src_energy)
+        if abs(db) > 3.0:
+            raise ValueError("P95 return gain differs by more than 3 dB from transparent cable")
+        gains_db.append(db)
     return {
+        **source_metrics,
+        "return_gain_db_l": round(gains_db[0], 4),
+        "return_gain_db_r": round(gains_db[1], 4),
         "sample_rate": rate, "frames": frames, "buffer_frames": trace["block"],
         "output_rms_l": round(rms[0], 7),
         "output_rms_r": round(rms[1], 7),
