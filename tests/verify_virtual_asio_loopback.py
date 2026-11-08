@@ -138,6 +138,21 @@ def signed_stereo_match(samples, frames, coarse_left, coarse_right):
     # allowing one constant positive transfer gain per channel. Both
     # signal energy and mismatch energy include all interstitial frames.
     residuals = []
+    # P105: the first lag capture frames have no causal emitted
+    # counterpart in this freshly activated zero-initialized fixture.
+    # Contamination here must not be ignored by P104's aligned overlap.
+    pre_return_rms = []
+    for channel in (0, 1):
+        if lag == 0:
+            pre_return_rms.append(0.)
+            continue
+        prefix_energy = sum(samples[4*n + channel+2] ** 2
+                            for n in range(lag))
+        prefix_rms = math.sqrt(prefix_energy / lag)
+        if prefix_rms > 0.001:
+            raise ValueError("P105 unexplained pre-return audio before first emitted output")
+        pre_return_rms.append(prefix_rms)
+    max_local_residuals = []
     for channel in (0, 1):
         src_power = 0.
         capture_power = 0.
@@ -159,13 +174,39 @@ def signed_stereo_match(samples, frames, coarse_left, coarse_right):
             0., 1. - dot*dot/(src_power*capture_power)))
         if relative_error > 0.15:
             raise ValueError("P104 full-resolution PCM waveform distortion")
+        # P105: whole-session correlation can bury a short dropout in a
+        # long recording. Apply the same global positive gain to local
+        # 256-frame windows and reject significant isolated damage.
+        local_max = 0.
+        for begin in range(0, frames - lag, 256):
+            window_end = min(begin + 256, frames - lag)
+            source_energy = 0.
+            error_energy = 0.
+            for n in range(begin, window_end):
+                source = samples[4*n + channel]
+                captured = samples[4*(n+lag) + channel+2]
+                difference = captured - gain * source
+                source_energy += (gain * source) ** 2
+                error_energy += difference * difference
+            length = window_end - begin
+            error_rms = math.sqrt(error_energy / length)
+            signal_rms = math.sqrt(source_energy / length)
+            relative_local_error = error_rms / max(signal_rms, 0.003)
+            local_max = max(local_max, relative_local_error)
+            if error_rms > 0.004 and relative_local_error > 0.45:
+                raise ValueError("P105 local PCM dropout or waveform corruption")
+        max_local_residuals.append(local_max)
         residuals.append(relative_error)
     return {"signed_pcm_l": round(signed_scores[0], 5),
             "signed_pcm_r": round(signed_scores[1], 5),
             "signed_pcm_common_lag_frames": lag,
             "pcm_magnitude_alignment": round(best[0], 5),
             "full_resolution_pcm_residual_l": round(residuals[0], 6),
-            "full_resolution_pcm_residual_r": round(residuals[1], 6)}
+            "full_resolution_pcm_residual_r": round(residuals[1], 6),
+            "pre_return_rms_l": round(pre_return_rms[0], 7),
+            "pre_return_rms_r": round(pre_return_rms[1], 7),
+            "max_local_pcm_error_l": round(max_local_residuals[0], 6),
+            "max_local_pcm_error_r": round(max_local_residuals[1], 6)}
 
 
 def verify_known_source_signal(trace):
