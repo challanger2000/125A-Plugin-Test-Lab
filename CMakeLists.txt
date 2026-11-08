@@ -431,3 +431,12 @@ if(ASIO_SDK_DIR)
   endif()
 endif()
 
+
+# P185 independent native ETW controller and TDH consumer, no ADK/runtime installer.
+add_executable(TestLabETW src/p185_etw.cpp)
+set_target_properties(TestLabETW PROPERTIES OUTPUT_NAME "125A_Test_Lab_ETW")
+target_link_libraries(TestLabETW PRIVATE advapi32 tdh ole32)
+target_compile_definitions(TestLabETW PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+if(MSVC)
+  target_compile_options(TestLabETW PRIVATE /W4 /permissive- /utf-8)
+endif()

@@ -1,3 +1,15 @@
+# P185 current work — independent native ETW / ASIO diagnostics
+
+**Branch:** `feature/p185-independent-etw-asio`, baseline
+`b2f06baf9a0734132228abc67f1da7576357f694` (P183/P184 ASIO lineage).
+[AWE task #91](https://github.com/challanger2000/125A-AWE-Synthesizer/issues/91),
+[method, complete scope and limits](docs/P185-INDEPENDENT-ETW-ASIO.md).
+Windows acceptance is pending the new workflow; no unexecuted gate is PASS.
+Physical P185 ASIO: **NOT_RUN**; cause **INCONCLUSIVE**; release **NO-GO**.
+P184 A/B/A is completed and is not repeated. Existing full-run timing gate,
+AWE sound core and reference signal stay unchanged. User runtime is one portable
+BAT with reference-only audio after typed consent, no ROM/SF2 or manual Python.
+
 ## P97 — Local one-command real ASIO4ALL virtual loopback acceptance
 
 P97 adds `tests/Invoke-VirtualASIOAcceptance.ps1`: read-only

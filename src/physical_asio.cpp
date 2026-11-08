@@ -8,6 +8,9 @@
 #include <objbase.h>
 #include <bcrypt.h>
 #include "iasiodrv.h"
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+#include "p185_clock.hpp"
+#endif
 
 #include "public.sdk/source/vst/hosting/module.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
@@ -590,6 +593,7 @@ struct Arguments {
     std::filesystem::path midiOut;
     std::filesystem::path diagnosticOut;
     std::filesystem::path traceOut;
+    std::filesystem::path p185Out;
 };
 Arguments parse(int argc, char** argv) {
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
@@ -645,6 +649,15 @@ Arguments parse(int argc, char** argv) {
             args.callbacks<=4096),
            "P181 timing trace requires diagnostic output and <=4096 callbacks, with distinct paths");
 #endif
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+    for(int i=1;i<argc;++i)if(std::strcmp(argv[i],"--p185-out")==0) {
+        ensure(i+1<argc,"missing --p185-out value"); args.p185Out=std::filesystem::u8path(argv[++i]);
+    }
+    ensure(args.p185Out.empty()||(!args.traceOut.empty()&&
+        args.p185Out!=args.output&&args.p185Out!=args.midiOut&&
+        args.p185Out!=args.traceOut&&args.p185Out!=args.diagnosticOut&&
+        !std::filesystem::exists(args.p185Out)),"P185 requires fresh distinct output and P181 trace");
+#endif
     ensure(args.rate == 44100 || args.rate == 48000 || args.rate == 96000,
            "unsupported ASIO sample rate");
     ensure(args.frames>=64&&args.frames<=4096,"unsupported physical ASIO buffer size");
@@ -659,6 +672,7 @@ Arguments parse(int argc, char** argv) {
 
 #include "asio_live_diagnostics.inc"
 #include "asio_timing_trace.inc"
+#include "p185_asio_observation.inc"
 #if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
 void writeMidiProof(const Arguments& a,const Engine& e,
                     const std::string& moduleHash,const std::string& exeHash) {
@@ -873,6 +887,11 @@ int run(const Arguments& a) {
                     engine.asioBuffers[ch + 2].channelNum = static_cast<long>(ch);
                 }
 #endif
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                P185Lifecycle p185Life{};
+                p185::Clock p185Clock(!a.p185Out.empty());
+                if(!a.p185Out.empty()) { p185Clock.mark(0,a.nonce); p185Life.createBefore=p185::qpc(); }
+#endif
                 checkASIO(driver->createBuffers(engine.asioBuffers.data(),
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
                     4,
@@ -882,14 +901,29 @@ int run(const Arguments& a) {
                     a.frames,
                                                 &callbacks), "Actual ASIO buffer allocation failed");
                 buffers = true;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                if(!a.p185Out.empty())p185Life.createAfter=p185::qpc();
+#endif
                 ensure(component->setActive(true) == kResultOk, "VST3 setActive failed");
                 active = true;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                if(!a.p185Out.empty())p185Life.active=p185::qpc();
+#endif
                 ensure(processor->setProcessing(true) == kResultOk,
                        "VST3 setProcessing failed");
                 processing = true;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                if(!a.p185Out.empty())p185Life.processing=p185::qpc();
+#endif
                 activeEngine.store(&engine, std::memory_order_release);
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                if(!a.p185Out.empty()) {p185Life.armed=p185::qpc();p185Life.startBefore=p185::qpc();}
+#endif
                 checkASIO(driver->start(), "Actual ASIO hardware streaming failed");
                 started = true;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                if(!a.p185Out.empty())p185Life.startAfter=p185::qpc();
+#endif
 
                 const auto deadline = std::chrono::steady_clock::now() +
                     std::chrono::seconds(std::min(600, std::max(20,
@@ -897,8 +931,14 @@ int run(const Arguments& a) {
                 while (engine.asioCallbacks.load() < static_cast<uint64_t>(a.callbacks) &&
                        std::chrono::steady_clock::now() < deadline)
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                if(!a.p185Out.empty())p185Life.stopBefore=p185::qpc();
+#endif
                 checkASIO(driver->stop(), "Actual ASIO hardware stop failed");
                 started = false;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                if(!a.p185Out.empty()) {p185Life.stopAfter=p185::qpc();p185Clock.mark(1,a.nonce);}
+#endif
                 activeEngine.store(nullptr, std::memory_order_release);
                 checkASIO(driver->disposeBuffers(), "Cannot dispose ASIO hardware buffers");
                 buffers = false;
@@ -911,6 +951,7 @@ int run(const Arguments& a) {
 #if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
                 // Real device already stopped. This is NOT a PASS result:
                 // always write objective diagnostics before aggregated failure gate.
+                writeP185(a,engine,p185Life,p185Clock,moduleHash,executorHash);
                 writeAsioDiagnostics(a,engine,moduleHash,executorHash);
                 writeAsioTimingTrace(a,engine,moduleHash,executorHash);
 #endif

@@ -1,0 +1,95 @@
+name: P185 native ETW ASIO tooling and adversarial Windows acceptance
+on:
+  push:
+    branches: [feature/p185-independent-etw-asio]
+permissions:
+  contents: read
+  pull-requests: write
+concurrency:
+  group: p185-lab-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exact external ASIO SDK
+        shell: pwsh
+        run: |
+          git clone --no-checkout https://github.com/audiosdk/asio.git asio-sdk
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO clone failed' }
+          git -C asio-sdk checkout --detach 496a0765b8bb9c26f764f22f9a9712a937177db2
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO pin failed' }
+      - name: Build all Test Lab targets on Windows x64
+        shell: pwsh
+        run: |
+          cmake -S . -B build-p185 -G 'Visual Studio 17 2022' -A x64 "-DASIO_SDK_DIR=$env:GITHUB_WORKSPACE/asio-sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'Configure failed' }
+          if ((git -C build-p185/_deps/vst3sdk-src rev-parse HEAD).Trim() -cne '3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96') { throw 'VST3 SDK mismatch' }
+          cmake --build build-p185 --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'Native build failed' }
+      - name: Entire CTest and Python regressions
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force evidence | Out-Null
+          ctest --test-dir build-p185 -C Release --output-on-failure 2>&1 | Tee-Object evidence/ctest.txt
+          if ($LASTEXITCODE -ne 0) { throw 'CTest regression failed' }
+          python -m unittest discover -s tests -p 'test_*.py' 2>&1 | Tee-Object evidence/python-tests.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Python regression failed' }
+      - name: Actual native ETW and ASIO host controls in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          & ./tests/p185_windows.ps1 -Build build-p185 -Evidence evidence
+          if ($LASTEXITCODE -ne 0) { throw 'P185 actual native controls failed' }
+      - name: Independent arithmetic and adversarial mutations in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          & ./tests/p185_adversarial.ps1 -Evidence evidence
+          if (-not (Test-Path evidence/P185-ADVERSARIAL.json)) { throw 'No completed adversarial evidence' }
+      - name: Build and test the actual unpacked portable BAT package
+        shell: powershell
+        run: |
+          & ./tools/p185/Build-P185-Package.ps1 -Build build-p185 -Destination package -TestlabSource $env:GITHUB_SHA
+          Compress-Archive -Path package/* -DestinationPath P185-TestLab-Windows.zip
+          Expand-Archive P185-TestLab-Windows.zip 'BAT path with spaces'
+          $env:CI='true'
+          & cmd.exe /d /c '"BAT path with spaces\P185-ETW-ASIO.bat" -CheckOnly'
+          if ($LASTEXITCODE -ne 0) { throw 'Actual unpacked BAT CheckOnly failed' }
+          & cmd.exe /d /c '"BAT path with spaces\P185-ETW-ASIO.bat" -Cancel'
+          if ($LASTEXITCODE -ne 2) { throw 'Actual BAT cancel lost errorlevel' }
+          $reports=@(Get-ChildItem 'BAT path with spaces' -Recurse -Filter P185-ACCEPTANCE.json | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json })
+          if ($reports.Count -ne 2 -or @($reports | Where-Object {$_.physical_asio -cne 'NOT_RUN' -or $_.release_approved}).Count) { throw 'Package fabricated hardware acceptance' }
+          # Actual tamper, including an entry script: must fail, cannot start audio.
+          Add-Content -LiteralPath 'BAT path with spaces/P185-ANALYZE.ps1' '# tampered'
+          & cmd.exe /d /c '"BAT path with spaces\P185-ETW-ASIO.bat" -CheckOnly'
+          if ($LASTEXITCODE -ne 3) { throw 'Tampered package was accepted' }
+          Copy-Item P185-TestLab-Windows.zip evidence/
+          @{
+            source=$env:GITHUB_SHA;windows_build='PASS';package_bat='PASS';physical_asio='NOT_RUN';awe_realtime='NOT_RUN';release_approved=$false
+          } | ConvertTo-Json | Set-Content evidence/P185-CI.json
+          Write-Host "::notice::P185 WINDOWS PACKAGE VERIFIED; source=$env:GITHUB_SHA; physical ASIO NOT_RUN; release NO_GO"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        id: evidence
+        with:
+          name: P185-TestLab-Windows
+          path: |
+            evidence/*.json
+            evidence/*.txt
+            evidence/P185-TestLab-Windows.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Draft review request only, no merge
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const head = 'feature/p185-independent-etw-asio';
+            const base = 'qa/p100-asio-instrument-midi';
+            const body = `Universal native Windows ETW capture and independent ASIO/QPC reconciliation for AWE issue #91. Keeps the entire-run strict ASIO gate and all DSP unchanged. Tested BAT package and adversarial Windows controls: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}. Physical ASIO P185 remains NOT_RUN, cause INCONCLUSIVE, release NO_GO. No merge requested.`;
+            try {
+              const open = await github.rest.pulls.list({...context.repo, state:'open',head:`${context.repo.owner}:${head}`,base});
+              const pr = open.data[0] || (await github.rest.pulls.create({...context.repo,head,base,title:'P185: independent native ETW / ASIO diagnostic package',body,draft:true})).data;
+              core.notice(`P185_DRAFT_PR=${pr.html_url}`);
+            } catch (e) { core.warning(`Draft PR creation unavailable: ${e.message}`); }

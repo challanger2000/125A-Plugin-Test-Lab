@@ -1,0 +1,31 @@
+P185 Windows x64 - unabhängige ETW / ASIO Diagnose, KEINE Releasefreigabe
+
+ZIP vollständig in einen beschreibbaren Ordner entpacken.
+DAW schließen, Lautstärke am Interface stark reduzieren.
+P185-ETW-ASIO.bat mit Rechtsklick als Administrator starten.
+Den physischen Interface-Treiber auswählen, anschließend START bestätigen.
+Es folgt genau eine Referenzmessung (44,1 kHz / 512 Samples, ca. 12 Sekunden).
+Keine ROM-/SoundFont-Eingabe, keine Installation, keine Änderung am Treiber.
+
+Die BAT startet Windows PowerShell 5.1 und native Testwerkzeuge mit beigefügten Quellen.
+Ohne Zustimmung kein Audio. Fehlende ETW-Rechte: ETW_NOT_AVAILABLE / INCONCLUSIVE.
+Die Aufzeichnung endet nach dem begrenzten Lauf automatisch; fremde ETW-
+Sitzungen werden weder beendet noch ersetzt. Bei Abbruch im laufenden Fenster
+kann Windows eine Sitzung bis zur nächsten Anmeldung weiterführen. Das Fenster
+während der Aufnahme deshalb nicht schließen. Maximal 256 MiB pro ETL-Datei.
+
+Rückgabe: nur P185-LOCAL-.../P185-ACCEPTANCE.json senden.
+P185-AGGREGATE-LOCAL.json und RAW-LOCAL-ONLY/*.etl enthalten detaillierte
+System-/Treiberinformationen und bleiben zunächst lokal. Kein automatischer Upload.
+Die Annahme-JSON enthält keine Medien und keine privaten Dateipfade.
+
+Eine saubere Referenzmessung ist keine Echtzeitfreigabe des AWE-Synthesizers.
+Die vollständige ASIO-Grenze (Startabstand > 2 Puffer) bleibt ohne Startausnahme.
+Wartezustand, Scheduler-Verzögerung und zeitlich nahe USB/DPC-Ereignisse werden
+unterschieden. Koinzidenz beweist keine USB- oder DSP-Ursache. Fehlende Korrelation
+oder verlorene ETW-Ereignisse verhindern jede Ursachenfreigabe.
+
+Optional ohne Ton/Aufzeichnung: P185-ETW-ASIO.bat -CheckOnly
+Die Werkzeuge sind universell. Das AWE-Bundle im AWE-Paket ist unverändert und
+wird bei dieser Referenzmessung nicht geladen. P184 wird nicht wiederholt.
+Quellen, Lizenzen und exakte Quellstände stehen im Paketmanifest und source/.
