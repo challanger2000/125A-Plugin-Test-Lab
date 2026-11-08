@@ -57,7 +57,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           cmake -S . -B build -G 'Visual Studio 17 2022' -A x64
           if ($LASTEXITCODE -ne 0) { throw 'P116 native configure FAIL' }
-          cmake --build build --config Release --parallel 4 --target TestLabHost TestLabGUI TestLabStateStress TestLabRecovery TestLabInstanceIsolation TestLabRateBlock TestLabVoiceStress TestLabControllerRecovery TestLabGuiRecovery
+          cmake --build build --config Release --parallel 4 --target TestLabHost TestLabGUI TestLabStateStress TestLabRecovery TestLabInstanceIsolation TestLabRateBlock TestLabVoiceStress TestLabControllerRecovery TestLabGuiRecovery QAGuiClick
           if ($LASTEXITCODE -ne 0) { throw 'P116 native source build FAIL' }
           ctest --test-dir build -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { throw 'P116 registered native CTests FAIL' }
@@ -157,6 +157,32 @@ jobs:
           if summary["failed"]: raise SystemExit(1)
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw 'P116 standalone CLI oracle regressions failed' }
+      - name: Execute final standalone native HWND BMP snapshot oracle on real source-built GUI VST3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = @(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
+          $bundle = @(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_GUI_Click.vst3')
+          if ($exe.Count -ne 1 -or $bundle.Count -ne 1) {
+            throw 'P120 missing or ambiguous actual Windows native GUI host or VST3 fixture'
+          }
+          $bmp = 'audit-evidence/native-hwnd-fixture.bmp'
+          & $exe[0].FullName --snapshot-editor $bundle[0].FullName $bmp
+          if ($LASTEXITCODE -ne 0) { throw 'P120 native HWND pixel capture did not produce BMP' }
+          python -B tests/test_native_gui_snapshot.py $bmp
+          if ($LASTEXITCODE -ne 0) { throw 'P120 independent BMP pixel corruption oracle failed' }
+          $evidence = @{
+            schema = '125a-p120-native-snapshot-oracle-v1'
+            status = 'PASS'
+            source = 'actual Windows native HWND captured with compiled VST3 fixture'
+            host_sha256 = (Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            bmp_sha256 = (Get-FileHash $bmp -Algorithm SHA256).Hash.ToLowerInvariant()
+            image_oracle = 'GUI BMP primary color and corrupted-pixel negative verified'
+            third_party_gui_coverage = 'NOT VERIFIED'
+            release_approved = $false
+          } | ConvertTo-Json -Depth 8
+          Set-Content -LiteralPath 'audit-evidence/native-hwnd-snapshot-evidence.json' -Value $evidence -Encoding UTF8
+          Write-Host 'P120 real HWND BMP snapshot and final standalone test script PASS'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
