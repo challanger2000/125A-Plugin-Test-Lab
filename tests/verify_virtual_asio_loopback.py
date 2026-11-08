@@ -81,6 +81,52 @@ def normalized_correlation(a, b, lag):
     return cross / math.sqrt(power_a * power_b)
 
 
+def signed_stereo_match(samples, frames, coarse_left, coarse_right):
+    """P103: sparse signed PCM correlation using a SHARED sample-level lag.
+
+    RMS envelopes cannot detect polarity inversion or phase-distorted audio.
+    One physically common cable latency must explain BOTH stereo channels;
+    optimizing each oscillator independently could wrongly hide a shifted
+    half-cycle. This is a bounded distortion check, not absolute hardware
+    sample fidelity.
+    """
+    center = round((coarse_left + coarse_right) * 128)
+    start = max(0, center - 256)
+    stop = min(frames // 3, center + 256)
+    # Include candidates with both parities, so real driver latency need
+    # not be divisible by 256 or by the decimation factor.
+    candidate_lags = range(start, stop + 1, 2)
+    max_lag = stop
+    positions = range(0, frames - max_lag, 32)
+    reference = []
+    for channel in (0, 1):
+        data = [samples[4*n + channel] for n in positions]
+        power = sum(v*v for v in data)
+        if power <= 1.e-9:
+            raise ValueError("P103 insufficient output energy for signed PCM")
+        reference.append((data, power))
+    best = (-1., None, None, None)
+    for lag in candidate_lags:
+        scores = []
+        for channel in (0, 1):
+            src, src_power = reference[channel]
+            returned = [samples[4*(n+lag) + channel+2] for n in positions]
+            return_power = sum(v*v for v in returned)
+            if return_power <= 1.e-9:
+                scores.append(-1.)
+                continue
+            dot = sum(x*y for x,y in zip(src, returned))
+            scores.append(dot / math.sqrt(src_power*return_power))
+        quality = min(scores)
+        if quality > best[0]:
+            best = (quality, lag, scores[0], scores[1])
+    if best[0] < 0.92:
+        raise ValueError("P103 signed stereo PCM waveform/phase mismatch")
+    return {"signed_pcm_l": round(best[2], 5),
+            "signed_pcm_r": round(best[3], 5),
+            "signed_pcm_common_lag_frames": best[1]}
+
+
 def verify_known_source_signal(trace):
     """Independent frozen P95 test specification, not output-to-input matching.
 
@@ -170,6 +216,7 @@ def analyze(trace):
         raise ValueError("P95 left and right channel latencies diverge")
     if corr_l < wrong_r + .15 or corr_r < wrong_l + .15:
         raise ValueError("P95 swapped or ambiguous VB-CABLE stereo routing")
+    signed_metrics = signed_stereo_match(s, frames, lag_l, lag_r)
     # Measure transfer gain at the independently selected aligned lag.
     # The QA fixture's expected 0.84/0.72 return gain is a test simulation;
     # the live virtual cable is expected to be approximately transparent.
@@ -189,6 +236,7 @@ def analyze(trace):
         gains_db.append(db)
     return {
         **source_metrics,
+        **signed_metrics,
         "return_gain_db_l": round(gains_db[0], 4),
         "input_dc_to_rms_l": round(input_dc_ratios[0], 6),
         "input_dc_to_rms_r": round(input_dc_ratios[1], 6),
