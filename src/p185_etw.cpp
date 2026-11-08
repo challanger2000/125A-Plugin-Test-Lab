@@ -22,6 +22,8 @@
 #include <vector>
 namespace fs=std::filesystem;
 namespace {
+volatile LONG cancelled=0;
+BOOL WINAPI consoleCancel(DWORD code){if(code==CTRL_C_EVENT||code==CTRL_BREAK_EVENT){InterlockedExchange(&cancelled,1);return TRUE;}return FALSE;}
 void check(bool b,const char* m){if(!b)throw std::runtime_error(m);}
 std::string ascii(const wchar_t* p) { std::string s; if(p)while(*p){s+=*p<128?char(*p):'?';++p;}return s; }
 std::string guidText(const GUID& g){wchar_t w[40]{};StringFromGUID2(g,w,40);return ascii(w);}
@@ -151,6 +153,7 @@ int workload(const fs::path& file,const std::string& nonce){
 }
 int capture(const fs::path& out,const std::wstring& nonce,const std::vector<std::wstring>& args){
     check(!fs::exists(out),"Output directory exists (stale evidence refused)");fs::create_directories(out);
+    SetConsoleCtrlHandler(consoleCancel,TRUE);
     const auto prefix=L"125A-P185-"+nonce;
     Session kernel(out/"kernel.etl",prefix+L"-K",true);
     Session user(out/"providers.etl",prefix+L"-U",false);
@@ -162,9 +165,18 @@ int capture(const fs::path& out,const std::wstring& nonce,const std::vector<std:
             std::wstring cmd;for(const auto& s:args){if(!cmd.empty())cmd+=L' ';cmd+=quote(s);}
             STARTUPINFOW si{};si.cb=sizeof(si);PROCESS_INFORMATION pi{};
             if(CreateProcessW(args.front().c_str(),cmd.data(),nullptr,nullptr,FALSE,CREATE_SUSPENDED,nullptr,nullptr,&si,&pi)){
-                childPid=pi.dwProcessId;ResumeThread(pi.hThread);CloseHandle(pi.hThread);
-                if(WaitForSingleObject(pi.hProcess,60000)!=WAIT_OBJECT_0){timeout=true;TerminateProcess(pi.hProcess,124);WaitForSingleObject(pi.hProcess,5000);}
-                GetExitCodeProcess(pi.hProcess,&childExit);CloseHandle(pi.hProcess);
+                childPid=pi.dwProcessId;
+                HANDLE job=CreateJobObjectW(nullptr,nullptr);JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+                limits.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                const bool owned=job&&SetInformationJobObject(job,JobObjectExtendedLimitInformation,&limits,sizeof(limits))&&AssignProcessToJobObject(job,pi.hProcess);
+                if(owned)ResumeThread(pi.hThread);else{TerminateProcess(pi.hProcess,125);timeout=true;}
+                CloseHandle(pi.hThread);
+                unsigned waited=0;DWORD wait=WAIT_TIMEOUT;
+                while(owned&&waited<60000&&!InterlockedCompareExchange(&cancelled,0,0)){
+                    wait=WaitForSingleObject(pi.hProcess,100);if(wait!=WAIT_TIMEOUT)break;waited+=100;
+                }
+                if(wait!=WAIT_OBJECT_0){timeout=true;TerminateProcess(pi.hProcess,124);WaitForSingleObject(pi.hProcess,5000);}
+                GetExitCodeProcess(pi.hProcess,&childExit);CloseHandle(pi.hProcess);if(job)CloseHandle(job);
             }
         }
     }
@@ -195,7 +207,7 @@ int wmain(int argc,wchar_t** argv){try{
           Session session(fs::absolute(argv[2]),L"125A-P185-DENIED-"+std::wstring(argv[3]),true);rc=session.start;
         }
         RevertToSelf();CloseHandle(restricted);
-        std::ofstream o(fs::path(argv[2]).wstring()+L".json");o<<"{\"start_result\":"<<rc<<",\"physical_asio\":\"NOT_RUN\"}";
+        std::ofstream o(fs::path(std::wstring(argv[2])+L".json"));o<<"{\"start_result\":"<<rc<<",\"physical_asio\":\"NOT_RUN\"}";
         check(rc==ERROR_ACCESS_DENIED||rc==ERROR_PRIVILEGE_NOT_HELD,"Restricted kernel trace unexpectedly allowed");return 0;
     }
     if(argc==3&&std::wstring(argv[1])==L"--capabilities"){
@@ -207,7 +219,7 @@ int wmain(int argc,wchar_t** argv){try{
     if(std::wstring(argv[1])==L"--selftest"){
         wchar_t path[32768]{};check(GetModuleFileNameW(nullptr,path,32768)>0,"Self path unavailable");
         child={path,L"--workload",(fs::path(argv[2])/"control.json").wstring(),nonce};
-    }else{check(std::wstring(argv[1])==L"--capture"&&std::wstring(argv[4])==L"--"&&argc>5,"Invalid capture command");
+    }else{check(argc>5&&std::wstring(argv[1])==L"--capture"&&std::wstring(argv[4])==L"--","Invalid capture command");
         for(int i=5;i<argc;++i)child.emplace_back(argv[i]);}
     return capture(fs::absolute(argv[2]),nonce,child);
 }catch(const std::exception& e){std::cerr<<"P185: "<<e.what()<<'\n';return 2;}}

@@ -45,3 +45,5 @@ Assert-P185 ($LASTEXITCODE -eq 0) 'ACTUAL_PRIVILEGE_NEGATIVE_FAILED'
 Assert-P185 ($LASTEXITCODE -eq 2) 'STALE_DIRECTORY_ACCEPTED'
 @{native_etw_control='PASS';qpc_brackets='PASS';real_sleep_cswitch='PASS';restricted_token_negative='PASS';missing_driver_negative='PASS';reference_lifecycle='PASS';broken_reference='REJECTED';physical_asio='NOT_RUN';release_approved=$false} | ConvertTo-Json | Set-Content (Join-Path $Evidence 'P185-WINDOWS-CONTROLS.json')
 Write-Host '[PASS] actual Windows ETW control/negative tests; physical ASIO NOT RUN'
+
+exit 0 # Clear the deliberately rejected stale-directory native exit.
