@@ -106,3 +106,12 @@ Der vorstehende RED/Unit-GREEN-Nachweis wurde unabhängig von Unit-Mocks auch du
 - [Issue #139](https://github.com/challanger2000/125A-Plugin-Test-Lab/issues/139) enthält Ursache, Testversagen und Nachweislinks.
 
 **Evidenzgrenze:** Eine definierte Python-Exception kontrolliert abzufangen ist nicht identisch mit Fehlerberichten nach hartem Prozessabbruch, Neustart, Dateisystem-/Speicherfehler oder beliebigen ungetesteten Exceptions. FULL AUDIT bleibt wegen erheblicher offenstehender Produktions- und Testquellen **NOT VERIFIED**.
+
+### P115 abschließende Windows-E2E-Auswertung
+
+Nach dem oben protokollierten positiven Unit-Lauf wurden **beide vollständigen zugeordneten Windows-Workflows** anhand ihrer tatsächlichen Job-Conclusions geprüft:
+
+- [P72 #42518105900](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42518105900): `negative-contracts=SUCCESS`, `actual-native-vst3=SUCCESS`.
+- [P73 #42518105856](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42518105856): `adversarial=SUCCESS`, `real-vst3-headless=SUCCESS`.
+
+Damit ist P115 für den abgegrenzten Timeout-Vertrag **RED vor Fix / GREEN nach Fix** einschließlich wirklichem nativen Windows VST3-Regressionstest. **Gesamter FULL AUDIT bleibt weiterhin NOT VERIFIED**.
