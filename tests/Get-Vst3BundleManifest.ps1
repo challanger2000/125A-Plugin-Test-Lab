@@ -29,6 +29,7 @@ function Get-WholeBundleFiles([string]$path) {
     }
     if ($entry.PSIsContainer) { continue }
     Assert-P110SingleLink $entry.FullName
+    Assert-P112NoAlternateStreams $entry.FullName
     $relative = $entry.FullName.Substring($root.TrimEnd('\').Length + 1).Replace('\','/')
     $files += @{ path=$relative; sha256=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
   }
