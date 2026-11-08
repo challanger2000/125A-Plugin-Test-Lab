@@ -4,8 +4,8 @@
 `b2f06baf9a0734132228abc67f1da7576357f694` (P183/P184 ASIO lineage).
 [AWE task #91](https://github.com/challanger2000/125A-AWE-Synthesizer/issues/91),
 [method, complete scope and limits](docs/P185-INDEPENDENT-ETW-ASIO.md).
-**Checked native/tool source:** `8db0bea5d0888324aa4b33af3676d689900f1f2a`.
-[Windows run 42530025112](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42530025112):
+**Checked native/tool source:** `59762ae67a5878f4bade2e000672497acde4f763`.
+[Windows run 42531360274](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42531360274):
 all targets compiled, 2/2 CTests, 67 standalone Python test scripts plus the real
 native GUI bitmap test, actual ETW/QPC/CSwitch/restricted-token controls,
 36 independent positive/adversarial cases, and unpacked ZIP/BAT integrity,

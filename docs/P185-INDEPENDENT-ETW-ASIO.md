@@ -115,21 +115,21 @@ observations, not proof of scheduler/USB responsibility for an unobserved gap.
 
 Self-challenge review, not an independent human or second-agent audit. Native
 runtime permissions/ETW success and actual package tests must complete before a
-Windows package is described as checked. **Executed:** final code `8db0bea5d0888324aa4b33af3676d689900f1f2a`,
-[Windows Actions 42530025112](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42530025112),
+Windows package is described as checked. **Executed:** final code `59762ae67a5878f4bade2e000672497acde4f763`,
+[Windows Actions 42531360274](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42531360274),
 all native targets compiled, both CTests passed; 67 existing Python scripts plus
 one actual native HWND/BMP regression passed. The real reference lifecycle and
 its broken setProcessing control, existing ASIO conversion/buffer/trace selftests,
 unregistered-driver rejection, actual two-session ETW capture, QPC brackets,
 CSwitch sleep interval, post-marker kernel thread end, restricted-token denial
-and stale-directory refusal passed. All **36** positive/adversarial cases passed
+stale-directory refusal, and an executed unknown-opcode negative preventing false DPC/ISR labels passed. All **36** positive/adversarial cases passed
 under Windows PowerShell 5.1; their fixture results remain hardware NOT_RUN.
 The real unpacked package BAT passed from a path with spaces; cancellation
 returned 2, altered source failed integrity with 3. No local ASIO device or
 physical hardware was exercised by those controls.
 
 Also executed locally: 67 standalone Python scripts, PowerShell parser checks
-for all 23 workflow script blocks, all 36 arithmetic/adversarial cases under a
+for all 24 workflow script blocks after GitHub expression substitution, all 36 arithmetic/adversarial cases under a
 checksum-verified portable Microsoft PowerShell 7.4.6. These supplement the
 actual Windows PowerShell 5.1 evidence, not replace it.
 
@@ -143,7 +143,7 @@ Corrected test/instrumentation issues: standalone argparse tests cannot be run
 through indiscriminate unittest discovery; expected native negative exits must
 be cleared after verifying them; binary/source/nonce/PID/TID/clock identity and
 kernel end coverage are required before reconciliation. These are tooling fixes;
-no AWE audio-engine defect or device-specific root cause is claimed.
+unknown kernel opcodes remain unclassified rather than being labelled DPC/ISR. No AWE audio-engine defect or device-specific root cause is claimed.
 
 Draft PR creation was actually attempted. GitHub returned
 `GitHub Actions is not permitted to create or approve pull requests`.
@@ -177,3 +177,18 @@ for root-cause attribution. Raw ETLs may contain system/private path information
 and stay local. Force-killing the recorder can leave an owned ETW session until
 logoff/reboot; normal completion/handled Ctrl+C stops owned sessions, and an owned
 job object prevents the child audio stream surviving the controller.
+
+The original callback QPC start follows entry atomics; its end precedes trace
+bookkeeping and final deadline counters. Those small adapter intervals are not
+isolated by this unchanged probe. No hardware interrupt-arrival time is claimed.
+Default optional provider policy enables enumerated Microsoft USB/Audio providers;
+proprietary/vendor-specific provider interpretation remains **NOT_RUN**. Real
+DPC routine/image attribution requires additional evidence; event proximity in
+P185-ACCEPTANCE.json never establishes it.
+
+Final AWE integration: source `22d08278a20d9989e71393944bfbc31d640bf231`,
+[Windows package run 42531433260](https://github.com/challanger2000/125A-AWE-Synthesizer/actions/runs/42531433260).
+The actual uploaded user artifact was downloaded again and its own BAT passed
+all package hash checks. The final report records all 36 adverse cases correctly
+under PowerShell 5.1. AWE full regression at `37e6294672b13ae7064fb8f4f79633aec8cfffb3`:
+66 CTests, 537 module validator tests, 3 EditorHost smokes and 99 GUI checks.
