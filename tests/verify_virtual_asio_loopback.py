@@ -139,6 +139,22 @@ def analyze(trace):
         raise ValueError("P95 source VST3 generated no sufficiently audible stereo signature")
     if min(rms[2:]) < .003:
         raise ValueError("P95 VB-CABLE did not return meaningful signal on both input channels")
+    # P102 independent signed-waveform sanity check. RMS envelopes lose
+    # polarity entirely: full-wave rectification has *identical* RMS
+    # envelopes, transfer gain and timing to an intact loopback. A
+    # near-transparent ASIO4ALL/VB-CABLE route must not introduce a
+    # persistent DC component this large relative to the returned signal.
+    # Compare mean against true sample RMS; normal source has zero DC.
+    input_dc_ratios = []
+    for ch in (2, 3):
+        mean = sum(s[4*n + ch] for n in range(frames)) / frames
+        power = sum(s[4*n + ch] ** 2 for n in range(frames)) / frames
+        if power <= 1.e-12:
+            raise ValueError("P95 insufficient audio energy for DC offset validation")
+        ratio = abs(mean) / math.sqrt(power)
+        if ratio > 0.12:
+            raise ValueError("P95 virtual ASIO returned audio has excessive DC offset")
+        input_dc_ratios.append(ratio)
     # Coarse timing evidence: include zero-lag in a 256-frame envelope grid.
     # Maximum alignment lag one second, no fixed ASIO latency.
     longest = min(len(env[0]) // 3, int(rate / 256))
@@ -174,6 +190,8 @@ def analyze(trace):
     return {
         **source_metrics,
         "return_gain_db_l": round(gains_db[0], 4),
+        "input_dc_to_rms_l": round(input_dc_ratios[0], 6),
+        "input_dc_to_rms_r": round(input_dc_ratios[1], 6),
         "return_gain_db_r": round(gains_db[1], 4),
         "sample_rate": rate, "frames": frames, "buffer_frames": trace["block"],
         "output_rms_l": round(rms[0], 7),
