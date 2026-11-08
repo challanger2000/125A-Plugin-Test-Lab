@@ -3334,7 +3334,8 @@ int main(int argc, char** argv) {
             return run(argv[2], false, 0);
         if (argc == 4 && std::string(argv[1]) == "--prove-click")
             return run(argv[2], true, static_cast<ParamID>(std::stoul(argv[3])));
-        std::cerr << "Usage: 125A_Test_Lab_GUI --capture-host-param-sequence <plugin.vst3> <param-id> <csv-0-to-1-values> <bmp-dir>\\n"\n                  << "       125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"                  << "       125A_Test_Lab_GUI --gui-workflow <plugin.vst3> <approved-actions.tsv> <report.tsv> <screenshots-dir>\n"
+        std::cerr << "Usage: 125A_Test_Lab_GUI --capture-host-param-sequence <plugin.vst3> <param-id> <csv-values> <bmp-dir>\\n"
+                  << "       125A_Test_Lab_GUI --inventory-parameters <plugin.vst3> <parameters.tsv>\n"                  << "       125A_Test_Lab_GUI --gui-workflow <plugin.vst3> <approved-actions.tsv> <report.tsv> <screenshots-dir>\n"
                   << "       125A_Test_Lab_GUI --explore-gui-click <plugin.vst3> <x> <y> <native.tsv> <baseline-a.bmp> <baseline-b.bmp> <after.bmp>\n"
                   << "       125A_Test_Lab_GUI --explore-gui-sham <plugin.vst3> <x> <y> <native.tsv> <baseline-a.bmp> <baseline-b.bmp> <after.bmp>\n"
                   << "       125A_Test_Lab_GUI --gui-observe-roundtrip <plugin.vst3> <x> <y> <native.tsv> <before-a.bmp> <before-b.bmp> <after-click1.bmp> <after-click2.bmp>\n"
