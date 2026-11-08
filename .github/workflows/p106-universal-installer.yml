@@ -49,7 +49,7 @@ jobs:
       - name: Run actual EXE install to real Windows VST3 -> P74 host integration
         shell: pwsh
         run: |
-          $bundle = @(Get-ChildItem build-p106 -Recurse -Directory -Filter '125A_QA_State_0.vst3' | Where-Object { Test-Path (Join-Path $_.FullName 'Contents/x86_64-win/125A_QA_SignalGood.vst3') -PathType Leaf })
+          $bundle = @(Get-ChildItem build-p106 -Recurse -Directory -Filter '125A_QA_State_0.vst3' | Where-Object { Test-Path (Join-Path $_.FullName 'Contents/x86_64-win/125A_QA_State_0.vst3') -PathType Leaf })
           $gui = @(Get-ChildItem build-p106 -Recurse -File -Filter '125A_Test_Lab_GUI.exe')
           $audio = @(Get-ChildItem build-p106 -Recurse -File -Filter '125A_Test_Lab_Host.exe')
           $stress = @(Get-ChildItem build-p106 -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
