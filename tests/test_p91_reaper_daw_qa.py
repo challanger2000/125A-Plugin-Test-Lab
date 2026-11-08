@@ -98,6 +98,31 @@ class ReaperQATests(unittest.TestCase):
         self.assertEqual(self.reaper.read_bytes(),
                          b"MOCK test binary, NOT real REAPER")
 
+    def test_foreign_plugin_fx_identity_must_not_pass(self):
+        # Auditor's deliberate wrong-FX test: the currently approved plan
+        # requests 125A QA Synth, but the DAW result reports a different
+        # VST3 instrument in BOTH save/reopen stages. A successful render
+        # does not establish that the requested plugin was instantiated.
+        def wrong_fx(command, status_file, timeout):
+            if status_file is None:
+                good_pcm(self.root / "foreign" / "125A_Reaper_Render.wav")
+                return {"exit_code": 0}
+            if status_file.name == "setup.status":
+                (self.root / "foreign" / "125A_Reaper_Project.RPP").write_text(
+                    "<REAPER_PROJECT 0.1\\n>", encoding="utf-8")
+                return {"phase": "setup", "note_count": "1",
+                        "fx_name": "VST3i: Totally Different Synth (OtherVendor)",
+                        "reaper_version": "7.83/x64"}
+            return {"phase": "reload", "note_count": "1",
+                    "fx_name": "VST3i: Totally Different Synth (OtherVendor)",
+                    "pitch": "60", "velocity": "100"}
+
+        outcome = execute(self.plan, self.root / "foreign",
+                          process_runner=wrong_fx)
+        self.assertEqual(outcome["status"], "FAIL",
+                         "P91 must reject a different loaded FX, even if PCM "
+                         "render and save/reload observations are good")
+
     def test_missing_render_or_fake_fx_rejected(self):
         def fake_process(command, status_file, timeout):
             if status_file and status_file.name=="setup.status":
