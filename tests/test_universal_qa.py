@@ -2,6 +2,7 @@
 """P74 proof: one-command universal pipeline never converts raw discovery to QA pass."""
 import copy
 import json
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -144,6 +145,25 @@ class PipelineTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 preflight(plan,matrix,module,root/"other.exe")
             self.assertEqual(len(preflight(plan,matrix,module,host)),2)
+
+    def test_child_timeout_emits_explicit_fail_report(self):
+        # P114: a real child-process deadline can raise TimeoutExpired from
+        # native discovery. No successful verdict OR missing report is allowed.
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            plan, module, host = make_plan(root)
+            out = root / "timeout"
+            def timed_out(*args, **kwargs):
+                raise subprocess.TimeoutExpired(["native-vst3-host"], 5)
+            outcome = execute(module.parents[2], host, out, onboarding=timed_out)
+            self.assertEqual(outcome["status"], "FAIL")
+            self.assertFalse(outcome["release_approved"])
+            self.assertTrue(outcome["faults"])
+            evidence = out / "UNIVERSAL-QA-RESULT.json"
+            self.assertTrue(evidence.is_file(),
+                            "A failed native child MUST leave JSON failure evidence")
+            self.assertEqual(json.loads(evidence.read_text(encoding="utf-8"))["status"],
+                             "FAIL")
 
     def test_native_module_mutation_during_scan_is_never_accepted(self):
         with tempfile.TemporaryDirectory() as t:
