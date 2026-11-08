@@ -104,6 +104,7 @@ try {
   if (-not $ApproveExecution) { throw 'Execution requires explicit -ApproveExecution' }
   if (-not $ExpectedArtifact) { throw 'Run mode requires independently named expected artifact' }
   $artifactPath = [IO.Path]::GetFullPath($ExpectedArtifact)
+  $report.expected_artifact = $artifactPath
   if (Test-Path -LiteralPath $artifactPath) {
     throw 'Expected artifact already exists: refusing stale or replayed proof'
   }
