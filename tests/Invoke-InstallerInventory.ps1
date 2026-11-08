@@ -34,7 +34,7 @@ function Snapshot-Registry {
   if(Test-Path $key){
    Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
     $p=Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue
-    if($p){$lines+= [ordered]@{key=$_.Name;name=[string]($p.PSObject.Properties['DisplayName'].Value);version=[string]($p.PSObject.Properties['DisplayVersion'].Value);location=[string]($p.PSObject.Properties['InstallLocation'].Value)}}
+    if($p){$lines+= [ordered]@{key=$_.Name;name=[string]($p | Select-Object -ExpandProperty DisplayName -ErrorAction SilentlyContinue);version=[string]($p | Select-Object -ExpandProperty DisplayVersion -ErrorAction SilentlyContinue);location=[string]($p | Select-Object -ExpandProperty InstallLocation -ErrorAction SilentlyContinue)}}
    }
   }
  }
