@@ -12,6 +12,11 @@ internal static class P106InstallerFixture
             var source = Path.GetFullPath(args[1]);
             var dest = Path.GetFullPath(args[2]);
             Directory.CreateDirectory(dest);
+            foreach (var directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
+            {
+                var relativeDir = directory.Substring(source.Length).TrimStart(Path.DirectorySeparatorChar);
+                Directory.CreateDirectory(Path.Combine(dest, relativeDir));
+            }
             foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
             {
                 var relative = file.Substring(source.Length).TrimStart(Path.DirectorySeparatorChar);
