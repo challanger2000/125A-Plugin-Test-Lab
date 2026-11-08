@@ -8,6 +8,7 @@ hardware ASIO, commercial DAW verification or release readiness.
 """
 import argparse
 import json
+import subprocess
 from pathlib import Path
 
 from run_vst3_auto_discovery import verify_bundle, digest
@@ -330,7 +331,8 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
             else "INVENTORY_WITH_EXPLORATORY_OBSERVATIONS" if explore_unknown_gui
             else "INVENTORY_COMPLETE"
         )
-    except (OSError, ValueError, KeyError, TypeError) as error:
+    except (OSError, ValueError, KeyError, TypeError,
+            subprocess.TimeoutExpired, subprocess.CalledProcessError) as error:
         report["faults"].append(str(error))
     target.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
@@ -375,7 +377,8 @@ def main():
             dense_grid=a.dense_gui_grid,
             crosscheck_abi_gui=a.crosscheck_abi_gui)
     except (OSError, ValueError, TypeError, KeyError,
-            json.JSONDecodeError) as error:
+            json.JSONDecodeError, subprocess.TimeoutExpired,
+            subprocess.CalledProcessError) as error:
         a.out.mkdir(parents=True, exist_ok=True)
         result = {"schema": SCHEMA, "status": "FAIL",
                   "faults": [str(error)],
