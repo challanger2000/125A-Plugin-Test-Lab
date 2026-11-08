@@ -172,7 +172,8 @@ struct Processing {
                "P58 requires a stereo main VST3 output bus");
         context.state = ProcessContext::kPlaying |
                         ProcessContext::kTempoValid |
-                        ProcessContext::kTimeSigValid;
+                        ProcessContext::kTimeSigValid |
+                        ProcessContext::kProjectTimeMusicValid;
         context.sampleRate = rate;
         context.tempo = 120.;
         context.timeSigNumerator = 4;
