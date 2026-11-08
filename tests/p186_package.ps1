@@ -3,13 +3,17 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $env:CI='true'
+. (Join-Path $PSScriptRoot 'p186_bat_process.ps1')
 # Use the actual Windows cmd/BAT entry, not a mocked summary function.
 $bat=(Resolve-Path (Join-Path $Package 'P186-EXISTING-RUN.bat')).Path
 function Invoke-P186Bat([string]$Arguments) {
-  & cmd.exe /d /s /c ('""'+$bat+'" '+$Arguments+'"') | Out-Host
-  return [int]$LASTEXITCODE
+  $result=Invoke-P186TestBat $bat $Arguments
+  return $result.exit_code
 }
-$rc=Invoke-P186Bat '-CheckOnly';if($rc -ne 0){throw 'P186 actual BAT CheckOnly failed'}
+# Positive packaged-script control distinguishes runtime failure from cmd quoting.
+$direct=Invoke-P186TestProcess (Join-Path $PSHOME 'powershell.exe') ('-NoLogo -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path (Resolve-Path $Package).Path 'P186-REANALYZE.ps1')+'" -CheckOnly')
+if($direct.exit_code -ne 0){throw ('P186 direct packaged CheckOnly failed code='+$direct.exit_code+' output='+$direct.output)}
+$rc=Invoke-P186Bat '-CheckOnly';if($rc -ne 0){throw ('P186 actual BAT CheckOnly failed code='+$rc)}
 $rc=Invoke-P186Bat '-Cancel';if($rc -ne 2){throw 'P186 cancel lost errorlevel'}
 $beforeCapture=(Get-FileHash (Join-Path $Raw 'capture.json')).Hash
 $beforeAsio=(Get-FileHash (Join-Path $Raw 'asio.json')).Hash
