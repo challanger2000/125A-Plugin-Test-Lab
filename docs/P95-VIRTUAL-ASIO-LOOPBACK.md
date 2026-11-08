@@ -11,6 +11,7 @@ The independent Python P95 analyzer requires:
 - non-silent output **and** non-silent captured input on both channels,
 - positive correlation after bounded latency alignment **including zero-delay boundary**,
 - return gain constrained to +/-3 dB per channel (the virtual cable path must not silently hide a 4x increase); this is a provisional QA threshold, not a hardware calibration,
+- P102 signed-sample DC-to-RMS sanity: full-wave-rectified audio may preserve identical RMS envelopes and gain yet be audibly wrong; captured DC/RMS above 12% is rejected on either channel. This is only a bounded distortion detector, not a complete waveform-fidelity guarantee.
 - consistent L/R latency and no swapped/crosstalk-dominated channels.
 
 Result `VIRTUAL_ASIO_LOOPBACK_PASS` is virtual driver evidence **only**. It does **not** approve physical ASIO hardware, a commercial DAW, actual external USB hardware, or any product release. No cloud mock test produces this result legitimately. The Linux unit tests explicitly fabricate PCM only to verify the oracle accepts the correct 317/557 Hz stimulus and rejects silent, swapped, truncated, wrong-rate, wrong-source-frequency and +12.041 dB return-gain traces. A separate 0-sample delay boundary must report 0, not 256. These tests do NOT run a Windows audio driver or authorize product release.
