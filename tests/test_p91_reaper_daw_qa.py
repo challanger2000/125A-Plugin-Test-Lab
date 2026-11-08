@@ -78,9 +78,9 @@ class ReaperQATests(unittest.TestCase):
                 (self.root/"pass"/"125A_Reaper_Project.RPP").write_text(
                     "<REAPER_PROJECT 0.1\n>",encoding="utf-8")
                 return {"phase":"setup","note_count":"1",
-                        "fx_name":"VST3: 125A QA Synth","reaper_version":"7.x"}
+                        "fx_name":"VST3i: 125A QA Synth (125A)","reaper_version":"7.x"}
             return {"phase":"reload","note_count":"1",
-                    "fx_name":"VST3: 125A QA Synth",
+                    "fx_name":"VST3i: 125A QA Synth (125A)",
                     "pitch":"60","velocity":"100"}
         result=execute(self.plan,self.root/"pass",
                        script_template=self.test_template,
@@ -128,10 +128,10 @@ class ReaperQATests(unittest.TestCase):
             if status_file and status_file.name=="setup.status":
                 (self.root/"fail"/"125A_Reaper_Project.RPP").write_text("RPP")
                 return {"phase":"setup","note_count":"1",
-                        "fx_name":"Simulated","reaper_version":"mock"}
+                        "fx_name":"VST3i: 125A QA Synth (125A)","reaper_version":"mock"}
             if status_file:
                 return {"phase":"reload","note_count":"1",
-                        "fx_name":"Simulated","pitch":"60","velocity":"100"}
+                        "fx_name":"VST3i: 125A QA Synth (125A)","pitch":"60","velocity":"100"}
             return {"exit_code":0}
         result=execute(self.plan,self.root/"fail",process_runner=fake_process)
         self.assertEqual(result["status"],"FAIL")
@@ -144,9 +144,9 @@ class ReaperQATests(unittest.TestCase):
             if status_file.name=="setup.status":
                 (self.root/"badreload"/"125A_Reaper_Project.RPP").write_text("RPP")
                 return {"phase":"setup","note_count":"1",
-                        "fx_name":"VST3: QA","reaper_version":"7.x"}
+                        "fx_name":"VST3i: 125A QA Synth (125A)","reaper_version":"7.x"}
             return {"phase":"reload","note_count":"1",
-                    "fx_name":"VST3: QA","pitch":"70","velocity":"100"}
+                    "fx_name":"VST3i: 125A QA Synth (125A)","pitch":"70","velocity":"100"}
         result=execute(self.plan,self.root/"badreload",process_runner=fake)
         self.assertEqual(result["status"],"FAIL")
         self.assertEqual(len(issued),2)
