@@ -35,8 +35,19 @@ function Get-WholeBundleFiles([string]$path) {
   if ($files.Count -lt 1) { throw 'P109 empty VST3 bundle' }
   return @($files | Sort-Object path)
 }
+function Get-WholeBundleDirectories([string]$path) {
+  $root = (Resolve-Path -LiteralPath $path -ErrorAction Stop).ProviderPath
+  $dirs = @()
+  foreach ($entry in @(Get-ChildItem -LiteralPath $root -Recurse -Directory -Force -ErrorAction Stop)) {
+    if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+      throw 'P111 source bundle contains linked directory'
+    }
+    $dirs += $entry.FullName.Substring($root.TrimEnd('\').Length + 1).Replace('\','/')
+  }
+  return @($dirs | Sort-Object -Unique)
+}
 $path = [IO.Path]::GetFullPath($OutputFile)
 if (Test-Path -LiteralPath $path) { throw 'P109 refuses to overwrite an existing manifest' }
-$manifest = @{ schema='125a-vst3-whole-bundle-sha256-v1'; files=@(Get-WholeBundleFiles $Bundle) }
+$manifest = @{ schema='125a-vst3-whole-bundle-sha256-v2'; files=@(Get-WholeBundleFiles $Bundle); directories=@(Get-WholeBundleDirectories $Bundle) }
 $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $path -Encoding UTF8
 Write-Output "P109 whole-bundle manifest generated ($($manifest.files.Count) files)"
