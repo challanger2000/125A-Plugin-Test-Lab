@@ -83,3 +83,15 @@ Der vorstehende RED/Unit-GREEN-Nachweis wurde unabhängig von Unit-Mocks auch du
 - [**P91 Windows unit #42516681961**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42516681961): **SUCCESS**, inklusive P113-Fremd-Effekt-Negativkontrolle.
 
 **Erweitertes Gate-Urteil:** P91/P92 echte REAPER-Lade-/Save-/Reload- und MIDI-Audio-Kausalitätsprüfung mit nach dem P113-Fix beobachtetem, genehmigten **Anzeigenamen: PASS für die beiden Testfixtures**. Trotzdem bleibt `loaded_module_file_provenance=NOT INDEPENDENTLY VERIFIED` ausdrücklich im REAPER-Report, und echte physische ASIO-Hardware `NOT RUN`. Echte Tests sind kein vollständiger unabhängiger Quell-Audit der 319 Repository-Dateien.
+
+## P114 – native Subprozess-Timeout verliert verpflichtenden QA-Fehlerbericht
+
+**Auditbefund:** `tests/run_universal_qa.py` behandelte `OSError/ValueError/KeyError/TypeError` im eigentlichen P74-Pipeline-Runner, nicht aber `subprocess.TimeoutExpired` und `subprocess.CalledProcessError`. Bei einer Fristüberschreitung des tatsächlichen GUI-/VST3-Hosts propagiert die Exception nach außen. Der zuvor bereits initialisierte `UNIVERSAL-QA-RESULT.json`-Zielpfad wird nicht mehr geschrieben. Das gilt dem strengen `FAIL with durable evidence`-Vertrag als No-Go, auch wenn ein nichtnull Prozessstatus den Workflow insgesamt blockiert.
+
+**Gezielte Gegenprobe:** `test_child_timeout_emits_explicit_fail_report` in `tests/test_universal_qa.py` ersetzt nur die native `onboarding`-Ausführung durch eine kontrollierte `subprocess.TimeoutExpired`. Sie verlangt vom echten `execute()`-Pfad `status=FAIL`, `release_approved=false`, ein nichtleeres `faults`-Array und eine tatsächlich neu geschriebene JSON-Datei.
+
+- [**RED P114 Windows #42517771058**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42517771058): die Gegenprobe meldete `ERROR` mit unaufgefangener `subprocess.TimeoutExpired`, kein geordneter QA-FAIL-Report. Das ist ein **echter Fehler der Fehlerberichterstattung**, kein falsch positiver PASS des ausführenden GitHub-Workflows.
+- **Fix:** `subprocess`-Exceptionklassen `TimeoutExpired` und `CalledProcessError` werden im P74-Runner und in der oberen CLI-Exceptionbehandlung aufgenommen. Die Pipeline schreibt bei diesem Ereignis wie bei anderen kontrolliert fehlgeschlagenen Schritten einen expliziten `FAIL`-Bericht, ohne Releases zu genehmigen.
+- [**P114 GREEN Windows P74 #42517821020**](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42517821020): Unit-Regressionsjob `fail-closed-contract` **SUCCESS** am Fixcommit `696894dcdc1ee5071acc1a2e5c2b4a2afee700e3`. Die echte native VST3-E2E-Jobauswertung separat erforderlich.
+
+**Scope:** Ein einzelner kontrollierter Timeoutfall beweist nicht vollständige Systemrobustheit bei `KeyboardInterrupt`, Prozess-Crash ohne Python-Catch, Betriebssystem-Ende, out-of-disk, Teilbaum-Kill oder jeglicher nicht erfasster Python-Exception. Solche Ereignisse bleiben `NOT VERIFIED`, nicht `PASS`.
