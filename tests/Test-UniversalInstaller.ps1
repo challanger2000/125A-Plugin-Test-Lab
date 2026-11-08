@@ -46,4 +46,19 @@ if (-not $noOutput.installer_executed -or $noOutput.expected_artifact_verified -
 }
 $failing = Invoke-Case '08-real-nonzero-exit' 1 'FAIL' @('-Mode','Run','-ApproveExecution','-AllowUnsigned','-ExpectedArtifact',$marker,'-ExpectedArtifactSha256',$expectedMarkerSha,'-InstallerArguments',($arg + ' fail'))
 if (-not $failing.installer_executed -or $failing.exit_code -ne 42) { throw 'Nonzero exit missing from evidence' }
-Write-Output 'P106: all 8 synthetic fixture and negative contract cases PASS; no third-party installers run'
+$wrongOutput = Invoke-Case '09-wrong-artifact-hash' 1 'FAIL' @('-Mode','Run','-ApproveExecution','-AllowUnsigned','-ExpectedArtifact',$marker,'-ExpectedArtifactSha256',$wrong,'-InstallerArguments',$arg)
+if (-not $wrongOutput.installer_executed -or $wrongOutput.expected_artifact_verified -or
+    -not (Test-Path -LiteralPath $marker)) {
+  throw 'Wrong installed output hash received false acceptance'
+}
+Remove-Item -LiteralPath $marker
+$withoutPin = Invoke-Case '10-unpinned-installed-output' 0 'ARTIFACT_PRESENT_HASH_NOT_VERIFIED' @('-Mode','Run','-ApproveExecution','-AllowUnsigned','-ExpectedArtifact',$marker,'-InstallerArguments',$arg)
+if (-not $withoutPin.installer_executed -or $withoutPin.expected_artifact_verified -or
+    -not (Test-Path -LiteralPath $marker)) { throw 'Unpinned installed bytes incorrectly verified' }
+Remove-Item -LiteralPath $marker
+$timeout = Invoke-Case '11-installer-timeout' 1 'FAIL' @('-Mode','Run','-ApproveExecution','-AllowUnsigned','-ExpectedArtifact',$marker,'-ExpectedArtifactSha256',$expectedMarkerSha,'-InstallerArguments',($arg + ' sleep'),'-TimeoutSeconds','5')
+if (-not $timeout.installer_executed -or $timeout.expected_artifact_verified -or
+    -not (($timeout.faults -join ' ') -match 'timeout') -or
+    (Test-Path -LiteralPath $marker)) { throw 'Timed-out process incorrectly accepted or installed output before timeout' }
+Write-Host 'P108 timeout and artifact-integrity negatives PASS'
+Write-Output 'P106/P108: all 11 real EXE fixture and adversarial contract cases PASS; no third-party installers run'
