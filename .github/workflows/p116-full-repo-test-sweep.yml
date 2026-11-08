@@ -92,7 +92,7 @@ jobs:
                    "passed":result.wasSuccessful(),
                    "release_approved":False}
           pathlib.Path("audit-evidence/all-python-unittest-summary.json").write_text(
-              json.dumps(summary,indent=2)+"\\n",encoding="utf-8")
+              json.dumps(summary,indent=2)+"\n",encoding="utf-8")
           print("P116 UNITTEST_SUMMARY",json.dumps(summary))
           if not result.wasSuccessful(): sys.exit(1)
           '@ | python - 2>&1 | Tee-Object -FilePath audit-evidence/all-python-unittest.log
@@ -153,7 +153,7 @@ jobs:
                    "native_gui_snapshot_bmp":"NOT RUN in this lane; P04 separately",
                    "release_approved":False}
           pathlib.Path("audit-evidence/standalone-python-cli-summary.json").write_text(
-              json.dumps(summary,indent=2)+"\\n",encoding="utf-8")
+              json.dumps(summary,indent=2)+"\n",encoding="utf-8")
           if summary["failed"]: raise SystemExit(1)
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw 'P116 standalone CLI oracle regressions failed' }
