@@ -4,7 +4,8 @@ param(
  [Parameter(Mandatory=$true)][string]$ExpectedSha256,
  [Parameter(Mandatory=$true)][string]$OutputFolder,
  [switch]$ApproveExecution,
- [int]$TimeoutSeconds=240
+ [int]$TimeoutSeconds=240,
+ [string[]]$InventoryRoots=@()
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -51,6 +52,7 @@ try{
  $report.installer_sha256=$sha
  if($sha -ne $ExpectedSha256.ToLowerInvariant()){throw 'Installer SHA256 mismatch'}
  $roots=@($env:ProgramFiles,$env:ProgramData,$env:LOCALAPPDATA,$env:APPDATA,[Environment]::GetFolderPath('ProgramFilesX86')) | Where-Object {$_ -and (Test-Path $_)} | Select-Object -Unique
+ if($InventoryRoots.Count -gt 0){$roots=@($InventoryRoots)}
  $before=Snapshot-Files -Roots $roots
  $report.registry_before=@(Snapshot-Registry)
  $proc=Start-Process -FilePath $installerPath -PassThru
