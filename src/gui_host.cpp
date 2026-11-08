@@ -1333,7 +1333,8 @@ int observeOwnedDialog(const std::string& pluginPath, int x, int y,
  */
 int captureHostParameterSequence(const std::string& pluginPath,
                                  ParamID id, const std::string& csv,
-                                 const std::filesystem::path& out) {
+                                 const std::filesystem::path& out,
+                                 bool newViewForEachState = false) {
     std::vector<double> values;
     std::stringstream input(csv);
     std::string cell;
@@ -1347,6 +1348,55 @@ int captureHostParameterSequence(const std::string& pluginPath,
     require(values.size() >= 3 && values.size() <= 24,
             "P98 needs 3..24 actual, ordered host values");
     std::filesystem::create_directories(out);
+    if(newViewForEachState) {
+        // Fresh view on each controller state change: exactly the DAW
+        // close/reopen UI lifecycle, avoiding reliance on any undocumented
+        // native Test Lab idle-timer integration. Separate from the live
+        // editor mode; it does NOT prove already-open GUI automation.
+        std::string error;
+        auto module=Module::create(pluginPath,error);
+        require(bool(module),("P98 fresh-view module unavailable: "+error).c_str());
+        HostApplication host;
+        auto factory=module->getFactory();
+        factory.setHostContext(&host);
+        for(const auto& cls:factory.classInfos()) {
+            if(cls.category()!=kVstAudioEffectClass)continue;
+            auto component=factory.createInstance<IComponent>(cls.ID());
+            require(bool(component),"P98 fresh-view processor instantiate failed");
+            require(component->initialize(&host)==kResultOk,
+                    "P98 fresh-view processor initialize failed");
+            {
+                Controller controller;
+                acquireController(component.get(),factory,&host,controller);
+                require(controller.ptr,"P98 fresh-view controller not instantiated");
+                std::ofstream report(out/"host-values.tsv",std::ios::trunc);
+                require(report.good(),"P98 fresh-view report unavailable");
+                report<<"step\\trequested\\tobserved\\tbitmap\\n";
+                for(size_t i=0;i<values.size();++i) {
+                    const double wanted=values[i];
+                    require(controller.ptr->setParamNormalized(id,wanted)==kResultTrue,
+                            "P98 fresh-view host parameter not accepted");
+                    const double actual=controller.ptr->getParamNormalized(id);
+                    require(std::isfinite(actual)&&std::abs(actual-wanted)<0.000001,
+                            "P98 fresh-view exact controller param mismatch");
+                    const auto file="step-"+std::to_string(i)+".bmp";
+                    runView(controller.ptr,1,false,0,-1,-1,1.0,out/file);
+                    report<<i<<"\\t"<<std::setprecision(17)<<wanted<<"\\t"
+                          <<actual<<"\\t"<<file<<"\\n";
+                    std::cout<<"[PASS] P98 fresh HWND editor state "<<i
+                             <<" param="<<id<<" actual="<<actual<<"\n";
+                }
+                require(report.good(),"P98 fresh-view report truncated");
+                report.close();
+                controller.close();
+            }
+            require(component->terminate()==kResultOk,
+                    "P98 fresh-view processor cleanup failed");
+            std::cout<<"P98_FRESH_REAL_EDITOR_PARAMETERS_PASS\n";
+            return 0;
+        }
+        throw std::runtime_error("P98 fresh-view VST3 has no audio processor");
+    }
     std::string error;
     auto module=Module::create(pluginPath,error);
     require(bool(module), ("P98 actual VST3 module unavailable: "+error).c_str());
@@ -3323,6 +3373,10 @@ int main(int argc, char** argv) {
         if (argc == 4 && std::string(argv[1]) == "--inventory-hwnd-tree")
             return run(argv[2], false, 0, -1, -1, 1.0, {}, 0.0,
                        std::filesystem::path(argv[3]));
+        if (argc == 6 && std::string(argv[1]) == "--capture-host-param-sequence-reopen") {
+            const auto id=static_cast<ParamID>(std::stoul(argv[3]));
+            return captureHostParameterSequence(argv[2],id,argv[4],argv[5],true);
+        }
         if (argc == 6 && std::string(argv[1]) == "--capture-host-param-sequence") {
             const auto id=static_cast<ParamID>(std::stoul(argv[3]));
             return captureHostParameterSequence(argv[2],id,argv[4],argv[5]);
