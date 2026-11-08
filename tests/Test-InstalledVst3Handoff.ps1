@@ -24,6 +24,8 @@ $sourceResource = Join-Path $bundle 'Contents\Resources\P109-fixture-resource.tx
 New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($sourceResource)) -Force | Out-Null
 $sourceBytes = [Text.Encoding]::ASCII.GetBytes('P109-approved-resource-content')
 [IO.File]::WriteAllBytes($sourceResource, $sourceBytes)
+$requiredEmptyDir = Join-Path $bundle 'Contents\Resources\P111-required-empty-directory'
+New-Item -ItemType Directory -Path $requiredEmptyDir -Force | Out-Null
 $sourceManifest = Join-Path $WorkingRoot 'P109-expected-source-manifest.json'
 & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Get-Vst3BundleManifest.ps1') -Bundle $bundle -OutputFile $sourceManifest | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'P109 could not establish independent source bundle manifest' }
@@ -35,6 +37,10 @@ $arguments = 'copydir "' + $bundle + '" "' + $dest + '"'
 $installOut = Join-Path $WorkingRoot '09-real-vst3-bundle-installer'
 & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installerScript -Mode Run -ApproveExecution -AllowUnsigned -Installer $fixture -ExpectedSha256 $installerHash -InstallerArguments $arguments -ExpectedArtifact $destModule -ExpectedArtifactSha256 $moduleHash -OutputFolder $installOut | Out-Null
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $destModule -PathType Leaf)) { throw 'P106 source-built VST3 bundle was not truly installed' }
+$installedEmptyDir = Join-Path $dest 'Contents\Resources\P111-required-empty-directory'
+if (-not (Test-Path -LiteralPath $installedEmptyDir -PathType Container)) {
+  throw 'P111 discovered installer false PASS: required empty VST3 directory absent'
+}
 $report = Join-Path $installOut 'P106-INSTALLER-RESULT.json'
 $qaOut = Join-Path $WorkingRoot '10-p74-actual-installed-vst3'
 $baseArgs = @('-InstallationReport',$report,'-Vst3Bundle',$dest,
