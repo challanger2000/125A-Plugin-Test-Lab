@@ -84,6 +84,7 @@ try {
   if ($extension -notin @('.exe','.msi')) { throw 'Only local EXE/MSI installers are supported' }
   $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
   $report.installer_sha256 = $actual
+  $report.installer_path = $path
   $report.installer_name = [IO.Path]::GetFileName($path)
   $report.installer_type = $extension.TrimStart('.')
   if ($actual -cne $ExpectedSha256.ToLowerInvariant()) {
@@ -130,6 +131,11 @@ try {
   $report.exit_code = [int]$process.ExitCode
   $report.finished_utc = [DateTime]::UtcNow.ToString('o')
   if ($process.ExitCode -ne 0) { throw ('Installer exited with code ' + $process.ExitCode) }
+  # Keep the observed process identity tied to the same on-disk bytes.
+  # Detect modifications to the installer between preflight and exit.
+  if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $actual) {
+    throw 'Installer bytes changed during process execution'
+  }
   $report.installer_verified = $true # verified exit only, not functional installation
   $report.vst3_after = @(Capture-Vst3)
   $after = @(Capture-Uninstall)
