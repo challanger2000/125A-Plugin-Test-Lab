@@ -5,6 +5,7 @@ param(
  [Parameter(Mandatory=$true)][string]$OutputFolder,
  [switch]$ApproveExecution,
  [int]$TimeoutSeconds=240,
+ [string]$InstallerArguments='',
  [string[]]$InventoryRoots=@()
 )
 $ErrorActionPreference='Stop'
@@ -55,7 +56,9 @@ try{
  if($InventoryRoots.Count -gt 0){$roots=@($InventoryRoots)}
  $before=Snapshot-Files -Roots $roots
  $report.registry_before=@(Snapshot-Registry)
- $proc=Start-Process -FilePath $installerPath -PassThru
+ $startArgs=@{FilePath=$installerPath;PassThru=$true}
+ if($InstallerArguments){$startArgs.ArgumentList=$InstallerArguments}
+ $proc=Start-Process @startArgs
  if(-not $proc.WaitForExit($TimeoutSeconds*1000)){
   $report.timed_out=$true
   & taskkill.exe /T /F /PID $proc.Id 2>$null | Out-Null
