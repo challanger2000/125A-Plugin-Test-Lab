@@ -123,6 +123,26 @@ class ReaperQATests(unittest.TestCase):
                          "P91 must reject a different loaded FX, even if PCM "
                          "render and save/reload observations are good")
 
+    def test_nonzero_render_exit_with_valid_wav_must_fail(self):
+        # P117: an externally returned nonzero REAPER render result cannot
+        # be converted into a DAW PASS just because a valid WAV appeared.
+        def process(command, status_file, timeout):
+            if status_file is None:
+                good_pcm(self.root/"nonzero"/"125A_Reaper_Render.wav")
+                return {"exit_code": 42}
+            if status_file.name == "setup.status":
+                (self.root/"nonzero"/"125A_Reaper_Project.RPP").write_text(
+                    "<REAPER_PROJECT 0.1\\n>", encoding="utf-8")
+                return {"phase":"setup", "note_count":"1",
+                        "fx_name":"VST3i: 125A QA Synth (125A)",
+                        "reaper_version":"7.83/x64"}
+            return {"phase":"reload", "note_count":"1",
+                    "fx_name":"VST3i: 125A QA Synth (125A)",
+                    "pitch":"60", "velocity":"100"}
+        result=execute(self.plan, self.root/"nonzero", process_runner=process)
+        self.assertEqual(result["status"], "FAIL",
+                         "Nonzero REAPER exit is not successful rendering")
+
     def test_missing_render_or_fake_fx_rejected(self):
         def fake_process(command, status_file, timeout):
             if status_file and status_file.name=="setup.status":
