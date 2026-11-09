@@ -210,7 +210,7 @@ int inspect(const std::string& pluginPath) {
 int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
            const std::filesystem::path& statePath = {},
            const std::filesystem::path& stateSnapshotPath = {},
-           int bpm = kBpm, int blockSize = kBlockSize) {
+           int bpm = kBpm, int blockSize = kBlockSize, bool offline = false) {
     require(bpm >= 60 && bpm <= 240, "Tempo outside supported 60..240 BPM range");
     require(blockSize >= 16 && blockSize <= 2048, "Block size outside supported 16..2048 frames");
     require((kSampleRate * 60) % bpm == 0, "Tempo not sample-exact at 44.1 kHz");
@@ -259,7 +259,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
             }
 
             ProcessSetup setup{};
-            setup.processMode = kRealtime;
+            setup.processMode = offline ? kOffline : kRealtime;
             setup.symbolicSampleSize = kSample32;
             setup.maxSamplesPerBlock = blockSize;
             setup.sampleRate = kSampleRate;
@@ -352,7 +352,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                 ctx.timeSigDenominator = 4;
 
                 ProcessData data{};
-                data.processMode = kRealtime;
+                data.processMode = offline ? kOffline : kRealtime;
                 data.symbolicSampleSize = kSample32;
                 data.numSamples = frames;
                 data.numInputs = static_cast<int32>(inputBuffers.size());
@@ -396,6 +396,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                 std::cout << "[PASS] VST3 component state saved by actual plugin: "
                           << size << " bytes\n";
             }
+            std::cout << "[INFO] VST3 mode: " << (offline ? "offline" : "realtime-unpaced") << "\n";
             std::cout << "[PASS] VST3 processing: 4 bars, " << bpm
                       << " BPM, 44.1 kHz, block=" << blockSize
                       << ", PCM24 stereo, frames=" << totalFrames << "\n";
@@ -427,6 +428,9 @@ int main(int argc, char** argv) {
         if (argc == 3 && std::string(argv[1]) == "--inspect") return inspect(argv[2]);
         if (argc == 4 && std::string(argv[1]) == "--render")
             return render(argv[2], std::filesystem::path(argv[3]));
+        if (argc == 4 && std::string(argv[1]) == "--render-offline")
+            return render(argv[2], std::filesystem::path(argv[3]), {}, {},
+                          kBpm, kBlockSize, true);
         // P34: real PCM and component-state capture, no synthetic state injection.
         if (argc == 5 && std::string(argv[1]) == "--capture")
             return render(argv[2], std::filesystem::path(argv[3]), {},
@@ -443,7 +447,7 @@ int main(int argc, char** argv) {
                           std::filesystem::path(argv[3]), {},
                           std::stoi(argv[5]), std::stoi(argv[6]));
         std::cerr << "Usage: 125A_Test_Lab_Host --selftest\n"
-                  << "       125A_Test_Lab_Host --render <plugin.vst3> <output.wav>\n"
+                  << "       125A_Test_Lab_Host --render <plugin.vst3> <output.wav>\n"                  << "       125A_Test_Lab_Host --render-offline <plugin.vst3> <output.wav>\n"
                   << "       125A_Test_Lab_Host --capture <plugin.vst3> <output.wav> <saved-state.bin>\n"
                   << "       125A_Test_Lab_Host --render-state <plugin.vst3> <state.bin> <output.wav>\n"
                   << "       125A_Test_Lab_Host --render-state-save <plugin.vst3> <state.bin> <output.wav> <saved-state.bin>\n"
