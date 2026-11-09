@@ -70,6 +70,29 @@ with tempfile.TemporaryDirectory() as td:
             assert any("playback" in reason or "saves_during_playback" in reason
                        for reason in result["cases"][0]["faults"]), name
             evidence["saves_during_playback"] = original
+        # P98: a missing-input stereo-effect callback is rejected, not
+        # misleadingly counted as a successful 100ns realtime callback.
+        original_result = evidence["result"]
+        original_failures = evidence["process_failures"]
+        original_timing = evidence["timing_certification"]
+        evidence["result"] = "FAIL"
+        evidence["process_failures"] = 2368
+        evidence["timing_certification"] = "NOT COVERED"
+        rc = adapter.run(m, root / "invalid-callback-timing", 20)
+        bad = json.loads((root / "invalid-callback-timing" / "ADAPTER-RESULT.json").read_text(encoding="utf-8"))
+        assert rc == 1 and bad["status"] == "FAIL"
+        assert bad["cases"][0]["realtime_certification"] == "NOT COVERED"
+        assert any("process_failures" in fault for fault in bad["cases"][0]["faults"])
+        assert not any("invalid timing certification" in fault
+                       for fault in bad["cases"][0]["faults"])
+        evidence["timing_certification"] = "PASS"
+        rc = adapter.run(m, root / "forged-fast-invalid-callbacks", 20)
+        forged = json.loads((root / "forged-fast-invalid-callbacks" / "ADAPTER-RESULT.json").read_text(encoding="utf-8"))
+        assert rc == 1 and any("failed plugin callbacks cannot certify realtime timing" in fault
+                               for fault in forged["cases"][0]["faults"])
+        evidence["result"] = original_result
+        evidence["process_failures"] = original_failures
+        evidence["timing_certification"] = original_timing
     # A P25 host log with all 500 saves after playback is also rejected by
     # the independent TSV oracle, regardless of its recorded result=PASS.
     tsv = root / "late.tsv"
