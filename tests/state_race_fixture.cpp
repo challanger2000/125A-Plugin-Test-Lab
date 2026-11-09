@@ -47,6 +47,9 @@ public:
     static FUnknown* createInstance(void*) {return static_cast<IAudioProcessor*>(new Fixture);}
     tresult PLUGIN_API initialize(FUnknown* c) override {
         if (AudioEffect::initialize(c)!=kResultOk) return kResultFalse;
+#if QA_STATE_MODE==10 || QA_STATE_MODE==11
+        addAudioInput(STR16("Stereo In"),SpeakerArr::kStereo);
+#endif
         addAudioOutput(STR16("Stereo Out"),SpeakerArr::kStereo);
         return kResultOk;
     }
@@ -114,6 +117,19 @@ public:
         if (d.symbolicSampleSize!=kSample32||d.numSamples<0||d.numSamples>2048||
             d.numOutputs!=1||!d.outputs||d.outputs[0].numChannels!=2||
             !d.outputs[0].channelBuffers32) return kResultFalse;
+#if QA_STATE_MODE==10 || QA_STATE_MODE==11
+        // Good effect requires the declared stereo input, even on legal
+        // zero-sample callbacks. This detects output-only native test hosts.
+        if(d.numInputs!=1||!d.inputs||d.inputs[0].numChannels!=2||
+           !d.inputs[0].channelBuffers32||
+           !d.inputs[0].channelBuffers32[0]||
+           !d.inputs[0].channelBuffers32[1])return kResultFalse;
+#endif
+#if QA_STATE_MODE==11
+        // Deliberately defective plugin: rejects a fully valid stereo
+        // input from the host. The identical P25 oracle MUST catch it.
+        return kResultFalse;
+#endif
 #if QA_STATE_MODE==7
         // Deliberately invalid realtime behavior: sleeps inside process().
         // Periodic delay stays over a 512-frame 44.1-kHz deadline while
@@ -200,6 +216,10 @@ constexpr const char* name="125A QA Blocking Audio Callback";
 constexpr const char* name="125A QA Broken Multi Instance Global State";
 #elif QA_STATE_MODE==9
 constexpr const char* name="125A QA Broken Live State Replay Rejection";
+#elif QA_STATE_MODE==10
+constexpr const char* name="125A QA Stereo Input Good Effect";
+#elif QA_STATE_MODE==11
+constexpr const char* name="125A QA Stereo Input Rejects Valid Host";
 #endif
 }
 BEGIN_FACTORY_DEF("125A Universal QA","https://github.com/challanger2000","qa@125a.invalid")

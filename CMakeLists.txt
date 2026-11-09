@@ -220,6 +220,16 @@ foreach(mode RANGE 0 3)
   target_compile_definitions(QAStateMode${mode} PRIVATE NOMINMAX QA_STATE_MODE=${mode})
 endforeach()
 
+# P98: actual stereo-input effect, plus a deliberately invalid effect
+# that rejects correctly provided input. Independent P25 negative control.
+foreach(mode IN ITEMS 10 11)
+  smtg_add_vst3plugin(QAStateMode${mode}
+      PACKAGE_NAME "125A_QA_State_${mode}"
+      SOURCES_LIST tests/state_race_fixture.cpp)
+  target_link_libraries(QAStateMode${mode} PRIVATE sdk)
+  target_compile_definitions(QAStateMode${mode} PRIVATE NOMINMAX QA_STATE_MODE=${mode})
+endforeach()
+
 # A deliberately incorrect real VST3 rejects valid saved-state reloads
 # during active playback; the independent native replay stress must detect it.
 smtg_add_vst3plugin(QAStateMode9

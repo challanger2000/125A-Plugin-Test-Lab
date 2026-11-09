@@ -72,6 +72,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     Metrics metrics;
     int64 rtP95=0,rtP99=0;
     int64 callbackBudget=0;
+    int observedInputBusCount=0;
     for(const auto& info:factory.classInfos()) {
         if(info.category()!=kVstAudioEffectClass) continue;
         ++audioClasses;
@@ -94,6 +95,23 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             demand(component->getBusInfo(kAudio,kOutput,0,bus)==kResultOk&&bus.channelCount==2,
                    "this stress scenario requires a stereo output");
             (void)component->activateBus(kAudio,kOutput,0,true);
+            // Generic VST3 stress must provide actual input buffers to
+            // effect plugins that declare a stereo input. The old host
+            // only passed outputs (valid for instruments), so every normal
+            // audio-effect process() correctly rejecting numInputs=0 was
+            // misclassified as a plugin regression.
+            const auto inputBusCount=component->getBusCount(kAudio,kInput);
+            observedInputBusCount=inputBusCount;
+            demand(inputBusCount==0||inputBusCount==1,
+                   "this stress scenario supports zero or one audio input bus");
+            if(inputBusCount==1) {
+                BusInfo inputInfo{};
+                demand(component->getBusInfo(kAudio,kInput,0,inputInfo)==kResultOk &&
+                       inputInfo.channelCount==2,
+                       "this stress scenario requires a stereo input when present");
+                demand(component->activateBus(kAudio,kInput,0,true)==kResultOk,
+                       "activate declared stereo input bus failed");
+            }
             ProcessSetup setup{};
             setup.sampleRate=double(sampleRate);
             setup.maxSamplesPerBlock=std::max(16,block);
@@ -119,6 +137,16 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             std::vector<Sample32> left(bufferSize),right(bufferSize);
             Sample32* channels[]{left.data(),right.data()};
             AudioBusBuffers output{};output.numChannels=2;output.channelBuffers32=channels;
+            // Preallocated deterministic, finite stereo signal for input
+            // effects. Preserve the zero-input instrument contract.
+            std::vector<Sample32> sourceL(bufferSize),sourceR(bufferSize);
+            for(int n=0;n<bufferSize;++n) {
+                sourceL[size_t(n)]=Sample32(.025*std::sin(double(n)*.031));
+                sourceR[size_t(n)]=Sample32(.023*std::cos(double(n)*.047));
+            }
+            Sample32* inputChannels[]{sourceL.data(),sourceR.data()};
+            AudioBusBuffers input{};
+            input.numChannels=2;input.channelBuffers32=inputChannels;
             // Allocation is performed before the audio thread begins.
             // Only preallocated slots are written during the callbacks.
             std::vector<int64> callbackNs(size_t(iterations),0);
@@ -137,6 +165,8 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                 ProcessData d{};
                 d.processMode=kRealtime;d.symbolicSampleSize=kSample32;
                 d.numOutputs=1;d.outputs=&output;d.processContext=&context;
+                d.numInputs=inputBusCount;
+                d.inputs=inputBusCount==1?&input:nullptr;
                 while(!launch.load(std::memory_order_acquire)) std::this_thread::yield();
                 for(int i=0;i<iterations;++i) {
                     const int count=(i%19==0)?0:block; // legal zero-frame flush
@@ -291,6 +321,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     out<<"plugin\t"<<pluginPath<<"\n";
     out<<"sample_rate\t"<<sampleRate<<"\nblock_size\t"<<block<<"\niterations\t"<<iterations<<"\n";
     out<<"oracle\t"<<oracle<<"\nscenario\t"<<(replayValid?"replay-genuine-state":saveOnly?"playback-save-no-writes":"concurrent-writers")<<"\nclasses\t"<<audioClasses<<"\n";
+    out<<"input_audio_buses\t"<<observedInputBusCount<<"\n";
     out<<"callbacks\t"<<metrics.callbacks.load()<<"\nprocess_failures\t"<<metrics.processFailures.load();
     out<<"\nset_failures\t"<<metrics.setFailures.load()<<"\nsave_failures\t"<<metrics.saveFailures.load();
     out<<"\nsaves_during_playback\t"<<metrics.savesDuringPlayback.load();
