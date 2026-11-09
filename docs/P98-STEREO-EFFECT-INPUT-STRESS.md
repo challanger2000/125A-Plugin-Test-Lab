@@ -32,7 +32,7 @@ The `QAStateStereoInput` VST3 fixture requires a valid stereo input and renders 
 - Input topology is deliberately bounded to zero buses or **one stereo input**; other layouts require their own independently tested host contracts.
 - P25 `--save-only` is generic technical evidence, not independent frequency-response reference. Z-Plane-specific original-bank PCM and GUI tests remain separate.
 - Hardware ASIO/ETW, genuine user DAW, independent licensed X3 redistribution rights, full product feature matrix, multi-instance cross-thread/GUI extreme conditions and owner sign-off are **NOT RUN/NOT VERIFIED**.
-- **This is a development branch, not a merged Test Lab release.** Do not label Test Lab main as fixed based on branch-only evidence.
+- **Merged technical fix:** [PR #144](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/144) landed the reviewed P98 correction on Test Lab `main` at `58dc3ba730bb6297ddf7636254d62d16d5bd7f9e`, after all six Windows workflows passed on exact head `5fc51b7facb31f1d7d38ed42923f0a303b50c835`. This merge does **not** certify all plugin formats, independent product functionality, hardware ASIO or commercial release.
 
 
 ## Additional adversarial signal-validity oracle
@@ -46,3 +46,10 @@ This is not an absolute reference test for the processed effect's output PCM; th
 ## Zero-frame-only technical-baseline guard
 
 An additional review found that P25 had accepted `block=0` as a legitimate stress scenario, although that generated **no actual audio samples across all 2,500 callbacks**. If the VST3 accepted zero-length flushes, this could misleadingly produce a playback/real-time PASS without any processed audio. The true P25 baseline now rejects zero-block-only runs before constructing or timing the plugin, while keeping the periodic zero-frame flushes **within** all positive nonzero-block matrices. A Windows negative probe requires native exit **3**, the exact diagnostic `P25 cannot certify a zero-only audio callback run`, and **no** candidate PASS evidence file. This is a deliberately bounded technical-baseline rule; it does not prohibit testing zero-frame VST3 flushes within a real audio session.
+
+## Final P98 candidate checks and merge status
+
+- Exact merged PR head `5fc51b7facb31f1d7d38ed42923f0a303b50c835`: [P98 native Windows #42542100438](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42542100438) **PASS**. This includes four stereo-effect rates/blocks, zero-input generator, missing-input and silent-audio mutants, the zero-sample-only fail-closed probe, plus forged realtime-report rejection.
+- Broader source-matched Test Lab checks on that same head: [P25 #42542104326](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42542104326), [P02 #42542104406](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42542104406), [P91 #42542104397](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42542104397), [P92 #42542104312](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42542104312), [P93 #42542104313](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42542104313): **all SUCCESS**.
+- [Merged PR #144](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/144) at `58dc3ba730bb6297ddf7636254d62d16d5bd7f9e`; post-merge GET from `main` verified `src/state_stress.cpp` contains input-bus routing, no zero-only false baseline and no erroneous realtime PASS from invalid processing.
+- General P74, real external Z-Plane VST3 integration was independently **TECHNICAL_BASELINE_PASS** against initial corrected P98 code and the later independent timing-oracle revision; final merged `main` verification is a separate source-pinned Windows CI step, not silently inherited from this PR.
