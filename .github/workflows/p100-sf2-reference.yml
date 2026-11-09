@@ -1,0 +1,25 @@
+name: P100 independent SF2 preset and FluidSynth reference contracts
+on:
+  pull_request:
+    paths:
+      - 'tests/run_sf2_reference.py'
+      - 'tests/test_sf2_reference.py'
+      - 'docs/P100-SF2-FLUIDSYNTH-REFERENCE.md'
+      - '.github/workflows/p100-sf2-reference.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  independent-sf2-contracts:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check dry reference runner and adversarial fixtures (no private SF2 or real renderer)
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_sf2_reference.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P100 SF2 regression FAIL' }
+          python -m py_compile tests/run_sf2_reference.py tests/test_sf2_reference.py
+          if ($LASTEXITCODE -ne 0) { throw 'P100 Python compile FAIL' }
+          Write-Host 'P100 synthetic contract passed; real FluidSynth/AWE/EMU8000 audio NOT RUN'
