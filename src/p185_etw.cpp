@@ -73,7 +73,10 @@ struct Session {
 };
 struct Decode {
     std::ofstream switches,threads,ready,activity,markers;
-    uint64_t events{},cswitches{},decodeErrors{};std::set<std::string> observed;DWORD targetPid{};std::set<uint64_t> targetThreads;
+    uint64_t events{},cswitches{},decodeErrors{};
+    uint64_t cswitchSeen{},cswitchDecoded{},threadSeen{},threadDecoded{},readySeen{};
+    std::map<std::string,uint64_t> failureKinds;
+    std::set<std::string> observed;DWORD targetPid{};std::set<uint64_t> targetThreads;
     explicit Decode(const fs::path& out,DWORD pid):switches(out/"cswitch.csv"),threads(out/"threads.csv"),ready(out/"ready.csv"),
         activity(out/"activity.csv"),markers(out/"markers.csv"),targetPid(pid){
         switches<<"qpc,cpu,old_tid,new_tid,old_state,wait_reason\n";
@@ -82,10 +85,25 @@ struct Decode {
         markers<<"qpc,pid,tid,nonce,sequence\n";
     }
 };
-bool number(EVENT_RECORD* r,const wchar_t* key,uint64_t& value){
+bool number(EVENT_RECORD* r,const wchar_t* key,uint64_t& value,ULONG* diagnostic=nullptr){
     PROPERTY_DATA_DESCRIPTOR d{};d.PropertyName=reinterpret_cast<ULONGLONG>(key);d.ArrayIndex=ULONG_MAX;ULONG n=0;
-    if(TdhGetPropertySize(r,0,nullptr,1,&d,&n)!=ERROR_SUCCESS||n==0||n>8)return false;
-    value=0;return TdhGetProperty(r,0,nullptr,1,&d,n,reinterpret_cast<PBYTE>(&value))==ERROR_SUCCESS;
+    ULONG rc=TdhGetPropertySize(r,0,nullptr,1,&d,&n);
+    if(rc!=ERROR_SUCCESS){if(diagnostic)*diagnostic=rc;return false;}
+    if(n==0||n>8){if(diagnostic)*diagnostic=ERROR_BAD_LENGTH;return false;}
+    value=0;rc=TdhGetProperty(r,0,nullptr,1,&d,n,reinterpret_cast<PBYTE>(&value));
+    if(diagnostic)*diagnostic=rc;
+    return rc==ERROR_SUCCESS;
+}
+void noteFailure(Decode& d,const char* group,const char* field,ULONG status) {
+    ++d.decodeErrors;
+    // Whitelisted parser stage/field + Windows status, never raw payload/paths.
+    std::string name=std::string(group)+"."+field+"."+std::to_string(status);
+    if(d.failureKinds.count(name)||d.failureKinds.size()<32)++d.failureKinds[name];
+}
+bool trackedNumber(EVENT_RECORD* r,Decode& d,const char* group,const wchar_t* key,const char* name,uint64_t& v){
+    ULONG rc=ERROR_SUCCESS;
+    if(number(r,key,v,&rc))return true;
+    noteFailure(d,group,name,rc);return false;
 }
 static constexpr GUID threadGuid{0x3d6fa8d1,0xfe05,0x11d0,{0x9d,0xda,0,0xc0,0x4f,0xd7,0xba,0x7c}};
 static constexpr GUID perfGuid{0xce1dbfb4,0x137e,0x4da6,{0x87,0xb0,0x3f,0x59,0xaa,0x10,0x2c,0xbc}};
@@ -94,26 +112,41 @@ void WINAPI event(EVENT_RECORD* r){
     const auto t=r->EventHeader.TimeStamp.QuadPart;const auto cpu=r->BufferContext.ProcessorIndex;
     const auto op=r->EventHeader.EventDescriptor.Opcode;const auto& id=r->EventHeader.ProviderId;
     if(IsEqualGUID(id,p185::provider)){
-        if(r->EventHeader.EventDescriptor.Id!=185||r->EventHeader.EventDescriptor.Version!=1||r->UserDataLength!=52){++d.decodeErrors;return;}
+        if(r->EventHeader.EventDescriptor.Id!=185||r->EventHeader.EventDescriptor.Version!=1||r->UserDataLength!=52){
+            noteFailure(d,"MARKER","Header",ERROR_BAD_FORMAT);return;
+        }
         std::string nonce(static_cast<const char*>(r->UserData),48);uint32_t seq{};
         std::memcpy(&seq,static_cast<const BYTE*>(r->UserData)+48,4);
-        if(!std::all_of(nonce.begin(),nonce.end(),[](char c){return(c>='a'&&c<='f')||(c>='0'&&c<='9');})){++d.decodeErrors;return;}
+        if(!std::all_of(nonce.begin(),nonce.end(),[](char c){return(c>='a'&&c<='f')||(c>='0'&&c<='9');})){
+            noteFailure(d,"MARKER","Nonce",ERROR_BAD_FORMAT);return;
+        }
         d.markers<<t<<','<<r->EventHeader.ProcessId<<','<<r->EventHeader.ThreadId<<','<<nonce<<','<<seq<<'\n';return;
     }
     if(IsEqualGUID(id,threadGuid)){
         uint64_t a=0,b=0,c=0,e=0;
         if(op==36){
-            if(!number(r,L"NewThreadId",a)||!number(r,L"OldThreadId",b)||!number(r,L"OldThreadState",c)||!number(r,L"OldThreadWaitReason",e)){++d.decodeErrors;return;}
+            ++d.cswitchSeen;
+            if(!trackedNumber(r,d,"CSWITCH",L"NewThreadId","NewThreadId",a)||
+               !trackedNumber(r,d,"CSWITCH",L"OldThreadId","OldThreadId",b)||
+               !trackedNumber(r,d,"CSWITCH",L"OldThreadState","OldThreadState",c)||
+               !trackedNumber(r,d,"CSWITCH",L"OldThreadWaitReason","OldThreadWaitReason",e))return;
+            ++d.cswitchDecoded;
             if(!d.targetThreads.count(a)&&!d.targetThreads.count(b))return;
             d.switches<<t<<','<<cpu<<','<<b<<','<<a<<','<<c<<','<<e<<'\n';++d.cswitches;
         }else if(op>=1&&op<=4){
-            if(!number(r,L"ProcessId",a)||!number(r,L"TThreadId",b)){++d.decodeErrors;return;}
+            ++d.threadSeen;
+            if(!trackedNumber(r,d,"THREAD",L"ProcessId","ProcessId",a)||
+               !trackedNumber(r,d,"THREAD",L"TThreadId","TThreadId",b))return;
+            ++d.threadDecoded;
             if(a==d.targetPid)d.targetThreads.insert(b);
             if(!d.targetThreads.count(b))return;
             d.threads<<t<<','<<unsigned(op)<<','<<a<<','<<b<<'\n';
         }else if(op==50){
-            if(number(r,L"TThreadId",a)||number(r,L"ThreadId",a)){if(d.targetThreads.count(a))d.ready<<t<<','<<a<<','<<cpu<<'\n';}
-            else ++d.decodeErrors;
+            ++d.readySeen;
+            ULONG first=ERROR_SUCCESS,second=ERROR_SUCCESS;
+            if(number(r,L"TThreadId",a,&first)||number(r,L"ThreadId",a,&second)){
+                if(d.targetThreads.count(a))d.ready<<t<<','<<a<<','<<cpu<<'\n';
+            }else noteFailure(d,"READY","ThreadId",second!=ERROR_SUCCESS?second:first);
         }return;
     }
     if(IsEqualGUID(id,perfGuid)){
@@ -191,7 +224,17 @@ int capture(const fs::path& out,const std::wstring& nonce,const std::vector<std:
     std::ofstream o(out/"capture.json");
     o<<"{\"schema\":\"125a-p185-native-etw-v1\",\"source_sha\":\""<<p185::sourceSha<<"\",\"provider_inventory_result\":"<<inventoryStatus<<",\"nonce\":\""<<ascii(nonce.c_str())<<"\",\"child_pid\":"<<childPid
      <<",\"child_exit\":"<<childExit<<",\"timeout\":"<<(timeout?"true":"false")<<",\"marker_enable\":"<<markerEnable
-     <<",\"events\":"<<d.events<<",\"cswitches\":"<<d.cswitches<<",\"decode_errors\":"<<d.decodeErrors<<",\"kernel\":";
+     <<",\"events\":"<<d.events<<",\"cswitches\":"<<d.cswitches<<",\"decode_errors\":"<<d.decodeErrors
+     <<",\"cswitch_events_seen\":"<<d.cswitchSeen<<",\"cswitch_events_decoded\":"<<d.cswitchDecoded
+     <<",\"thread_events_seen\":"<<d.threadSeen<<",\"thread_events_decoded\":"<<d.threadDecoded
+     <<",\"ready_events_seen\":"<<d.readySeen<<",\"target_thread_count\":"<<d.targetThreads.size()
+     <<",\"decode_failure_kinds\":[";
+    size_t recorded=0;
+    for(const auto& [kind,count]:d.failureKinds){
+        if(recorded++)o<<',';
+        o<<"{\"kind\":\""<<kind<<"\",\"count\":"<<count<<'}';
+    }
+    o<<"],\"kernel\":";
     traceJson(o,kr,kernel);o<<",\"user\":";traceJson(o,ur,user);o<<",\"providers\":[";
     for(size_t i=0;i<ps.size();++i){if(i)o<<',';o<<"{\"name\":\""<<safe(ascii(ps[i].name.c_str()))<<"\",\"guid\":\""<<guidText(ps[i].id)<<"\",\"enable\":"<<ps[i].enable<<'}';}
     o<<"],\"physical_asio_verified\":false,\"release_approved\":false}\n";o.flush();check(o.good(),"ETW result write failed");

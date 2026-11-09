@@ -31,6 +31,10 @@ foreach($t in @($c.kernel,$c.user)){
   Assert-P185 ($t.start -eq 0 -and $t.stop -eq 0 -and $t.open -eq 0 -and $t.process -eq 0 -and $t.frequency -eq $w.frequency -and $t.clock -eq 1 -and $t.events_lost -eq 0 -and $t.buffers_lost -eq 0 -and $t.session_events_lost -eq 0 -and $t.session_buffers_lost -eq 0) 'ACTUAL_ETW_METADATA_INVALID'
 }
 Assert-P185 ($c.child_pid -eq $w.pid -and $c.decode_errors -eq 0 -and $c.cswitches -gt 0) 'ACTUAL_ETW_PID_OR_SCHEMA_FAILED'
+Assert-P185 ($c.cswitch_events_seen -gt 0 -and $c.cswitch_events_decoded -ge $c.cswitches -and
+  $c.cswitch_events_seen -ge $c.cswitch_events_decoded -and
+  $c.thread_events_seen -ge $c.thread_events_decoded -and
+  $c.target_thread_count -gt 0 -and @($c.decode_failure_kinds).Count -eq 0) 'P189_REAL_NATIVE_SCHEMA_DIAGNOSTICS_FAILED'
 $marks=@(Import-Csv (Join-Path $native 'markers.csv'));Assert-P185 ($marks.Count -eq 2) 'ACTUAL_MARKERS_MISSING'
 for($i=0;$i -lt 2;$i++){
   $m=$marks[$i];$b=$w.markers[$i]

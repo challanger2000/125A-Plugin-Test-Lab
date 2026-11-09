@@ -1,3 +1,21 @@
+# P189 current task – evidence-based ETW schema diagnostic only
+
+The user's genuine P188 physical reference ASIO run achieved 1000/1000
+callbacks, zero DSP/exec/XRUN failures, **one strict start-spacing
+violation**, 125671 ETW events with **43425 TDH decode errors**
+and **zero target-matched context switches**. Earlier genuine run:
+72039/189704 decode errors, same 1 gap. ETW sessions/markers succeed,
+no event loss; **native Windows decoder's precise failure is NOT VERIFIED**.
+The original consumer hid the failing field/provider/TDH code; P189
+records whitelist-only, bounded **offline** decoder failure signatures
+and independent event counts in the compact acceptance report.
+No unproven Windows-11 event schema adaptations, no audio callback
+changes, no relaxation of original 2× buffer gate.
+[Implementation and test plan](docs/P189-ETW-SCHEMA-DIAGNOSTICS.md).
+Physical P189 NOT_RUN, AWE realtime NOT_RUN,
+cause INCONCLUSIVE, release NO-GO.
+
+---
 # P186 current work — precise ETW failures and truthful reference progress
 
 Branch `fix/p186-etw-diagnostics`, baseline `1425a5d86aaf228f16e03de55df182f38d990c32`.
