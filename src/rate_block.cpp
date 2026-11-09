@@ -48,6 +48,16 @@ int run(const std::string& plugin,const std::filesystem::path& file,int rate,int
             require(component->getBusInfo(kAudio,kOutput,0,bus)==kResultOk&&bus.channelCount==2,
                     "stereo output required");
             (void)component->activateBus(kAudio,kOutput,0,true);
+            const auto inputBusCount=component->getBusCount(kAudio,kInput);
+            require(inputBusCount==0||inputBusCount==1,
+                    "P27 supports one stereo input or zero-input instruments");
+            if(inputBusCount==1) {
+                BusInfo inputInfo{};
+                require(component->getBusInfo(kAudio,kInput,0,inputInfo)==kResultOk&&
+                        inputInfo.channelCount==2,"P27 stereo effect input required");
+                require(component->activateBus(kAudio,kInput,0,true)==kResultOk,
+                        "P27 declared effect input activation failed");
+            }
             ProcessSetup setup{};setup.processMode=kRealtime;
             setup.sampleRate=double(rate);setup.symbolicSampleSize=kSample32;
             setup.maxSamplesPerBlock=block;
@@ -57,9 +67,14 @@ int run(const std::string& plugin,const std::filesystem::path& file,int rate,int
             std::vector<Sample32> left(size_t(block),0.f),right(size_t(block),0.f);
             Sample32* channel[]{left.data(),right.data()};
             AudioBusBuffers outputs{};outputs.numChannels=2;outputs.channelBuffers32=channel;
+            std::vector<Sample32> sourceL(size_t(block),0.f),sourceR(size_t(block),0.f);
+            Sample32* source[]{sourceL.data(),sourceR.data()};
+            AudioBusBuffers input{};input.numChannels=2;input.channelBuffers32=source;
             ProcessData d{};
             d.processMode=kRealtime;d.symbolicSampleSize=kSample32;
             d.numOutputs=1;d.outputs=&outputs;
+            d.numInputs=inputBusCount;
+            d.inputs=inputBusCount==1?&input:nullptr;
             ProcessContext ctx{};
             ctx.sampleRate=double(rate);ctx.tempo=120.;
             ctx.timeSigNumerator=4;ctx.timeSigDenominator=4;
@@ -78,6 +93,13 @@ int run(const std::string& plugin,const std::filesystem::path& file,int rate,int
                     ++zero;
                 }
                 const int count=std::min(block,total-frame);
+                // Absolute-sample stimulus, not a host block-local pattern;
+                // changing the host partition must not change the INPUT PCM.
+                if(inputBusCount==1)
+                    for(int n=0;n<count;++n) {
+                        sourceL[size_t(n)]=Sample32(.025*std::sin(double(frame+n)*.031));
+                        sourceR[size_t(n)]=Sample32(.023*std::cos(double(frame+n)*.047));
+                    }
                 d.numSamples=count;
                 require(proc->process(d)==kResultOk,"VST3 process callback failed");
                 for(int n=0;n<count;++n) {
