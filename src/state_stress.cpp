@@ -56,7 +56,11 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
            int sampleRate,int block,int iterations,const std::string& oracle,bool saveOnly,bool strictRealtime,bool replayValid) {
     demand(!(saveOnly && replayValid),"state replay and save-only are mutually exclusive");
     demand(sampleRate==44100||sampleRate==48000||sampleRate==96000,"unsupported test sample rate");
-    demand(block==0||block==17||block==64||block==127||block==512||block==1024,
+    // Standalone zero-frame flushes are exercised BETWEEN real blocks,
+    // but a zero-frame-only invocation cannot demonstrate actual audio
+    // processing or real-time safety, even when every callback returns OK.
+    demand(block!=0,"P25 cannot certify a zero-only audio callback run");
+    demand(block==17||block==64||block==127||block==512||block==1024,
            "unsupported test block");
     demand(iterations>=2000&&iterations<=30000,"invalid stress iteration count");
     demand(oracle=="paired"||oracle=="none"||oracle=="ramp","unknown independent oracle");

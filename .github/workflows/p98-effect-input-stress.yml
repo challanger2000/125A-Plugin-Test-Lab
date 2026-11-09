@@ -68,6 +68,17 @@ jobs:
               $generator.input_buses -ne '0' -or $generator.process_failures -ne '0') {
             throw 'P98 generator regression: zero-input VST3 was broken by effect fix'
           }
+          # P98 negative test: a host running 2,500 zero-sample
+          # callbacks cannot fabricate a successful playback/RT report.
+          $zeroReport='build/p98/zero-only-should-not-exist.tsv'
+          $zeroLog='build/p98/zero-only-rejection.log'
+          & $hostExe[0].FullName --stress $fx[0].FullName $zeroReport 44100 0 2500 none --save-only 2>&1 |
+            Tee-Object -FilePath $zeroLog
+          $zeroExit=$LASTEXITCODE
+          if ($zeroExit -ne 3 -or (Test-Path $zeroReport) -or
+              -not (Get-Content $zeroLog -Raw).Contains('P25 cannot certify a zero-only audio callback run')) {
+            throw 'P98 zero-only callback mutation did not fail closed before fake realtime PASS'
+          }
           $report='build/p98/negative-missing-input.tsv'
           & $badExe[0].FullName --stress $fx[0].FullName $report 44100 64 2500 none --save-only
           $negativeExit=$LASTEXITCODE
