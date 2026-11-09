@@ -214,7 +214,7 @@ if(MSVC)
 endif()
 # P98 deliberately broken native host: REQUIRED for negative control only.
 # Do not upload or use this target for product acceptance.
-add_executable(TestLabStateStressMissingInput src/state_stress.cpp)
+add_executable(TestLabStateStressMissingInput EXCLUDE_FROM_ALL src/state_stress.cpp)
 set_target_properties(TestLabStateStressMissingInput PROPERTIES
     OUTPUT_NAME "125A_Test_Lab_P98_Broken_Missing_Input")
 target_link_libraries(TestLabStateStressMissingInput PRIVATE
