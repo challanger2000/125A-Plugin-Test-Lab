@@ -60,6 +60,9 @@ jobs:
               Write-Host "P98 GOOD real VST3 mode $mode PASS input buses=$wanted"
             }
           }
+          # The expected bad-fixture process returns 1; the test itself has
+          # already asserted its failure is the CORRECT outcome.
+          exit 0
       - name: Actual stereo effect P27 absolute-sample input, and malformed effect negative control
         shell: pwsh
         run: |
@@ -81,6 +84,9 @@ jobs:
               }
             }
           }
+          # Expected negative subprocess failures must not leak out as
+          # the verification step's process exit code.
+          exit 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
