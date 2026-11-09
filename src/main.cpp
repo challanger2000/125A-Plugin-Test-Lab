@@ -8,6 +8,8 @@
 #include "public.sdk/source/vst/utility/memoryibstream.h"
 
 #include <algorithm>
+#include <chrono>
+#include <thread>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -211,7 +213,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
            const std::filesystem::path& statePath = {},
            const std::filesystem::path& stateSnapshotPath = {},
            int bpm = kBpm, int blockSize = kBlockSize,
-           bool offline = false, bool suppressMidi = false) {
+           bool offline = false, bool suppressMidi = false, bool paced = false) {
     require(bpm >= 60 && bpm <= 240, "Tempo outside supported 60..240 BPM range");
     require(blockSize >= 16 && blockSize <= 2048, "Block size outside supported 16..2048 frames");
     require((kSampleRate * 60) % bpm == 0, "Tempo not sample-exact at 44.1 kHz");
@@ -300,7 +302,16 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
             double peak = 0.0;
             int64_t emittedEvents = 0;
 
+            // Unlike the old unpaced render, this option models a real DAW
+            // clock without sleeping or blocking inside VST3 process().
+            const auto wallStart = std::chrono::steady_clock::now();
             for (int start = 0; start < totalFrames; start += blockSize) {
+                if (paced && start > 0) {
+                    const auto deadline = wallStart + std::chrono::duration_cast<
+                        std::chrono::steady_clock::duration>(
+                            std::chrono::duration<double>(double(start) / kSampleRate));
+                    std::this_thread::sleep_until(deadline);
+                }
                 const int frames = std::min(blockSize, totalFrames - start);
                 auto inputBuffers = descriptors(inputs);
                 auto outputBuffers = descriptors(outputs);
@@ -397,7 +408,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                 std::cout << "[PASS] VST3 component state saved by actual plugin: "
                           << size << " bytes\n";
             }
-            std::cout << "[INFO] VST3 mode: " << (offline ? "offline" : "realtime-unpaced") << "\n";
+            std::cout << "[INFO] VST3 mode: " << (offline ? "offline" : (paced ? "realtime-paced" : "realtime-unpaced")) << "\n";
             std::cout << "[INFO] MIDI stimulus: " << (suppressMidi ? "none" : "native host notes") << "\n";
             std::cout << "[PASS] VST3 processing: 4 bars, " << bpm
                       << " BPM, 44.1 kHz, block=" << blockSize
@@ -436,6 +447,9 @@ int main(int argc, char** argv) {
         if (argc == 4 && std::string(argv[1]) == "--render-offline-no-midi")
             return render(argv[2], std::filesystem::path(argv[3]), {}, {},
                           kBpm, kBlockSize, true, true);
+        if (argc == 4 && std::string(argv[1]) == "--render-realtime-paced")
+            return render(argv[2], std::filesystem::path(argv[3]), {}, {},
+                          kBpm, kBlockSize, false, false, true);
         // P34: real PCM and component-state capture, no synthetic state injection.
         if (argc == 5 && std::string(argv[1]) == "--capture")
             return render(argv[2], std::filesystem::path(argv[3]), {},
@@ -452,7 +466,7 @@ int main(int argc, char** argv) {
                           std::filesystem::path(argv[3]), {},
                           std::stoi(argv[5]), std::stoi(argv[6]));
         std::cerr << "Usage: 125A_Test_Lab_Host --selftest\n"
-                  << "       125A_Test_Lab_Host --render <plugin.vst3> <output.wav>\n"                  << "       125A_Test_Lab_Host --render-offline <plugin.vst3> <output.wav>\n"                  << "       125A_Test_Lab_Host --render-offline-no-midi <plugin.vst3> <output.wav>\n"
+                  << "       125A_Test_Lab_Host --render <plugin.vst3> <output.wav>\n"                  << "       125A_Test_Lab_Host --render-offline <plugin.vst3> <output.wav>\n"                  << "       125A_Test_Lab_Host --render-offline-no-midi <plugin.vst3> <output.wav>\n"                  << "       125A_Test_Lab_Host --render-realtime-paced <plugin.vst3> <output.wav>\n"
                   << "       125A_Test_Lab_Host --capture <plugin.vst3> <output.wav> <saved-state.bin>\n"
                   << "       125A_Test_Lab_Host --render-state <plugin.vst3> <state.bin> <output.wav>\n"
                   << "       125A_Test_Lab_Host --render-state-save <plugin.vst3> <state.bin> <output.wav> <saved-state.bin>\n"
