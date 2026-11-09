@@ -224,6 +224,19 @@ target_compile_definitions(TestLabStateStressMissingInput PRIVATE
 if(MSVC)
   target_compile_options(TestLabStateStressMissingInput PRIVATE /W4 /permissive- /utf-8)
 endif()
+# Additional test-only mutant: correct stereo input topology, SILENT
+# source samples. The real insert fixture must reject this bogus audio
+# signal oracle. Neither mutant belongs in routine release packaging.
+add_executable(TestLabStateStressSilentInput EXCLUDE_FROM_ALL src/state_stress.cpp)
+set_target_properties(TestLabStateStressSilentInput PROPERTIES
+    OUTPUT_NAME "125A_Test_Lab_P98_Broken_Silent_Input")
+target_link_libraries(TestLabStateStressSilentInput PRIVATE
+    Vst3WinModule sdk_hosting sdk_common base pluginterfaces)
+target_compile_definitions(TestLabStateStressSilentInput PRIVATE
+    NOMINMAX _CRT_SECURE_NO_WARNINGS P98_STRESS_ZERO_INPUT=1)
+if(MSVC)
+  target_compile_options(TestLabStateStressSilentInput PRIVATE /W4 /permissive- /utf-8)
+endif()
 foreach(mode RANGE 0 3)
   smtg_add_vst3plugin(QAStateMode${mode}
       PACKAGE_NAME "125A_QA_State_${mode}"

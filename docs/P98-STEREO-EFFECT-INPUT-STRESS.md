@@ -34,3 +34,11 @@ The `QAStateStereoInput` VST3 fixture requires a valid stereo input and renders 
 - Hardware ASIO/ETW, genuine user DAW, independent licensed X3 redistribution rights, full product feature matrix, multi-instance cross-thread/GUI extreme conditions and owner sign-off are **NOT RUN/NOT VERIFIED**.
 - **This is a development branch, not a merged Test Lab release.** Do not label Test Lab main as fixed based on branch-only evidence.
 
+
+## Additional adversarial signal-validity oracle
+
+The original P98 stereo effect fixture inspected input pointer presence but would have returned `kResultOk` even if a "correct" host silently filled both input buffers with zeros. This was a **test adequacy defect**: valid pointers are not valid audio stimulus.
+
+For `QA_STATE_MODE=10` only, the independent VST3 fixture now checks physically plausible opposite-signed, non-silent L/R sample ranges on **every processed input sample**, without depending on the host's exact generation formula. A new `TestLabStateStressSilentInput` (test-only, `EXCLUDE_FROM_ALL`) supplies valid input pointers containing only zeros. The Windows P98 matrix must detect it via **more than 2,000 nonzero-frame process failures** and report `timing_certification=NOT COVERED`. The correct host must still pass all four sample-rate/block combinations and preserve the no-input generator behavior.
+
+This is not an absolute reference test for the processed effect's output PCM; the general P25 host never assumes all real products must be non-silent. End-to-end output PCM remains a separate product-specific requirement.

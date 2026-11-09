@@ -21,7 +21,7 @@ jobs:
         run: |
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64
           if ($LASTEXITCODE -ne 0) { throw 'P98 CMake configuration failed' }
-          cmake --build build --config Release --parallel 2 --target TestLabStateStress TestLabStateStressMissingInput QAStateMode0 QAStateStereoInput
+          cmake --build build --config Release --parallel 2 --target TestLabStateStress TestLabStateStressMissingInput TestLabStateStressSilentInput QAStateMode0 QAStateStereoInput
           if ($LASTEXITCODE -ne 0) { throw 'P98 native executable or real VST3 fixture build failed' }
       - name: Positive stereo effect and zero-input generator, plus negative missing-input mutant
         shell: pwsh
@@ -30,9 +30,11 @@ jobs:
           New-Item -ItemType Directory -Force build/p98 | Out-Null
           $hostExe=@(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
           $badExe=@(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_P98_Broken_Missing_Input.exe')
+          $silentExe=@(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_P98_Broken_Silent_Input.exe')
           $fx=@(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_P98_StereoEffect.vst3')
           $synth=@(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_0.vst3')
-          if ($hostExe.Count -ne 1 -or $badExe.Count -ne 1 -or $fx.Count -ne 1 -or $synth.Count -ne 1) {
+          if ($hostExe.Count -ne 1 -or $badExe.Count -ne 1 -or $silentExe.Count -ne 1 -or
+              $fx.Count -ne 1 -or $synth.Count -ne 1) {
             throw 'P98 native hosts and the TWO source-built VST3 fixtures are required'
           }
           $PSNativeCommandUseErrorActionPreference=$false
@@ -76,7 +78,19 @@ jobs:
               $negative.timing_certification -ne 'NOT COVERED') {
             throw "P98 negative control did not reject specifically missing-input callbacks: $negativeExit"
           }
-          Write-Host 'P98 PASS: 4 stereo-effect cases, original zero-input generator, deliberately broken host killed by real VST3 process failure.'
+          # Second negative: topology is technically correct, but actual
+          # stereo audio is entirely silent. The fixture must reject this
+          # on nonzero frames, independently of the input pointer check.
+          $report='build/p98/negative-silent-stereo-input.tsv'
+          & $silentExe[0].FullName --stress $fx[0].FullName $report 44100 64 2500 none --save-only
+          $silentExit=$LASTEXITCODE
+          $silent=Read-Evidence $report
+          if ($silentExit -ne 1 -or $silent.result -ne 'FAIL' -or
+              $silent.input_buses -ne '1' -or [int]$silent.process_failures -lt 2000 -or
+              $silent.save_success -ne '500' -or $silent.timing_certification -ne 'NOT COVERED') {
+            throw "P98 silent-input mutant was not killed by audible-signal check: $silentExit"
+          }
+          Write-Host 'P98 PASS: four stereo-effect cases, zero-input generator, missing-input and silent-audio mutants both killed.'
           exit 0
       - name: Fail closed on forged timing from invalid plugin callbacks
         shell: pwsh

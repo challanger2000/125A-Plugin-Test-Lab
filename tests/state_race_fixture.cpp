@@ -160,8 +160,17 @@ public:
         const auto* sourceL=d.inputs[0].channelBuffers32[0];
         const auto* sourceR=d.inputs[0].channelBuffers32[1];
         for(int i=0;i<d.numSamples;++i) {
-            left[i]=0.7f*sourceL[i];
-            right[i]=0.4f*sourceR[i];
+            // Independent physical-signal bounds, deliberately NOT
+            // copied from the host's exact excitation equation.
+            // Detect zeroed, swapped, crosswired, nonfinite or fully
+            // disconnected inputs even if the host supplied two valid
+            // pointers. A pointer-only assertion is not audio evidence.
+            const auto l=sourceL[i],r=sourceR[i];
+            if(!std::isfinite(l)||!std::isfinite(r)||
+               l<0.105f||l>0.155f||r<-.12f||r>-.06f)
+                return kResultFalse;
+            left[i]=0.7f*l;
+            right[i]=0.4f*r;
             ++samples_;
         }
 #else

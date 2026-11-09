@@ -142,10 +142,18 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             // become a false PASS for a plugin that requires one.
             std::vector<Sample32> excitationL(bufferSize),excitationR(bufferSize);
             for(int n=0;n<bufferSize;++n) {
+#if defined(P98_STRESS_ZERO_INPUT) && P98_STRESS_ZERO_INPUT
+                // Test-only mutant: real topology with non-null input
+                // buffers but no audio samples. Must NOT be accepted as
+                // a meaningful stereo-effect input-positive result.
+                excitationL[static_cast<std::size_t>(n)]=0.f;
+                excitationR[static_cast<std::size_t>(n)]=0.f;
+#else
                 excitationL[static_cast<std::size_t>(n)]=
                     static_cast<Sample32>(.13+.017*std::sin(n*.067));
                 excitationR[static_cast<std::size_t>(n)]=
                     static_cast<Sample32>(-.09+.021*std::cos(n*.083));
+#endif
             }
             Sample32* source[]{excitationL.data(),excitationR.data()};
             AudioBusBuffers input{};input.numChannels=2;input.channelBuffers32=source;
