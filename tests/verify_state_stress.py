@@ -39,6 +39,18 @@ def parse(path):
     assert rows["sample_rate"] in (44100,48000,96000)
     assert rows["oracle"] in ("paired","ramp","none")
     assert rows["domain_correctness"] in ("PASS","FAIL","NOT_COVERED")
+    # P98: an ultra-fast INVALID process() is not a certified audio
+    # callback. Our previous output-only host accepted 132 zero-frame
+    # calls but rejected 2368 nonzero effect callbacks while wrongly
+    # saying timing_certification=PASS.
+    timing = rows.get("timing_certification")
+    assert timing in ("PASS", "FAIL", "NOT COVERED"), "unknown timing evidence status"
+    if rows["process_failures"]:
+        assert timing == "NOT COVERED", "invalid processing falsely certified realtime"
+    else:
+        assert timing != "NOT COVERED", "valid timed callbacks wrongly unverified"
+        assert (timing == "PASS") == (rows["callback_overruns"] == 0), (
+            "timing certification contradicts callback overrun count")
     return rows
 
 def verify(path, mode):
