@@ -212,6 +212,31 @@ target_compile_definitions(TestLabStateStress PRIVATE NOMINMAX _CRT_SECURE_NO_WA
 if(MSVC)
   target_compile_options(TestLabStateStress PRIVATE /W4 /permissive- /utf-8)
 endif()
+# P98 deliberately broken native host: REQUIRED for negative control only.
+# Do not upload or use this target for product acceptance.
+add_executable(TestLabStateStressMissingInput EXCLUDE_FROM_ALL src/state_stress.cpp)
+set_target_properties(TestLabStateStressMissingInput PROPERTIES
+    OUTPUT_NAME "125A_Test_Lab_P98_Broken_Missing_Input")
+target_link_libraries(TestLabStateStressMissingInput PRIVATE
+    Vst3WinModule sdk_hosting sdk_common base pluginterfaces)
+target_compile_definitions(TestLabStateStressMissingInput PRIVATE
+    NOMINMAX _CRT_SECURE_NO_WARNINGS P98_STRESS_OMIT_INPUT=1)
+if(MSVC)
+  target_compile_options(TestLabStateStressMissingInput PRIVATE /W4 /permissive- /utf-8)
+endif()
+# Additional test-only mutant: correct stereo input topology, SILENT
+# source samples. The real insert fixture must reject this bogus audio
+# signal oracle. Neither mutant belongs in routine release packaging.
+add_executable(TestLabStateStressSilentInput EXCLUDE_FROM_ALL src/state_stress.cpp)
+set_target_properties(TestLabStateStressSilentInput PROPERTIES
+    OUTPUT_NAME "125A_Test_Lab_P98_Broken_Silent_Input")
+target_link_libraries(TestLabStateStressSilentInput PRIVATE
+    Vst3WinModule sdk_hosting sdk_common base pluginterfaces)
+target_compile_definitions(TestLabStateStressSilentInput PRIVATE
+    NOMINMAX _CRT_SECURE_NO_WARNINGS P98_STRESS_ZERO_INPUT=1)
+if(MSVC)
+  target_compile_options(TestLabStateStressSilentInput PRIVATE /W4 /permissive- /utf-8)
+endif()
 foreach(mode RANGE 0 3)
   smtg_add_vst3plugin(QAStateMode${mode}
       PACKAGE_NAME "125A_QA_State_${mode}"
@@ -219,6 +244,14 @@ foreach(mode RANGE 0 3)
   target_link_libraries(QAStateMode${mode} PRIVATE sdk)
   target_compile_definitions(QAStateMode${mode} PRIVATE NOMINMAX QA_STATE_MODE=${mode})
 endforeach()
+
+# P98: a real effect requires one stereo input bus; output-only P25
+# process() requests must be rejected by the fixture.
+smtg_add_vst3plugin(QAStateStereoInput
+    PACKAGE_NAME "125A_QA_P98_StereoEffect"
+    SOURCES_LIST tests/state_race_fixture.cpp)
+target_link_libraries(QAStateStereoInput PRIVATE sdk)
+target_compile_definitions(QAStateStereoInput PRIVATE NOMINMAX QA_STATE_MODE=10)
 
 # A deliberately incorrect real VST3 rejects valid saved-state reloads
 # during active playback; the independent native replay stress must detect it.

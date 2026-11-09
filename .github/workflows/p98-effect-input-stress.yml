@@ -1,0 +1,118 @@
+name: P98 native input-bus topology for universal VST3 state stress
+on:
+  push:
+    branches: [fix/p98-generic-stereo-effect-p25]
+    paths:
+      - 'src/state_stress.cpp'
+      - 'tests/state_race_fixture.cpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/p98-effect-input-stress.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  valid-effect-and-adversarial-host:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build independent P98 stereo-effect, generator and both VST3 hosts
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P98 CMake configuration failed' }
+          cmake --build build --config Release --parallel 2 --target TestLabStateStress TestLabStateStressMissingInput TestLabStateStressSilentInput QAStateMode0 QAStateStereoInput
+          if ($LASTEXITCODE -ne 0) { throw 'P98 native executable or real VST3 fixture build failed' }
+      - name: Positive stereo effect and zero-input generator, plus negative missing-input mutant
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force build/p98 | Out-Null
+          $hostExe=@(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
+          $badExe=@(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_P98_Broken_Missing_Input.exe')
+          $silentExe=@(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_P98_Broken_Silent_Input.exe')
+          $fx=@(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_P98_StereoEffect.vst3')
+          $synth=@(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_0.vst3')
+          if ($hostExe.Count -ne 1 -or $badExe.Count -ne 1 -or $silentExe.Count -ne 1 -or
+              $fx.Count -ne 1 -or $synth.Count -ne 1) {
+            throw 'P98 native hosts and the TWO source-built VST3 fixtures are required'
+          }
+          $PSNativeCommandUseErrorActionPreference=$false
+          function Read-Evidence([string]$file) {
+            if (-not (Test-Path $file)) { throw "P98 missing evidence file $file" }
+            $d=@{}
+            Get-Content $file | ForEach-Object {
+              $pair=$_ -split "`t",2
+              if ($pair.Length -eq 2) { $d[$pair[0]]=$pair[1] }
+            }
+            return $d
+          }
+          foreach ($rate in @(44100,48000)) {
+            foreach ($frames in @(64,512)) {
+              $report="build/p98/effect-$rate-$frames.tsv"
+              & $hostExe[0].FullName --stress $fx[0].FullName $report $rate $frames 2500 none --save-only
+              $exitCode=$LASTEXITCODE
+              $d=Read-Evidence $report
+              if ($exitCode -ne 0 -or $d.result -ne 'PASS' -or
+                  $d.input_buses -ne '1' -or $d.process_failures -ne '0' -or
+                  $d.save_success -ne '500' -or [int]$d.saves_during_playback -le 0) {
+                throw "P98 real stereo-input insert failed at $rate/$frames ($exitCode): $($d | Out-String)"
+              }
+            }
+          }
+          $report='build/p98/generator-44100-64.tsv'
+          & $hostExe[0].FullName --stress $synth[0].FullName $report 44100 64 2500 none --save-only
+          $generatorExit=$LASTEXITCODE
+          $generator=Read-Evidence $report
+          if ($generatorExit -ne 0 -or $generator.result -ne 'PASS' -or
+              $generator.input_buses -ne '0' -or $generator.process_failures -ne '0') {
+            throw 'P98 generator regression: zero-input VST3 was broken by effect fix'
+          }
+          # P98 negative test: a host running 2,500 zero-sample
+          # callbacks cannot fabricate a successful playback/RT report.
+          $zeroReport='build/p98/zero-only-should-not-exist.tsv'
+          $zeroLog='build/p98/zero-only-rejection.log'
+          & $hostExe[0].FullName --stress $fx[0].FullName $zeroReport 44100 0 2500 none --save-only 2>&1 |
+            Tee-Object -FilePath $zeroLog
+          $zeroExit=$LASTEXITCODE
+          if ($zeroExit -ne 3 -or (Test-Path $zeroReport) -or
+              -not (Get-Content $zeroLog -Raw).Contains('P25 cannot certify a zero-only audio callback run')) {
+            throw 'P98 zero-only callback mutation did not fail closed before fake realtime PASS'
+          }
+          $report='build/p98/negative-missing-input.tsv'
+          & $badExe[0].FullName --stress $fx[0].FullName $report 44100 64 2500 none --save-only
+          $negativeExit=$LASTEXITCODE
+          $negative=Read-Evidence $report
+          if ($negativeExit -ne 1 -or $negative.result -ne 'FAIL' -or
+              $negative.input_buses -ne '1' -or [int]$negative.process_failures -lt 2000 -or
+              $negative.save_success -ne '500' -or $negative.save_failures -ne '0' -or
+              $negative.timing_certification -ne 'NOT COVERED') {
+            throw "P98 negative control did not reject specifically missing-input callbacks: $negativeExit"
+          }
+          # Second negative: topology is technically correct, but actual
+          # stereo audio is entirely silent. The fixture must reject this
+          # on nonzero frames, independently of the input pointer check.
+          $report='build/p98/negative-silent-stereo-input.tsv'
+          & $silentExe[0].FullName --stress $fx[0].FullName $report 44100 64 2500 none --save-only
+          $silentExit=$LASTEXITCODE
+          $silent=Read-Evidence $report
+          if ($silentExit -ne 1 -or $silent.result -ne 'FAIL' -or
+              $silent.input_buses -ne '1' -or [int]$silent.process_failures -lt 2000 -or
+              $silent.save_success -ne '500' -or $silent.timing_certification -ne 'NOT COVERED') {
+            throw "P98 silent-input mutant was not killed by audible-signal check: $silentExit"
+          }
+          Write-Host 'P98 PASS: four stereo-effect cases, zero-input generator, missing-input and silent-audio mutants both killed.'
+          exit 0
+      - name: Fail closed on forged timing from invalid plugin callbacks
+        shell: pwsh
+        run: |
+          python tests/test_playback_save_overlap.py
+          if ($LASTEXITCODE -ne 0) { throw 'P98 independent P32 timing evidence mutation regression failed' }
+      - name: Retain positive and negative real VST3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P98-stereo-effect-input-bus-positive-negative-TSV
+          path: build/p98/
+          if-no-files-found: warn
+          retention-days: 7

@@ -153,8 +153,16 @@ def run(adapter_path, folder, timeout):
                     if not 0 < during <= saves:
                         faults.append("no proven saves while audio playback was active")
                 certification = observed.get("timing_certification")
-                if certification not in ("PASS", "FAIL"):
+                process_failures = observed.get("process_failures")
+                if certification not in ("PASS", "FAIL", "NOT COVERED"):
                     faults.append("invalid timing certification")
+                elif process_failures is None or not process_failures.isdecimal():
+                    faults.append("missing/noninteger process failure count")
+                elif int(process_failures) > 0:
+                    if certification != "NOT COVERED":
+                        faults.append("failed plugin callbacks cannot certify realtime timing")
+                elif certification == "NOT COVERED":
+                    faults.append("valid callbacks cannot silently omit measured timing")
                 elif "callback_overruns" in metrics and (
                         (metrics["callback_overruns"] == 0) != (certification == "PASS")):
                     faults.append("timing certification contradicts measured overrun count")
