@@ -189,6 +189,23 @@ class SoundFontReferenceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'PCM fingerprint'):
                 p.verify_awe_case(manifest, label, midi, wav)
 
+
+    def test_genuine_redistributable_synthetic_sf2_structure(self):
+        from make_p100_valid_sf2 import generate
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'real-fixture.sf2'
+            generate(path)
+            data = path.read_bytes()
+            self.assertGreater(len(data), 85000)
+            self.assertLess(len(data), 95000)
+            self.assertIn(b'smpl', data)
+            self.assertEqual([(z['bank'], z['program'])
+                              for z in p.sf2_presets(path)], [(0, 0)])
+            original = p.digest(path)
+            generate(path)
+            self.assertEqual(p.digest(path), original)
+
+
     def test_awe_provenance_incomplete_inputs_fail_closed(self):
         from tempfile import TemporaryDirectory
         with TemporaryDirectory() as d:

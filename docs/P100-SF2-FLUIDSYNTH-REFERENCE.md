@@ -42,6 +42,12 @@ The separately generated native render manifest has schema `125a-awe-sf2-render-
 
 The output includes early/sustain/release level differences as **observations**, not automatic corrections or a fidelity score. The test cannot determine algorithmic identity (FluidSynth is not EMU8000), reconstruct missing AWE source provenance, or prove that effective filter and FX register settings matched real hardware. P90 remains separate, with its own purpose-specific external-capture contract; this runner does not reclassify P90 evidence.
 
+## Genuine FluidSynth 2.4.5 Windows engine smoke (synthetic SF2)
+
+The P100 Windows workflow now downloads the official **version-pinned** FluidSynth 2.4.5 x64 ZIP from the upstream GitHub release (published 2025-04-13), verifies the published asset byte count `5,446,270`, logs ZIP/executable SHA256, and runs the actual binary against a **genuinely loadable, generated 2.01 SoundFont**. `tests/make_p100_valid_sf2.py` creates this original one-preset, one-second periodic sine sample, with every SF2 RIFF section and all terminal records; a local libfluidsynth 2.4.4 read-and-note-on smoke already proved the fixture loads. The Windows job requires a non-silent, unclipped 44.1kHz dry PCM16 render and an explicit `awe_comparison=NOT_RUN`. The workflow uploads only that synthetic MIDI/WAV/JSON. It does **not** upload the owner's 77-preset SoundFont, private ROM or licensed hardware recordings.
+
+This `v2.4.5` source download is an upstream test-time binary; the workflow records but does not pre-pin its ZIP SHA256 because upstream release metadata does not publish one. Its fixed URL, expected exact byte length and observed SHA are **diagnostic safeguards, not a cryptographic immutable-binary guarantee**. P100 results remain `REFERENCE_RENDERED` and not a CT4390 fidelity grade. A genuine user-SF2 comparison requires a trusted separately performed offline render using exactly the same executable, SF2 and MIDI. An actual current AWE VST3 render additionally requires the pinned per-case `awe-manifest` contract described above.
+
 ## Evidence and QA scope
 
 Run synthetic regressions without proprietary files or external binaries:
