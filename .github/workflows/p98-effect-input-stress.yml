@@ -72,11 +72,17 @@ jobs:
           $negative=Read-Evidence $report
           if ($negativeExit -ne 1 -or $negative.result -ne 'FAIL' -or
               $negative.input_buses -ne '1' -or [int]$negative.process_failures -lt 2000 -or
-              $negative.save_success -ne '500' -or $negative.save_failures -ne '0') {
+              $negative.save_success -ne '500' -or $negative.save_failures -ne '0' -or
+              $negative.timing_certification -ne 'NOT COVERED') {
             throw "P98 negative control did not reject specifically missing-input callbacks: $negativeExit"
           }
           Write-Host 'P98 PASS: 4 stereo-effect cases, original zero-input generator, deliberately broken host killed by real VST3 process failure.'
           exit 0
+      - name: Fail closed on forged timing from invalid plugin callbacks
+        shell: pwsh
+        run: |
+          python tests/test_playback_save_overlap.py
+          if ($LASTEXITCODE -ne 0) { throw 'P98 independent P32 timing evidence mutation regression failed' }
       - name: Retain positive and negative real VST3 evidence
         if: always()
         uses: actions/upload-artifact@v4
