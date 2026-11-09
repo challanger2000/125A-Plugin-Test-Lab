@@ -167,8 +167,15 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                     ProcessContext::kTimeSigValid|ProcessContext::kProjectTimeMusicValid;
                 ProcessData d{};
                 d.processMode=kRealtime;d.symbolicSampleSize=kSample32;
+                // P98 test-only negative mutant deliberately reintroduces
+                // the original missing-input host bug. The mutant must FAIL
+                // on the stereo-effect fixture, while normal builds PASS.
+#if defined(P98_STRESS_OMIT_INPUT) && P98_STRESS_OMIT_INPUT
+                d.numInputs=0;d.inputs=nullptr;
+#else
                 d.numInputs=inputBusCount;
                 d.inputs=inputBusCount==1?&input:nullptr;
+#endif
                 d.numOutputs=1;d.outputs=&output;d.processContext=&context;
                 while(!launch.load(std::memory_order_acquire)) std::this_thread::yield();
                 for(int i=0;i<iterations;++i) {
