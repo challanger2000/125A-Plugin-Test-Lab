@@ -178,6 +178,42 @@ void traceJson(std::ostream& o,const TraceResult& r,Session& s){
      <<",\"session_buffers_lost\":"<<s.p()->LogBuffersLost+s.p()->RealTimeBuffersLost
      <<",\"frequency\":"<<r.frequency<<",\"clock\":"<<r.clock<<'}';
 }
+// P189: offline re-decoding of already saved ETL files. This does NOT start ETW or ASIO.
+int replayExisting(const fs::path& raw,const fs::path& out,DWORD pid){
+    check(!fs::exists(out),"P189 refuses stale output directory");
+    check(fs::is_regular_file(raw/"kernel.etl")&&fs::is_regular_file(raw/"providers.etl"),
+        "P189 requires existing kernel.etl and providers.etl; no audio will start");
+    fs::create_directories(out);
+    Decode d(out,pid);
+    TraceResult kr=decode(raw/"kernel.etl",d);
+    TraceResult ur=decode(raw/"providers.etl",d);
+    std::ofstream o(out/"P189-DECODE.json");
+    o<<"{\"schema\":\"125a-p189-offline-etw-v1\",\"source_sha\":\""<<p185::sourceSha
+     <<"\",\"target_pid_unverified\":"<<pid<<",\"events\":"<<d.events
+     <<",\"cswitches\":"<<d.cswitches<<",\"decode_errors\":"<<d.decodeErrors
+     <<",\"cswitch_events_seen\":"<<d.cswitchSeen<<",\"cswitch_events_decoded\":"<<d.cswitchDecoded
+     <<",\"thread_events_seen\":"<<d.threadSeen<<",\"thread_events_decoded\":"<<d.threadDecoded
+     <<",\"ready_events_seen\":"<<d.readySeen<<",\"target_thread_count\":"<<d.targetThreads.size()
+     <<",\"decode_failure_kinds\":[";
+    size_t n=0;
+    for(const auto& [kind,count]:d.failureKinds){
+        if(n++)o<<',';
+        o<<"{\"kind\":\""<<kind<<"\",\"count\":"<<count<<'}';
+    }
+    o<<"],\"kernel\":{\"open\":"<<kr.open<<",\"process\":"<<kr.process
+     <<",\"events_lost\":"<<kr.lost<<",\"buffers_lost\":"<<kr.buffers
+     <<",\"frequency\":"<<kr.frequency<<",\"clock\":"<<kr.clock
+     <<"},\"user\":{\"open\":"<<ur.open<<",\"process\":"<<ur.process
+     <<",\"events_lost\":"<<ur.lost<<",\"buffers_lost\":"<<ur.buffers
+     <<",\"frequency\":"<<ur.frequency<<",\"clock\":"<<ur.clock
+     <<"},\"physical_asio\":\"NOT_VERIFIED_OFFLINE\",\"awe_realtime\":\"NOT_RUN\","
+       "\"causal_attribution\":\"INCONCLUSIVE\",\"release_approved\":false}\n";
+    o.flush();check(o.good(),"P189 offline report write failed");
+    std::cout<<"P189 offline ETW replay: event_count="<<d.events
+             <<" cswitch_events="<<d.cswitchSeen<<" errors="<<d.decodeErrors
+             <<" reference_only_not_verified=true release_NO_GO\n";
+    return kr.open||ur.open||kr.process||ur.process?3:0;
+}
 int workload(const fs::path& file,const std::string& nonce){
     p185::Clock clock(true);clock.mark(0,nonce);
     const auto tid=GetCurrentThreadId();const auto before=p185::qpc();Sleep(80);
@@ -244,6 +280,14 @@ int capture(const fs::path& out,const std::wstring& nonce,const std::vector<std:
 }
 }
 int wmain(int argc,wchar_t** argv){try{
+    if(argc==5&&std::wstring(argv[1])==L"--decode-existing"){
+        const std::wstring pidText=argv[4];
+        check(!pidText.empty()&&std::all_of(pidText.begin(),pidText.end(),[](wchar_t c){return c>=L'0'&&c<=L'9';}),"P189 invalid PID");
+        const uint64_t pid=std::stoull(pidText);
+        check(pid>0&&pid<=0xffffffffULL,"P189 PID out of range");
+        return replayExisting(fs::absolute(argv[2]),fs::absolute(argv[3]),static_cast<DWORD>(pid));
+    }
+
     if(argc==4&&std::wstring(argv[1])==L"--workload")return workload(argv[2],ascii(argv[3]));
     if(argc==3&&std::wstring(argv[1])==L"--decoder-selftest"){
         fs::path out=argv[2];check(!fs::exists(out),"Decoder fixture directory must be fresh");fs::create_directories(out);

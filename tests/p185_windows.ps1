@@ -27,6 +27,21 @@ $native=Join-Path $Evidence 'native-etw-local'
 & $exe --selftest $native $nonce
 Assert-P185 ($LASTEXITCODE -eq 0) 'ACTUAL_NATIVE_ETW_CONTROL_FAILED'
 $c=Read-P185Json (Join-Path $native 'capture.json');$w=Read-P185Json (Join-Path $native 'control.json')
+# P189: actual offline re-decoding of the ETLs produced by the real Windows ETW control.
+# No recording/ASIO/driver is started during this replay.
+$replay=Join-Path $Evidence 'native-offline-etw-replay'
+& $exe --decode-existing $native $replay $w.pid
+Assert-P185 ($LASTEXITCODE -eq 0 -and (Test-Path (Join-Path $replay 'P189-DECODE.json'))) 'P189_REAL_ETL_REPLAY_FAILED'
+$again=Read-P185Json (Join-Path $replay 'P189-DECODE.json')
+Assert-P185 ($again.schema -ceq '125a-p189-offline-etw-v1' -and
+  $again.events -eq $c.events -and $again.cswitches -eq $c.cswitches -and
+  $again.cswitch_events_seen -eq $c.cswitch_events_seen -and
+  $again.cswitch_events_decoded -eq $c.cswitch_events_decoded -and
+  $again.decode_errors -eq $c.decode_errors -and
+  $again.target_pid_unverified -eq $w.pid -and
+  $again.physical_asio -ceq 'NOT_VERIFIED_OFFLINE' -and
+  -not $again.release_approved) 'P189_REPLAY_UNVERIFIED_OR_NONDETERMINISTIC'
+
 foreach($t in @($c.kernel,$c.user)){
   Assert-P185 ($t.start -eq 0 -and $t.stop -eq 0 -and $t.open -eq 0 -and $t.process -eq 0 -and $t.frequency -eq $w.frequency -and $t.clock -eq 1 -and $t.events_lost -eq 0 -and $t.buffers_lost -eq 0 -and $t.session_events_lost -eq 0 -and $t.session_buffers_lost -eq 0) 'ACTUAL_ETW_METADATA_INVALID'
 }

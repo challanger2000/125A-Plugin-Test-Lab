@@ -1,3 +1,17 @@
+# P189 offline extension – replay existing P188 ETL, do not repeat ASIO
+
+The owner has already run the physical reference-ASIO test twice.
+First diagnose the saved `P185-LOCAL-*/RAW-LOCAL-ONLY/kernel.etl`
+and `providers.etl` using the new universal Test Lab P189
+offline consumer, **without** opening ASIO, ETW sessions or any
+audio device. Report only bounded field/status/counter metadata.
+Any missing raw input remains NOT_RUN; never invent OS root cause.
+Read [P189 design](docs/P189-ETW-SCHEMA-DIAGNOSTICS.md).
+The original strict ASIO full-run gate, DSP and release NO-GO
+are unchanged.
+
+---
+
 # P189 current task – evidence-based ETW schema diagnostic only
 
 The user's genuine P188 physical reference ASIO run achieved 1000/1000

@@ -1,3 +1,30 @@
+# P189 – Offline-Nachdecodierung bereits gespeicherter ETW-Dateien
+
+**Nächster Schritt ohne Wiederholung eines Hardwarelaufs:** Das neue
+native Test-Lab-Werkzeug hat einen zusätzlichen Befehl
+`--decode-existing RAW-LOCAL-ONLY FRESH_OUTPUT TARGET_PID`.
+Es liest ausschließlich die bestehenden `kernel.etl` und
+`providers.etl` eines P188-Laufs, startet weder ETW-Sessions noch
+ASIO/DAW und erzeugt `P189-DECODE.json` mit CSwitch-Ereigniszahlen
+und bis zu 32 whitelisten TDH-Feld-/Windows-Statussignaturen.
+Die Original-ETLs werden nicht verändert.
+
+`tools/p189/P189-REPLAY.ps1` ist der universelle, allein lesende
+Windows-BAT-Einstieg für Nutzer, inklusive geprüftem Paket-Manifest,
+eingeschränkter Quell/PID-/Nonce-Verknüpfung, kopierter Diagnose-JSON
+und garantiert **keiner** Veröffentlichung der ETL-Nutzdaten.
+Ergebnis `P189-RESULT.json` ist ausdrücklich nur Diagnose und
+nie Hardware-/Release-Nachweis. Die Originalordner nicht löschen,
+solange die P189-Auswertung noch aussteht.
+
+Eine echte Windows-CI-Gegenprobe führt die Offline-Nachdecodierung
+eines zuvor **real** per Kernel-ETW-Selftest geschriebenen
+ETL-Dateipaars durch und prüft die gezählten Ereignisse
+gegen die ursprüngliche native Erfassung. Gegenproben prüfen,
+dass ungeprüfte/Nicht-ETL-Eingaben nicht zu PASS werden.
+
+---
+
 # P189 – Windows-ETW-Parserdiagnose ohne vorschnelle Filterkorrektur
 
 ## Belegter Fehler am Windows-Zielrechner
