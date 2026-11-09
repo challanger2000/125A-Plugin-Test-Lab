@@ -72,6 +72,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     Metrics metrics;
     int64 rtP95=0,rtP99=0;
     int64 callbackBudget=0;
+    int32 actualInputBusCount=-1;
     for(const auto& info:factory.classInfos()) {
         if(info.category()!=kVstAudioEffectClass) continue;
         ++audioClasses;
@@ -94,6 +95,23 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             demand(component->getBusInfo(kAudio,kOutput,0,bus)==kResultOk&&bus.channelCount==2,
                    "this stress scenario requires a stereo output");
             (void)component->activateBus(kAudio,kOutput,0,true);
+            // P98: the P25 harness previously supplied ONLY an output bus,
+            // so every nonzero callback of a genuine audio insert was
+            // rejected. A zero-input generator and a single stereo-input
+            // effect have different valid VST3 ProcessData topologies.
+            // Other topologies remain explicitly out of this P25 scope.
+            const int32 inputBusCount=component->getBusCount(kAudio,kInput);
+            actualInputBusCount=inputBusCount;
+            demand(inputBusCount==0||inputBusCount==1,
+                   "P25 technical scope: 0 or 1 input audio bus");
+            if(inputBusCount==1) {
+                BusInfo inputBus{};
+                demand(component->getBusInfo(kAudio,kInput,0,inputBus)==kResultOk &&
+                       inputBus.channelCount==2,
+                       "P25 technical scope: single stereo audio input");
+                demand(component->activateBus(kAudio,kInput,0,true)==kResultOk,
+                       "P25 could not activate plugin stereo input bus");
+            }
             ProcessSetup setup{};
             setup.sampleRate=double(sampleRate);
             setup.maxSamplesPerBlock=std::max(16,block);
@@ -119,6 +137,19 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             std::vector<Sample32> left(bufferSize),right(bufferSize);
             Sample32* channels[]{left.data(),right.data()};
             AudioBusBuffers output{};output.numChannels=2;output.channelBuffers32=channels;
+            // Deterministic stereo excitation for insert FX, allocated
+            // and filled BEFORE audio starts. A missing input must never
+            // become a false PASS for a plugin that requires one.
+            std::vector<Sample32> excitationL(bufferSize),excitationR(bufferSize);
+            for(int n=0;n<bufferSize;++n) {
+                excitationL[static_cast<std::size_t>(n)]=
+                    static_cast<Sample32>(.13+.017*std::sin(n*.067));
+                excitationR[static_cast<std::size_t>(n)]=
+                    static_cast<Sample32>(-.09+.021*std::cos(n*.083));
+            }
+            Sample32* source[]{excitationL.data(),excitationR.data()};
+            AudioBusBuffers input{};input.numChannels=2;input.channelBuffers32=source;
+            input.silenceFlags=0;
             // Allocation is performed before the audio thread begins.
             // Only preallocated slots are written during the callbacks.
             std::vector<int64> callbackNs(size_t(iterations),0);
@@ -136,6 +167,8 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                     ProcessContext::kTimeSigValid|ProcessContext::kProjectTimeMusicValid;
                 ProcessData d{};
                 d.processMode=kRealtime;d.symbolicSampleSize=kSample32;
+                d.numInputs=inputBusCount;
+                d.inputs=inputBusCount==1?&input:nullptr;
                 d.numOutputs=1;d.outputs=&output;d.processContext=&context;
                 while(!launch.load(std::memory_order_acquire)) std::this_thread::yield();
                 for(int i=0;i<iterations;++i) {
@@ -291,6 +324,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     out<<"plugin\t"<<pluginPath<<"\n";
     out<<"sample_rate\t"<<sampleRate<<"\nblock_size\t"<<block<<"\niterations\t"<<iterations<<"\n";
     out<<"oracle\t"<<oracle<<"\nscenario\t"<<(replayValid?"replay-genuine-state":saveOnly?"playback-save-no-writes":"concurrent-writers")<<"\nclasses\t"<<audioClasses<<"\n";
+    out<<"input_buses\t"<<actualInputBusCount<<"\n";
     out<<"callbacks\t"<<metrics.callbacks.load()<<"\nprocess_failures\t"<<metrics.processFailures.load();
     out<<"\nset_failures\t"<<metrics.setFailures.load()<<"\nsave_failures\t"<<metrics.saveFailures.load();
     out<<"\nsaves_during_playback\t"<<metrics.savesDuringPlayback.load();
