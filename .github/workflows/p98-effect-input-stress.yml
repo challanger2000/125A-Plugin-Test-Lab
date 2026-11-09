@@ -1,0 +1,87 @@
+name: P98 native input-bus topology for universal VST3 state stress
+on:
+  push:
+    branches: [fix/p98-generic-stereo-effect-p25]
+    paths:
+      - 'src/state_stress.cpp'
+      - 'tests/state_race_fixture.cpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/p98-effect-input-stress.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  valid-effect-and-adversarial-host:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build independent P98 stereo-effect, generator and both VST3 hosts
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P98 CMake configuration failed' }
+          cmake --build build --config Release --parallel 2 --target TestLabStateStress TestLabStateStressMissingInput QAStateMode0 QAStateStereoInput
+          if ($LASTEXITCODE -ne 0) { throw 'P98 native executable or real VST3 fixture build failed' }
+      - name: Positive stereo effect and zero-input generator, plus negative missing-input mutant
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force build/p98 | Out-Null
+          $hostExe=@(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe')
+          $badExe=@(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_P98_Broken_Missing_Input.exe')
+          $fx=@(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_P98_StereoEffect.vst3')
+          $synth=@(Get-ChildItem build -Recurse -Directory -Filter '125A_QA_State_0.vst3')
+          if ($hostExe.Count -ne 1 -or $badExe.Count -ne 1 -or $fx.Count -ne 1 -or $synth.Count -ne 1) {
+            throw 'P98 native hosts and the TWO source-built VST3 fixtures are required'
+          }
+          $PSNativeCommandUseErrorActionPreference=$false
+          function Read-Evidence([string]$file) {
+            if (-not (Test-Path $file)) { throw "P98 missing evidence file $file" }
+            $d=@{}
+            Get-Content $file | ForEach-Object {
+              $pair=$_ -split "`t",2
+              if ($pair.Length -eq 2) { $d[$pair[0]]=$pair[1] }
+            }
+            return $d
+          }
+          foreach ($rate in @(44100,48000)) {
+            foreach ($frames in @(64,512)) {
+              $report="build/p98/effect-$rate-$frames.tsv"
+              & $hostExe[0].FullName --stress $fx[0].FullName $report $rate $frames 2500 none --save-only
+              $exitCode=$LASTEXITCODE
+              $d=Read-Evidence $report
+              if ($exitCode -ne 0 -or $d.result -ne 'PASS' -or
+                  $d.input_buses -ne '1' -or $d.process_failures -ne '0' -or
+                  $d.save_success -ne '500' -or [int]$d.saves_during_playback -le 0) {
+                throw "P98 real stereo-input insert failed at $rate/$frames ($exitCode): $($d | Out-String)"
+              }
+            }
+          }
+          $report='build/p98/generator-44100-64.tsv'
+          & $hostExe[0].FullName --stress $synth[0].FullName $report 44100 64 2500 none --save-only
+          $generatorExit=$LASTEXITCODE
+          $generator=Read-Evidence $report
+          if ($generatorExit -ne 0 -or $generator.result -ne 'PASS' -or
+              $generator.input_buses -ne '0' -or $generator.process_failures -ne '0') {
+            throw 'P98 generator regression: zero-input VST3 was broken by effect fix'
+          }
+          $report='build/p98/negative-missing-input.tsv'
+          & $badExe[0].FullName --stress $fx[0].FullName $report 44100 64 2500 none --save-only
+          $negativeExit=$LASTEXITCODE
+          $negative=Read-Evidence $report
+          if ($negativeExit -ne 1 -or $negative.result -ne 'FAIL' -or
+              $negative.input_buses -ne '1' -or [int]$negative.process_failures -lt 2000 -or
+              $negative.save_success -ne '500' -or $negative.save_failures -ne '0') {
+            throw "P98 negative control did not reject specifically missing-input callbacks: $negativeExit"
+          }
+          Write-Host 'P98 PASS: 4 stereo-effect cases, original zero-input generator, deliberately broken host killed by real VST3 process failure.'
+          exit 0
+      - name: Retain positive and negative real VST3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P98-stereo-effect-input-bus-positive-negative-TSV
+          path: build/p98/
+          if-no-files-found: warn
+          retention-days: 7
