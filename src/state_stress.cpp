@@ -346,7 +346,12 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     out<<"\nrate_sample\t"<<metrics.rampSample.load();
     out<<"\nresult\t"<<(pass?"PASS":"FAIL")<<"\n";
     out<<"domain_correctness\t"<<(oracle=="none"?"NOT_COVERED":pass?"PASS":"FAIL")<<"\n";
-    out<<"timing_certification\t"<<(metrics.late.load()?"FAIL":"PASS")<<"\n";
+    // A callback rejected by the plug-in is NOT evidence of a fast
+    // audio callback. The old P25 report falsely certified 0-overrun
+    // realtime behavior when an effect rejected 2368/2500 inputless
+    // callbacks in microseconds. Only VALID audio callbacks count.
+    out<<"timing_certification\t"<<(metrics.processFailures.load()?
+        "NOT COVERED":metrics.late.load()?"FAIL":"PASS")<<"\n";
     out<<"reason\t"<<reason<<"\n";
     out.flush();
     demand(out.good(),"evidence file write failed");
