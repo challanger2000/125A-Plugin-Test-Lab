@@ -1,3 +1,9 @@
+## P98 — Universal audio-input topology and realtime evidence validity (development branch)
+
+**P98 work is on `fix/p98-generic-stereo-effect-p25`, NOT merged to main or released.** The P25 native stress host previously passed no stereo input buffers for insert FX, producing 2,368 rejected callbacks while incorrectly reporting fast invalid calls as a realtime PASS. The fix supplies a real preallocated stereo input when the VST3 declares one, preserves the zero-input instrument path, and marks timing **NOT COVERED** if any process call fails. Other bus topologies remain unsupported and must not be silently called PASS.
+
+[Repro, code/test scope, adverse mutant and Windows evidence](docs/P98-STEREO-EFFECT-INPUT-STRESS.md): [red old Z-Plane P74 #42538840328](https://github.com/challanger2000/125A-Z-Plane-FX/actions/runs/42538840328), [positive+negative P98 CI #42540350532](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42540350532), [independent corrected Z-Plane P74 #42540050132](https://github.com/challanger2000/125A-Z-Plane-FX/actions/runs/42540050132). **No ASIO, full feature-matrix or commercial release claim.**
+
 ## P97 — Local one-command real ASIO4ALL virtual loopback acceptance
 
 P97 adds `tests/Invoke-VirtualASIOAcceptance.ps1`: read-only
