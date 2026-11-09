@@ -39,8 +39,15 @@ function Get-P186DiagnosticSummary($Capture,$Asio,$Codes) {
       $s.capture.decode_failure_kinds=@()
       $s.capture.decode_failure_kinds_truncated=(@($failureKinds).Count -gt 32)
       foreach($item in @($failureKinds | Select-Object -First 32)){
-        $name=Get-P186Property $item 'kind';$count=Get-P186Property $item 'count'
-        if($name -is [string] -and $name -cmatch '^(?:CSWITCH|THREAD|READY|MARKER)\.[A-Za-z0-9_]{1,40}\.[0-9]{1,10}
+        $name=Get-P186Property $item 'kind'
+        $count=Get-P186Property $item 'count'
+        if($name -is [string] -and $name -cmatch '^(CSWITCH|THREAD|READY|MARKER)\.[A-Za-z0-9_]{1,40}\.[0-9]{1,10}$' -and (Test-P186Integer $count)){
+          $s.capture.decode_failure_kinds+=@{kind=$name;count=[long]$count}
+        }else{
+          Add-P186Code $Codes 'ETW_DIAGNOSTIC_KIND_INVALID'
+        }
+      }
+    }
     $inventory=Get-P186Property $Capture 'provider_inventory_result'
     $s.capture.provider_inventory_result=if(Test-P186Integer $inventory){[long]$inventory}else{$null}
     $timeout=Get-P186Property $Capture 'timeout'
