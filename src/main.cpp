@@ -210,7 +210,8 @@ int inspect(const std::string& pluginPath) {
 int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
            const std::filesystem::path& statePath = {},
            const std::filesystem::path& stateSnapshotPath = {},
-           int bpm = kBpm, int blockSize = kBlockSize, bool offline = false) {
+           int bpm = kBpm, int blockSize = kBlockSize,
+           bool offline = false, bool suppressMidi = false) {
     require(bpm >= 60 && bpm <= 240, "Tempo outside supported 60..240 BPM range");
     require(blockSize >= 16 && blockSize <= 2048, "Block size outside supported 16..2048 frames");
     require((kSampleRate * 60) % bpm == 0, "Tempo not sample-exact at 44.1 kHz");
@@ -308,7 +309,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                         std::fill(channel.begin(), channel.end(), 0.f);
 
                 EventList events(32);
-                if (eventBusCount > 0 && statePath.empty()) {
+                if (eventBusCount > 0 && statePath.empty() && !suppressMidi) {
                     for (int beat = 0; beat < kBeatsPerBar * kBars; ++beat) {
                         const int frame = beat * beatFrames;
                         const int offFrame = frame + kSampleRate / 10;
@@ -359,7 +360,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                 data.numOutputs = static_cast<int32>(outputBuffers.size());
                 data.inputs = inputBuffers.empty() ? nullptr : inputBuffers.data();
                 data.outputs = outputBuffers.data();
-                data.inputEvents = eventBusCount > 0 && statePath.empty() ? &events : nullptr;
+                data.inputEvents = eventBusCount > 0 && statePath.empty() && !suppressMidi ? &events : nullptr;
                 data.processContext = &ctx;
                 require(processor->process(data) == kResultOk, "VST3 process() failed");
 
@@ -397,6 +398,7 @@ int render(const std::string& pluginPath, const std::filesystem::path& wavePath,
                           << size << " bytes\n";
             }
             std::cout << "[INFO] VST3 mode: " << (offline ? "offline" : "realtime-unpaced") << "\n";
+            std::cout << "[INFO] MIDI stimulus: " << (suppressMidi ? "none" : "native host notes") << "\n";
             std::cout << "[PASS] VST3 processing: 4 bars, " << bpm
                       << " BPM, 44.1 kHz, block=" << blockSize
                       << ", PCM24 stereo, frames=" << totalFrames << "\n";
@@ -431,6 +433,9 @@ int main(int argc, char** argv) {
         if (argc == 4 && std::string(argv[1]) == "--render-offline")
             return render(argv[2], std::filesystem::path(argv[3]), {}, {},
                           kBpm, kBlockSize, true);
+        if (argc == 4 && std::string(argv[1]) == "--render-offline-no-midi")
+            return render(argv[2], std::filesystem::path(argv[3]), {}, {},
+                          kBpm, kBlockSize, true, true);
         // P34: real PCM and component-state capture, no synthetic state injection.
         if (argc == 5 && std::string(argv[1]) == "--capture")
             return render(argv[2], std::filesystem::path(argv[3]), {},
@@ -447,7 +452,7 @@ int main(int argc, char** argv) {
                           std::filesystem::path(argv[3]), {},
                           std::stoi(argv[5]), std::stoi(argv[6]));
         std::cerr << "Usage: 125A_Test_Lab_Host --selftest\n"
-                  << "       125A_Test_Lab_Host --render <plugin.vst3> <output.wav>\n"                  << "       125A_Test_Lab_Host --render-offline <plugin.vst3> <output.wav>\n"
+                  << "       125A_Test_Lab_Host --render <plugin.vst3> <output.wav>\n"                  << "       125A_Test_Lab_Host --render-offline <plugin.vst3> <output.wav>\n"                  << "       125A_Test_Lab_Host --render-offline-no-midi <plugin.vst3> <output.wav>\n"
                   << "       125A_Test_Lab_Host --capture <plugin.vst3> <output.wav> <saved-state.bin>\n"
                   << "       125A_Test_Lab_Host --render-state <plugin.vst3> <state.bin> <output.wav>\n"
                   << "       125A_Test_Lab_Host --render-state-save <plugin.vst3> <state.bin> <output.wav> <saved-state.bin>\n"
