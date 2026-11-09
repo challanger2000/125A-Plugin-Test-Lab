@@ -1,0 +1,67 @@
+name: P98 universal stereo-input effect state-stress regression
+on:
+  push:
+    branches: [fix/p98-stereo-effect-input-stress]
+    paths:
+      - 'src/state_stress.cpp'
+      - 'tests/state_race_fixture.cpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/p98-stereo-effect-stress.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  actual-vst3-positive-negative:
+    runs-on: windows-2022
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile actual native Test Lab host, instrument and stereo FX fixtures
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P98 configure failed' }
+          cmake --build build --config Release --parallel 2 --target TestLabStateStress QAStateMode0 QAStateMode10 QAStateMode11
+          if ($LASTEXITCODE -ne 0) { throw 'P98 real Windows VST3 fixtures failed to compile' }
+      - name: Positive stereo-effect and instrument, negative input-rejecting effect
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $hostExe=(Get-ChildItem build -Recurse -File -Filter '125A_Test_Lab_State_Stress.exe' | Select-Object -First 1).FullName
+          if (-not $hostExe) { throw 'Native P25 host missing' }
+          New-Item -Force -ItemType Directory build/p98 | Out-Null
+          foreach ($mode in @(0,10,11)) {
+            $name="125A_QA_State_${mode}.vst3"
+            $paths=@(Get-ChildItem build -Recurse -Directory -Filter $name)
+            if ($paths.Count -ne 1) { throw "Fixture $name not unique" }
+            $tsv="build/p98/mode_${mode}.tsv"
+            & $hostExe --stress $paths[0].FullName $tsv 48000 64 2500 none --save-only
+            $code=$LASTEXITCODE
+            if (!(Test-Path $tsv)) { throw "No native process evidence for mode $mode" }
+            $kv=@{}
+            foreach ($line in Get-Content $tsv) {
+              $fields=$line -split "`t",2
+              if ($fields.Count -eq 2) { $kv[$fields[0]]=$fields[1] }
+            }
+            if ($mode -eq 11) {
+              if ($code -eq 0 -or $kv.result -ne 'FAIL' -or [int]$kv.process_failures -le 0 -or
+                  $kv.input_audio_buses -ne '1') {
+                throw 'P98 defective effect unexpectedly passed or negative fixture did not exercise input'
+              }
+              Write-Host 'P98 BAD real stereo VST3 correctly rejected'
+            } else {
+              $wanted=if($mode -eq 10){'1'}else{'0'}
+              if ($code -ne 0 -or $kv.result -ne 'PASS' -or $kv.process_failures -ne '0' -or
+                  $kv.save_success -ne '500' -or $kv.input_audio_buses -ne $wanted -or
+                  [int]$kv.saves_during_playback -le 0) {
+                throw "P98 legitimate VST3 mode $mode failed its real process/save contract"
+              }
+              Write-Host "P98 GOOD real VST3 mode $mode PASS input buses=$wanted"
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P98-native-stereo-effect-input-positive-negative-evidence
+          path: build/p98/
+          if-no-files-found: warn
