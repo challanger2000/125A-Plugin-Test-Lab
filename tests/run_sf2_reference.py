@@ -206,6 +206,89 @@ def compare_metrics(fluid: dict, awe: dict) -> dict:
             'fluid': f, 'awe': a, 'awe_sha256': awe['sha256']}
 
 
+
+def _is_hex(value: object, length: int) -> bool:
+    return isinstance(value, str) and re.fullmatch(r'[0-9a-f]{%d}' % length, value) is not None
+
+
+def verify_awe_manifest(args, sf2_hash: str, presets: list[dict]) -> dict | None:
+    """Fail closed: arbitrary WAV filenames are not a current-source VST3 oracle.
+
+    Provenance supplied by a trusted native render host is REQUIRED. The manifest
+    itself does not independently prove the host actually executed the VST3.
+    """
+    compare_requested = any(x is not None for x in (
+        args.awe_dir, args.awe_manifest, args.awe_binary, args.expected_awe_commit))
+    if not compare_requested:
+        return None
+    if (args.awe_dir is None or args.awe_manifest is None or
+            args.awe_binary is None or args.expected_awe_commit is None):
+        raise ValueError('AWE comparison requires --awe-dir, --awe-manifest, '
+                         '--awe-binary and --expected-awe-commit together')
+    if not _is_hex(args.expected_awe_commit, 40):
+        raise ValueError('expected AWE source commit must be 40 lowercase hex digits')
+    awe_dir = args.awe_dir.resolve(strict=True)
+    if not awe_dir.is_dir():
+        raise ValueError('AWE render directory missing')
+    binary = args.awe_binary.resolve(strict=True)
+    if not binary.is_file() or binary.stat().st_size < 2:
+        raise ValueError('actual Windows VST3 module binary is missing or not PE')
+    with binary.open('rb') as fp:
+        if fp.read(2) != b'MZ':
+            raise ValueError('actual Windows VST3 module binary is missing or not PE')
+    mf = args.awe_manifest.resolve(strict=True)
+    if not mf.is_file() or not 2 <= mf.stat().st_size <= 2 * 1024 * 1024:
+        raise ValueError('AWE manifest is missing or outside size limit')
+    data = json.loads(mf.read_text(encoding='utf-8'))
+    if not isinstance(data, dict) or data.get('schema') != '125a-awe-sf2-render-v1':
+        raise ValueError('invalid independent AWE manifest schema')
+    if data.get('source_kind') != 'PACKAGED_WINDOWS_VST3_NATIVE_RENDER':
+        raise ValueError('AWE render provenance is not a native packaged Windows VST3')
+    if data.get('source_commit') != args.expected_awe_commit:
+        raise ValueError('AWE rendered source commit does not match independently selected current source')
+    if not _is_hex(data.get('module_sha256'), 64) or digest(binary) != data['module_sha256']:
+        raise ValueError('actual AWE VST3 binary hash mismatch')
+    if data.get('sf2_sha256') != sf2_hash:
+        raise ValueError('AWE render used a different SoundFont')
+    expected_midi = {'ppq': PPQ, 'bpm': 120, 'on_tick': ON_TICKS,
+                     'off_tick': OFF_TICKS, 'end_tick': END_TICKS,
+                     'note': args.note, 'velocity': args.velocity}
+    if data.get('midi_contract') != expected_midi:
+        raise ValueError('AWE MIDI schedule/note/velocity does not match FluidSynth')
+    if data.get('sample_rate') != RATE or data.get('fx') != 'CHORUS_OFF_REVERB_OFF':
+        raise ValueError('AWE render must be dry at the same 44100 Hz sample rate')
+    if data.get('bank_mode') != 'EXPLICIT_SF2_NO_ROM_FALLBACK':
+        raise ValueError('AWE SF2 preset mapping or ROM fallback not proven disabled')
+    if data.get('midi_channel') != 0 or data.get('cc7') != 100 or data.get('cc10') != 64:
+        raise ValueError('AWE MIDI channel/CC gain/pan settings differ')
+    cases = data.get('cases')
+    if not isinstance(cases, dict) or len(cases) > 1024:
+        raise ValueError('AWE case manifest missing or over limit')
+    allowed = {'b%03d-p%03d-n%03d-v%03d' %
+               (x['bank'], x['program'], args.note, args.velocity)
+               for x in presets if x['bank'] == 0}
+    for name, item in cases.items():
+        if name not in allowed or not isinstance(item, dict):
+            raise ValueError('unexpected AWE render case')
+        if not _is_hex(item.get('midi_sha256'), 64) or not _is_hex(item.get('wav_sha256'), 64):
+            raise ValueError('AWE case hashes missing or invalid')
+    return data
+
+
+def verify_awe_case(manifest: dict, label: str, midi_path: Path, wav_path: Path) -> dict:
+    """Exact MIDI/PCM fingerprints reject stale, guessed or switched recordings."""
+    row = manifest.get('cases', {}).get(label)
+    if row is None:
+        raise ValueError('AWE WAV has no independently pinned case provenance')
+    if digest(midi_path) != row['midi_sha256']:
+        raise ValueError('AWE MIDI fingerprint does not match rendered fixture')
+    if digest(wav_path) != row['wav_sha256']:
+        raise ValueError('AWE PCM fingerprint does not match recorded VST3 render')
+    audio = read_audio(wav_path)
+    if audio_metrics(audio)['pre_note_rms'] > 0.0005:
+        raise ValueError('AWE pre-note audio violates the identical MIDI timeline')
+    return audio
+
 def run(args) -> dict:
     sf2 = args.sf2.resolve(strict=True)
     if not sf2.is_file():
@@ -221,9 +304,17 @@ def run(args) -> dict:
               'fx': 'CHORUS_OFF_REVERB_OFF', 'render_cases': [],
               'awe_comparison': 'NOT_RUN', 'status': 'INVENTORY_ONLY'}
     if args.mode == 'inventory':
+        if any(x is not None for x in (args.awe_dir, args.awe_manifest,
+                                      args.awe_binary, args.expected_awe_commit)):
+            raise ValueError('AWE comparison only available in render mode')
         return result
     if args.mode != 'render' or args.fluidsynth is None or args.out is None:
         raise ValueError('render mode requires --fluidsynth and --out')
+    awe_manifest = verify_awe_manifest(args, result['sf2_sha256'], presets)
+    if awe_manifest is not None:
+        result['awe_source_commit'] = awe_manifest['source_commit']
+        result['awe_module_sha256'] = awe_manifest['module_sha256']
+        result['awe_manifest_sha256'] = digest(args.awe_manifest.resolve(strict=True))
     exe = args.fluidsynth.resolve(strict=True)
     if not exe.is_file():
         raise ValueError('FluidSynth executable is not a file')
@@ -274,7 +365,9 @@ def run(args) -> dict:
             if args.awe_dir is not None and case['status'] == 'REFERENCE_RENDERED':
                 awe_file = args.awe_dir / (label + '.wav')
                 if awe_file.is_file():
-                    awe_audio = read_audio(awe_file)
+                    awe_audio = verify_awe_case(awe_manifest, label, midi_path, awe_file)
+                    if awe_audio['frames'] != audio['frames']:
+                        raise ValueError('AWE/FluidSynth audio durations differ')
                     case['awe_comparison'] = compare_metrics(audio, awe_audio)
                     compared += 1
                 else:
@@ -300,7 +393,13 @@ def main(argv=None):
     parser.add_argument('--fluidsynth', type=Path)
     parser.add_argument('--out', type=Path)
     parser.add_argument('--awe-dir', type=Path,
-                        help='Optional independently captured AWE WAVs with matching case names')
+                        help='Optional actual VST3-rendered AWE WAV directory; provenance required')
+    parser.add_argument('--awe-manifest', type=Path,
+                        help='Trusted native AWE render case/source/MIDI/WAV hash manifest')
+    parser.add_argument('--awe-binary', type=Path,
+                        help='Exact packaged Windows AWE VST3 PE binary used for WAV capture')
+    parser.add_argument('--expected-awe-commit',
+                        help='40-character independently selected CURRENT AWE source SHA')
     parser.add_argument('--note', type=int, default=60)
     parser.add_argument('--velocity', type=int, default=100)
     parser.add_argument('--timeout', type=int, default=45)

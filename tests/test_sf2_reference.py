@@ -1,5 +1,8 @@
 """Offline P100 tests; never execute proprietary SoundFonts or claim hardware parity."""
 import io
+import copy
+import hashlib
+from types import SimpleNamespace
 import json
 from pathlib import Path
 import struct
@@ -108,6 +111,98 @@ class SoundFontReferenceTests(unittest.TestCase):
             self.assertEqual(result['status'], 'OBSERVATION_ONLY')
             self.assertEqual(result['rms_delta_db'], 0)
             self.assertNotIn('PASS', json.dumps(result))
+
+
+    def test_awe_pcm_manifest_requires_current_build_and_matching_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            sf = root / 'bank.sf2'
+            sf.write_bytes(make_sf2())
+            wavdir = root / 'awe'
+            wavdir.mkdir()
+            mod = root / '125A AWE Synthesizer.vst3'
+            mod.write_bytes(b'MZ' + b'actual-build-test-fixture')
+            label = 'b000-p009-n060-v100'
+            wav = wavdir / (label + '.wav')
+            make_wav(wav)
+            midi = root / (label + '.mid')
+            midi.write_bytes(p.midi_bytes(9, 60, 100))
+            expect = 'f308b71a4765e2402856e7be24105420542e37a1'
+            manifest = {
+                'schema': '125a-awe-sf2-render-v1',
+                'source_kind': 'PACKAGED_WINDOWS_VST3_NATIVE_RENDER',
+                'source_commit': expect,
+                'module_sha256': p.digest(mod),
+                'sf2_sha256': p.digest(sf),
+                'sample_rate': 44100, 'fx': 'CHORUS_OFF_REVERB_OFF',
+                'bank_mode': 'EXPLICIT_SF2_NO_ROM_FALLBACK',
+                'midi_channel': 0, 'cc7': 100, 'cc10': 64,
+                'midi_contract': {'ppq': p.PPQ, 'bpm': 120, 'on_tick': p.ON_TICKS,
+                                  'off_tick': p.OFF_TICKS, 'end_tick': p.END_TICKS,
+                                  'note': 60, 'velocity': 100},
+                'cases': {label: {'midi_sha256': p.digest(midi),
+                                  'wav_sha256': p.digest(wav)}},
+            }
+            mp = root / 'awe-manifest.json'
+            args = SimpleNamespace(awe_dir=wavdir, awe_manifest=mp,
+                                   awe_binary=mod, expected_awe_commit=expect,
+                                   note=60, velocity=100)
+            rows = p.sf2_presets(sf)
+            def check(model):
+                mp.write_text(json.dumps(model))
+                return p.verify_awe_manifest(args, p.digest(sf), rows)
+            self.assertEqual(check(manifest)['source_commit'], expect)
+            self.assertEqual(p.verify_awe_case(manifest, label, midi, wav)['frames'], 132300)
+            # Every one of these is a real negative provenance/contract mutation.
+            for field, bad in (
+                    ('source_commit', 'a' * 40),
+                    ('source_kind', 'SYNTHETIC'),
+                    ('module_sha256', 'f' * 64),
+                    ('sf2_sha256', 'f' * 64),
+                    ('sample_rate', 48000),
+                    ('fx', 'WET'),
+                    ('bank_mode', 'MAY_FALLBACK_TO_ROM'),
+                    ('midi_channel', 9),
+                    ('cc7', 127),
+                    ('cc10', 0)):
+                mutated = copy.deepcopy(manifest)
+                mutated[field] = bad
+                with self.subTest(field=field), self.assertRaises(ValueError):
+                    check(mutated)
+            for field, bad in (('note', 61), ('velocity', 20), ('on_tick', 0)):
+                mutated = copy.deepcopy(manifest)
+                mutated['midi_contract'][field] = bad
+                with self.subTest(field=field), self.assertRaises(ValueError):
+                    check(mutated)
+            mutated = copy.deepcopy(manifest)
+            mutated['cases']['b000-p063-n060-v100'] = mutated['cases'].pop(label)
+            with self.assertRaises(ValueError):
+                check(mutated)
+            self.assertEqual(check(manifest)['source_commit'], expect)
+            midi.write_bytes(p.midi_bytes(8, 60, 100))
+            with self.assertRaisesRegex(ValueError, 'MIDI fingerprint'):
+                p.verify_awe_case(manifest, label, midi, wav)
+            midi.write_bytes(p.midi_bytes(9, 60, 100))
+            with self.assertRaisesRegex(ValueError, 'no independently pinned'):
+                p.verify_awe_case({**manifest, 'cases': {}}, label, midi, wav)
+            wav.write_bytes(wav.read_bytes()[:-4] + b'nope')
+            with self.assertRaisesRegex(ValueError, 'PCM fingerprint'):
+                p.verify_awe_case(manifest, label, midi, wav)
+
+    def test_awe_provenance_incomplete_inputs_fail_closed(self):
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            args = SimpleNamespace(awe_dir=root, awe_manifest=None,
+                                   awe_binary=None, expected_awe_commit=None,
+                                   note=60, velocity=100)
+            with self.assertRaisesRegex(ValueError, 'requires'):
+                p.verify_awe_manifest(args, 'f' * 64, [])
+            args.awe_dir = None
+            self.assertIsNone(p.verify_awe_manifest(args, 'f' * 64, []))
+            args.expected_awe_commit = 'not-a-sha'
+            with self.assertRaisesRegex(ValueError, 'requires'):
+                p.verify_awe_manifest(args, 'f' * 64, [])
 
 
 if __name__ == '__main__':
