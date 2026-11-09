@@ -41,3 +41,4 @@ $numeric=Get-P186DiagnosticSummary $c $null $errors
 Require (($errors -contains 'ETW_DIAGNOSTIC_COUNTER_INVALID') -and
   $null -eq $numeric.capture.cswitch_events_seen) 'P189_NUMERIC_STRING_ACCEPTED'
 Write-Host '[PASS] P189 metadata-only ETW decoder observations, malicious field rejection, bounded failure summary and typed counter negative; hardware NOT_RUN'
+exit 0 # Clear stale native negative-control LASTEXITCODE; this script has passed all assertions.
