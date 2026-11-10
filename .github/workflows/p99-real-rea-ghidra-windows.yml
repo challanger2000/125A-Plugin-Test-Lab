@@ -1,0 +1,127 @@
+name: P99 genuine REA Ghidra native Windows acceptance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/p99-real-rea-ghidra-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-rea-ghidra:
+    runs-on: windows-2022
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Verify P99 fail-closed native-Evidence contracts before downloading a provider
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_rea_binary_analysis.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P99 REA contract tests failed' }
+          python -m unittest discover -s tests -p test_universal_qa.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P74 REA integration contract tests failed' }
+
+      - name: Build trusted source-owned native Windows VST3 and independent GUI host
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'P99 native fixture configure failed' }
+          cmake --build build --config Release --parallel 4 --target TestLabGUI QAGuiNested
+          if ($LASTEXITCODE -ne 0) { throw 'P99 source-owned native VST3 build failed' }
+
+      - name: Install exactly selected published REA and verify installed entry
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'p99-rea'
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          npm.cmd --prefix $root install --no-fund --no-audit --save-exact rea-agents@6.8.0
+          if ($LASTEXITCODE -ne 0) { throw 'P99 pinned REA package installation failed' }
+          $entry = Join-Path $root 'node_modules/rea-agents/scripts/rea.mjs'
+          if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) {
+            throw 'P99 installed REA entry missing'
+          }
+          "P99_REA_ENTRY=$entry" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Output "REA 6.8.0 installed from npm; entry SHA256: $((Get-FileHash $entry -Algorithm SHA256).Hash)"
+
+      - name: Download official Ghidra 12.1.4 and enforce published release SHA-256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $zip = Join-Path $env:RUNNER_TEMP 'ghidra_12.1.4_PUBLIC_20260921.zip'
+          $url = 'https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.4_build/ghidra_12.1.4_PUBLIC_20260921.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -MaximumRedirection 10
+          $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = 'ddac49f903da9d5bac833e5cc79395098b9c33cfd3279be5f31bd00387d2d4db'
+          if ($actual -ne $expected) { throw "Official Ghidra checksum mismatch: $actual" }
+          $extract = Join-Path $env:RUNNER_TEMP 'p99-ghidra'
+          Expand-Archive -LiteralPath $zip -DestinationPath $extract
+          $install = Join-Path $extract 'ghidra_12.1.4_PUBLIC'
+          if (-not (Test-Path -LiteralPath (Join-Path $install 'support/analyzeHeadless.bat') -PathType Leaf)) {
+            throw 'Official Ghidra headless launcher missing'
+          }
+          "GHIDRA_INSTALL_DIR=$install" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "REA_ANALYSIS_PROVIDER=ghidra" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Output "Official Ghidra 12.1.4 release SHA-256 verified: $actual"
+
+      - name: Run actual REA via Ghidra on source-built VST3 through complete P74 integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = @(Get-ChildItem -Path build/VST3/Release -Directory -Filter '125A_QA_GUI_Nested.vst3')
+          $hostExe = @(Get-ChildItem -Path build -File -Recurse -Filter '125A_Test_Lab_GUI.exe')
+          if ($bundle.Count -ne 1 -or $hostExe.Count -ne 1) {
+            throw 'P99 expected exactly one VST3 and exactly one native GUI host'
+          }
+          $entry = $env:P99_REA_ENTRY
+          $node = (Get-Command node.exe).Source
+          if (-not (Test-Path -LiteralPath $entry -PathType Leaf) -or
+              -not (Test-Path -LiteralPath $env:GHIDRA_INSTALL_DIR -PathType Container) -or
+              -not (Test-Path -LiteralPath $env:JAVA_HOME -PathType Container)) {
+            throw 'P99 REA, Ghidra or JDK not installed as expected'
+          }
+          $env:REA_ANALYSIS_PROVIDER = 'ghidra'
+          python tests/run_universal_qa.py --plugin $bundle[0].FullName --gui-host $hostExe[0].FullName --out build/p99-actual --timeout 110 --run-rea-analysis --rea-node $node --rea-entry $entry --rea-timeout 540
+          if ($LASTEXITCODE -ne 0) { throw 'P99 actual REA/Ghidra P74 run failed' }
+          $result = Get-Content 'build/p99-actual/UNIVERSAL-QA-RESULT.json' -Raw | ConvertFrom-Json
+          $observed = Get-Content 'build/p99-actual/rea-binary/REA-RESULT.json' -Raw | ConvertFrom-Json
+          $raw = Get-Content 'build/p99-actual/rea-binary/REA-RAW-OUTPUT.json' -Raw | ConvertFrom-Json
+          $sourceDll = @(Get-ChildItem -Path $bundle[0].FullName -File -Recurse -Filter '*.vst3')
+          if ($sourceDll.Count -ne 1) { throw 'P99 VST3 bundle module identity ambiguous' }
+          $actualSha = (Get-FileHash $sourceDll[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($result.status -ne 'INVENTORY_COMPLETE' -or
+              $result.discovery -ne 'PASS' -or
+              $result.binary_analysis -ne 'OBSERVATION_CAPTURED' -or
+              $result.release_approved -ne $false -or
+              $observed.binary_sha256 -ne $actualSha -or
+              $observed.observed_provider -ne 'ghidra' -or
+              $observed.semantic_verification -ne 'NOT ESTABLISHED' -or
+              $raw.provider.id -ne 'ghidra' -or
+              $raw.subject.digest.sha256 -ne $actualSha) {
+            throw 'P99 genuine REA result failed independent provider/source/semantic checks'
+          }
+          Write-Output "P99 REAL GHIDRA WINDOWS OBSERVATION PASS | VST3 SHA256=$actualSha | REA Evidence ID=$($raw.evidence_id)"
+          Write-Output 'This is static binary observation, not DSP/GUI/music/DAW/ASIO or release approval.'
+
+      - name: Preserve redacted summary only, never publish the raw binary decompilation
+        if: always()
+        shell: pwsh
+        run: |
+          $path = 'build/p99-actual/rea-binary/REA-RESULT.json'
+          if (Test-Path $path) {
+            $r = Get-Content $path -Raw | ConvertFrom-Json
+            Write-Output "P99 result: $($r.status) | provider: $($r.observed_provider) | target SHA256: $($r.binary_sha256)"
+          } else {
+            Write-Output 'P99 actual provider result NOT RUN or not created.'
+          }

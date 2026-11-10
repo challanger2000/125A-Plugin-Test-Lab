@@ -12,7 +12,7 @@ It starts only the user-specified Node executable with the user-specified
 REA `scripts/rea.mjs`, using subprocess arguments (no shell). Node, entry
 script and VST3 binary are hashed both before and after the command.
 
-P99 accepts exit code 0 and one bounded nonempty, non-error JSON object.
+P99 accepts exit code 0 only with canonical REA Evidence: a valid Evidence ID, provider ID `ghidra`, target SHA-256 in the subject digest, a named operation and nonempty normalized result. A generic JSON dictionary is a failed analysis.
 It records `REA-RAW-OUTPUT.json` and `REA-RESULT.json`; P74 separately
 checks the report's schema, source/tool hashes and physical evidence file.
 P75 checks the per-plugin P74 result and its physical REA report digest.

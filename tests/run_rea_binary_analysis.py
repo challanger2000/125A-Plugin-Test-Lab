@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
 
@@ -37,6 +38,7 @@ def analyze(binary, out, *, node, entry, timeout=120, runner=subprocess.run):
         "node_sha256": pinned[node], "rea_entry_sha256": pinned[entry],
         "rea_exit_code": None, "raw_sha256": None,
         "semantic_verification": "NOT ESTABLISHED",
+        "observed_provider": None, "rea_evidence_id": None,
         "release_approved": False, "faults": [],
     }
     try:
@@ -52,14 +54,31 @@ def analyze(binary, out, *, node, entry, timeout=120, runner=subprocess.run):
         if not isinstance(raw, str) or not 0 < len(raw.encode("utf-8")) <= MAX_OUTPUT:
             raise ValueError("P99 missing or oversized JSON output")
         value = json.loads(raw)
-        if (not isinstance(value, dict) or not value or value.get("error") or
-                value.get("success") is False or
-                value.get("status") in ("FAIL", "ERROR")):
-            raise ValueError("P99 REA result is not a successful JSON observation")
+        if not isinstance(value, dict) or value.get("ok") is False or value.get("error"):
+            raise ValueError("P99 REA returned an error rather than native Evidence")
+        # REA 6.8+ publishes one canonical Evidence record per native
+        # inspection. A nonempty arbitrary dict is *not* analysis evidence.
+        evidence_id = value.get("evidence_id")
+        subject = value.get("subject")
+        provider = value.get("provider")
+        observed = value.get("normalized_result")
+        if (not isinstance(evidence_id, str)
+                or re.fullmatch(r"ev_[0-9a-f]{64}", evidence_id) is None
+                or not isinstance(provider, dict)
+                or provider.get("id") != "ghidra"
+                or not isinstance(subject, dict)
+                or not isinstance(subject.get("digest"), dict)
+                or subject["digest"].get("sha256") != pinned[binary]
+                or not isinstance(observed, dict) or not observed
+                or not isinstance(value.get("operation"), str)
+                or not value["operation"]):
+            raise ValueError("P99 missing canonical, target-pinned Ghidra Evidence")
         if any(digest(p) != sha for p, sha in pinned.items()):
             raise ValueError("P99 target or REA tools mutated during analysis")
         raw_path.write_text(raw, encoding="utf-8")
         report["raw_sha256"] = digest(raw_path)
+        report["observed_provider"] = provider["id"]
+        report["rea_evidence_id"] = evidence_id
         report["status"] = "OBSERVATION_CAPTURED"
     except (OSError, ValueError, TypeError, json.JSONDecodeError,
             subprocess.TimeoutExpired) as error:

@@ -10,6 +10,16 @@ import unittest
 from run_rea_binary_analysis import SCHEMA, analyze, digest
 
 
+def canonical(target):
+    return {
+        "evidence_id": "ev_" + "a" * 64,
+        "provider": {"id": "ghidra", "name": "Ghidra", "version": None},
+        "subject": {"digest": {"sha256": digest(target)}, "format": "pe"},
+        "operation": "binary_overview",
+        "normalized_result": {"procedure_count": 3},
+    }
+
+
 class REATests(unittest.TestCase):
     def test_explicit_observation_and_attribution(self):
         with tempfile.TemporaryDirectory() as t:
@@ -21,12 +31,14 @@ class REATests(unittest.TestCase):
             def fake(cmd, **kwargs):
                 commands.append((cmd, kwargs))
                 return SimpleNamespace(returncode=0, stderr="",
-                                       stdout=json.dumps({"evidence": {"functions": 3}}))
+                                       stdout=json.dumps(canonical(target)))
             report = analyze(target, root / "good", node=node, entry=entry, runner=fake)
             self.assertEqual(report["schema"], SCHEMA)
             self.assertEqual(report["status"], "OBSERVATION_CAPTURED")
             self.assertEqual(report["binary_sha256"], digest(target))
             self.assertEqual(report["raw_sha256"], digest(root / "good" / "REA-RAW-OUTPUT.json"))
+            self.assertEqual(report["observed_provider"], "ghidra")
+            self.assertEqual(report["rea_evidence_id"], "ev_" + "a"*64)
             self.assertEqual(commands[0][0][2:],
                              ["inspect", str(target.resolve()), "--provider", "ghidra", "--json"])
             self.assertFalse(commands[0][1]["check"])
@@ -44,6 +56,11 @@ class REATests(unittest.TestCase):
                 SimpleNamespace(returncode=0, stderr="", stdout="not-json"),
                 SimpleNamespace(returncode=0, stderr="", stdout='{"error":"no"}'),
                 SimpleNamespace(returncode=0, stderr="", stdout="{}"),
+                SimpleNamespace(returncode=0, stderr="", stdout='{"ok":false}'),
+                SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
+                    {**canonical(target), "provider": {"id": "placeholder"}})),
+                SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
+                    {**canonical(target), "subject": {"digest": {"sha256": "0"*64}}})),
             ]
             for i, row in enumerate(cases):
                 with self.subTest(index=i):
@@ -58,7 +75,7 @@ class REATests(unittest.TestCase):
                                      entry=entry, runner=raises)["status"], "FAIL")
             def mutates(*args, **kwargs):
                 target.write_bytes(b"mutated")
-                return SimpleNamespace(returncode=0, stderr="", stdout='{"evidence":1}')
+                return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(canonical(target)))
             self.assertEqual(analyze(target, root / "mutation", node=node,
                                      entry=entry, runner=mutates)["status"], "FAIL")
             with self.assertRaises(ValueError):
