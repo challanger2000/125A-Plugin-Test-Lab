@@ -17,6 +17,40 @@ CHILD_SCHEMA = "125a-universal-vst3-qa-pipeline-v1"
 IDENT = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 SHA = re.compile(r"^[0-9a-f]{64}$")
 MAX_BYTES = 2_000_000
+AWE77_IDS = frozenset(("awe","awe_synthesizer","125a_awe_synthesizer"))
+P220_SHA = "d5b99ec38fddf59f53f66b90921e170d207bf3bbd73960f6e4175c39ef68349b"
+
+def awe77_sound_report(evidence, module_sha):
+    """Do not promote P74 technical PASS to private-SF2 sound acceptance."""
+    if (not isinstance(evidence,dict)
+            or evidence.get("schema")!="125a-testlab-awe-sf2-77-sonic-gate-v1"
+            or evidence.get("status")!="PASS"
+            or evidence.get("private_sf2_sha256")!=P220_SHA
+            or evidence.get("vst3_module_sha256")!=module_sha
+            or evidence.get("original_creative_full_bank_capture_verified") is not True
+            or evidence.get("actual_windows_vst3_audio_captured") is not True
+            or evidence.get("passed_presets")!=77
+            or evidence.get("passed_scenarios")!=154
+            or evidence.get("failed_scenarios")!=0
+            or evidence.get("release_approved") is not False):
+        return "BLOCKED"
+    expected=[p for p in range(78) if p!=63]
+    entries=evidence.get("presets",[])
+    if (not isinstance(entries,list) or len(entries)!=77
+            or [p.get("program") for p in entries if isinstance(p,dict)]!=expected):
+        return "FAIL"
+    expected_gates=("amplitude_adsr","filter_sweeps","loop_seams",
+                    "dry_wet_reverb_chorus","program_recall_and_reload")
+    for item in entries:
+        if item.get("status")!="PASS" or len(item.get("scenario_results",[]))!=2:
+            return "FAIL"
+        if [case.get("status") for case in item["scenario_results"]] != ["PASS","PASS"]:
+            return "FAIL"
+        if set(item.get("detail_gates",{}))!=set(expected_gates):
+            return "FAIL"
+        if any(item["detail_gates"][g].get("status")!="PASS" for g in expected_gates):
+            return "FAIL"
+    return "PASS"
 
 
 def load(path):
@@ -30,7 +64,8 @@ def load(path):
 
 
 def review(batch_directory, out, *, capture_contracts=None,
-           capture_runner=compare_external_capture):
+           capture_runner=compare_external_capture,
+           awe77_reports=None, required_awe77_ids=()):
     source = Path(batch_directory).resolve(strict=True)
     batch = load(source / "BATCH-QA-REPORT.json")
     if (batch.get("schema") != BATCH_SCHEMA
@@ -50,11 +85,21 @@ def review(batch_directory, out, *, capture_contracts=None,
         raise ValueError("P89 corrupted/incomplete consolidated native batch report")
 
     capture_contracts = capture_contracts or {}
+    awe77_reports = awe77_reports or {}
+    if (not isinstance(awe77_reports,dict)
+            or any(type(k) is not str or not IDENT.fullmatch(k)
+                or type(v) is not str for k,v in awe77_reports.items())
+            or any(type(v) is not str or not IDENT.fullmatch(v)
+                   for v in required_awe77_ids)):
+        raise ValueError("P220 invalid explicit AWE 77-sound product selection")
+    required_awe77_ids = set(required_awe77_ids)
     if (not isinstance(capture_contracts, dict)
             or any(type(k) is not str or not IDENT.fullmatch(k)
                    or type(v) is not str for k,v in capture_contracts.items())):
         raise ValueError("P90 invalid plugin-to-capture contract selection")
     known_ids = {x.get("id") for x in batch["plugins"] if isinstance(x, dict)}
+    if not required_awe77_ids <= known_ids or not set(awe77_reports) <= known_ids:
+        raise ValueError("P220 AWE 77-audio gate references an unselected VST3")
     if not set(capture_contracts) <= known_ids:
         raise ValueError("P90 external DAW capture targets unselected plugin")
     out = Path(out)
@@ -107,6 +152,14 @@ def review(batch_directory, out, *, capture_contracts=None,
             gaps.append("PLUGIN_QA_FAILED")
         if product != "CONTRACT_PASS" or coverage != "REQUIRED_COVERAGE_COMPLETE":
             gaps.append("INDEPENDENT_PRODUCT_FEATURE_COVERAGE_NOT_PROVED")
+        awe77 = "NOT APPLICABLE"
+        if ident in AWE77_IDS or ident in required_awe77_ids:
+            awe77 = "BLOCKED"
+            if ident in awe77_reports:
+                awe77 = awe77_sound_report(
+                    load(awe77_reports[ident]),item["verified_module_sha256"])
+            if awe77!="PASS":
+                gaps.append("REQUIRED_AWE_SF2_77_SONIC_"+awe77)
         external = "NOT PROVIDED"
         if ident in capture_contracts:
             supplied = load(capture_contracts[ident])
@@ -143,6 +196,7 @@ def review(batch_directory, out, *, capture_contracts=None,
                                         if evidence is not None else "NOT VERIFIED"),
             "failure_details": item.get("faults", []),
             "externally_supplied_audio_comparison": external,
+            "required_awe_77_sonic_gate":awe77,
             "unresolved_acceptance_gaps": gaps,
             "release_approved": False
         })
@@ -169,6 +223,10 @@ def review(batch_directory, out, *, capture_contracts=None,
             r["externally_supplied_audio_comparison"] ==
             "AUDIO_COMPARISON_PASS_SOURCE_UNATTESTED" for r in rows),
         "external_audio_source_provenance": "NOT ATTESTED",
+        "awe77_required_product_count":sum(r["required_awe_77_sonic_gate"]!="NOT APPLICABLE"
+                                           for r in rows),
+        "awe77_sonic_gate_blocked_or_failed":sum(r["required_awe_77_sonic_gate"] in ("BLOCKED","FAIL")
+                                              for r in rows),
         "all_products_release_approved": False,
         "plugins": rows
     }
@@ -209,6 +267,10 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--batch",type=Path,required=True)
     parser.add_argument("--out",type=Path,required=True)
+    parser.add_argument("--require-awe77-for",action="append",default=[],
+                        metavar="PLUGIN_ID",help="Release-mode: mandatory full authentic 77-preset original Creative sound gate")
+    parser.add_argument("--awe77-evidence",action="append",default=[],
+                        metavar="PLUGIN_ID=REPORT_JSON",help="Verified actual two-sided P220 PCM report, exact VST3 module fingerprint")
     parser.add_argument("--external-capture", action="append", default=[],
                         metavar="PLUGIN_ID=CONTRACT_JSON",
                         help="External capture file and independent reference")
@@ -221,8 +283,15 @@ def main():
         if plugin_id in capture_contracts:
             parser.error("duplicate external-capture plugin id")
         capture_contracts[plugin_id] = file_path
+    awe77_reports={}
+    for item in args.awe77_evidence:
+        if "=" not in item:parser.error("--awe77-evidence requires ID=REPORT.json")
+        ident,path=item.split("=",1)
+        if ident in awe77_reports:parser.error("duplicate AWE sound report")
+        awe77_reports[ident]=path
     try:
-        report=review(args.batch,args.out,capture_contracts=capture_contracts)
+        report=review(args.batch,args.out,capture_contracts=capture_contracts,
+                      awe77_reports=awe77_reports,required_awe77_ids=args.require_awe77_for)
     except (OSError,ValueError,TypeError,KeyError,IndexError,
             json.JSONDecodeError) as exc:
         args.out.mkdir(parents=True,exist_ok=True)
@@ -231,7 +300,15 @@ def main():
         (args.out/"UNIFIED-QA-GAPS.json").write_text(
             json.dumps(report,indent=2)+"\n",encoding="utf-8")
     print(json.dumps(report,indent=2))
-    return 0 if report["status"]=="RECONCILED_REPORT_COMPLETE" else 1
+    if report["status"]!="RECONCILED_REPORT_COMPLETE":
+        return 1
+    # A missing original Creative driver/bank/audio is an unambiguous
+    # nonzero exit for an *explicit AWE release check*. Generic technical
+    # batch reconciliation remains observational for all other products.
+    if args.require_awe77_for and report["awe77_sonic_gate_blocked_or_failed"]:
+        print("P220 AWE ORIGINAL SF2 77-SOUND RELEASE BLOCKED",file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__=="__main__":
