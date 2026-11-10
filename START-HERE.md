@@ -1,12 +1,21 @@
-## P99 — Optional REA binary observations (development candidate)
+## P99 — Optional REA/Ghidra binary observation (Windows-verified, PR #149)
 
-P74/P75 optionally collect REA/Ghidra binary observations under explicit
-per-run opt-in; the default remains NOT RUN. Exact VST3 and analysis-tool
-hashes, bounded JSON evidence and fail-closed provenance are required.
-This does NOT prove full source reconstruction, Creative AWE32/EMU8000,
-musical accuracy, GUI correctness, DAW/ASIO or release readiness.
-No REA/Ghidra installation or genuine Windows REA provider run is claimed.
-See [P99](docs/P99-REA-BINARY-ANALYSIS.md).
+The scoped P99 implementation on `feature/p99-rea-binary-analysis-20261110`
+passed genuine Windows x64 REA 6.8.0 + Ghidra 12.1.4 acceptance
+[Actions #42757572628](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42757572628)
+at exact source commit `d71829b76e183c8d836331644ba3d40db6d0a87a`.
+The source-built VST3 was actually analyzed; its SHA-256, canonical REA
+Evidence ID, outer `rea-workflow` and upstream `ghidra` identities were
+validated. P74 [#42757572357](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42757572357)
+and P75 [#42757572362](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42757572362)
+also succeeded with native Windows VST3 positive and negative fixtures.
+
+P74/P75 collect these observations only under explicit per-run opt-in;
+default is `NOT RUN`. No licensed third-party ROMs, SF2s or native drivers
+were used. A successful REA observation is **not** verification of complete
+decompilation, original AWE32/EMU8000 semantics, acoustic fidelity,
+GUI functions, physical ASIO, commercial DAW, or product release readiness.
+See [P99 scope and execution](docs/P99-REA-BINARY-ANALYSIS.md).
 
 ## P98 — Universal audio-input topology and realtime evidence validity (merged to main)
 

@@ -74,9 +74,19 @@ Scanned directories have REA disabled by default.
 - Positive and adversarial Python tests use **synthetic REA output**:
   correct evidence, malformed/error JSON, wrong return codes, timeouts,
   changed files, absent tool paths, forged provenance and batch isolation.
-- These tests **do not** prove REA or Ghidra successfully ran on Windows.
-  Real REA/Ghidra compatibility must be checked separately against a
-  trusted native PE file before reporting provider verification.
+- The mock-based unit tests alone are insufficient proof of actual REA
+  execution. Separate **genuine Windows provider acceptance** has now passed:
+  [P99 Actions #42757572628](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42757572628)
+  on implementation commit `d71829b76e183c8d836331644ba3d40db6d0a87a`,
+  using REA 6.8.0, official checksum-verified Ghidra 12.1.4,
+  JDK 21, Node 24, and one source-built x64 VST3 fixture.
+  The actual module SHA-256 was
+  `d64872cdae7f42fbbbf0467cf7571ed0a353f60f1adba324a0f38de0f173a591`;
+  REA Evidence ID was
+  `ev_fce052c66ae30f6d34d4a35319bac77720239b4fc6d72cd1da1b7e9dc4497d75`.
+  The validator demanded the outer `rea-workflow` and nested `ghidra`
+  identities. This is **real binary-analysis infrastructure evidence only**,
+  not musical/semantic correctness.
 - Binary-output analysis cannot replace original-reference PCM,
   playable audio, MIDI, GUI, actual DAW or physical ASIO/hardware QA.
 - Do not upload private VST3s, proprietary Creative binaries/ROMs,
@@ -86,8 +96,11 @@ Scanned directories have REA disabled by default.
   timeout of 120 seconds (30–600 seconds allowed). P75 also has its
   independent per-plugin timeout; configure that budget accordingly.
 
-Current status when first committed: integration candidate awaiting
-independent Windows CI and an actual trusted REA/Ghidra installation test.
+Verified Windows regression references for this implementation:
+[P74 #42757572357](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42757572357)
+and [P75 #42757572362](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42757572362)
+both completed SUCCESS on the same source commit. No evidence for
+commercial product approval or private-device compatibility is implied.
 
 ### P99 actual-provider contract correction
 
