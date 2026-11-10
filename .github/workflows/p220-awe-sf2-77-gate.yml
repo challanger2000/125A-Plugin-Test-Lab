@@ -1,0 +1,60 @@
+name: P220 AWE 77 SF2 original Creative audio release-blocker and mutation adequacy
+on:
+  push:
+    branches: [qa/p220-awe-sf2-77-sound-gate]
+    paths:
+      - tests/p220_awe_sf2_sound_gate.py
+      - tests/test_p220_awe_sf2_sound_gate.py
+      - .github/workflows/p220-awe-sf2-77-gate.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fail-closed-77-original-audio-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run exact 77-program/154-scenario SOUND-oracle adversarial test-of-test, not original Creative
+        run: |
+          python3 -m py_compile tests/p220_awe_sf2_sound_gate.py tests/test_p220_awe_sf2_sound_gate.py
+          python3 tests/test_p220_awe_sf2_sound_gate.py
+      - name: Prove private original Creative WAV absent in public CI blocks every real preset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/p220"
+          python3 - <<'PY'
+          import sys,json,os
+          from pathlib import Path
+          sys.path.insert(0,"tests")
+          from test_p220_awe_sf2_sound_gate import base
+          contract,creative,vst=base()
+          # Deterministic SYNTHETIC fixture plan used only to
+          # exercise release blocker, not an audio reference.
+          Path(os.environ["RUNNER_TEMP"],"p220","test-contract.json").write_text(json.dumps(contract))
+          PY
+          if python3 tests/p220_awe_sf2_sound_gate.py \
+              --contract "$RUNNER_TEMP/p220/test-contract.json" \
+              --out "$RUNNER_TEMP/p220/required-real-audio-evidence.json"; then
+            echo "P220 FALSE-GREEN: no Win95, no private SF2, no capture WAV but PASS" >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path(os.environ["RUNNER_TEMP"])/"p220/required-real-audio-evidence.json"
+          r=json.loads(p.read_text())
+          assert r["status"]=="BLOCKED"
+          assert r["release_approved"] is False
+          assert len(r["presets"])==77 and all(x["status"]=="BLOCKED" for x in r["presets"])
+          assert not r.get("passed_presets")
+          print("P220 REQUIRED ORIGINAL SOUND GATE = BLOCKED for all 77 presets; 0 fake Original Creative WAVs PASS")
+          PY
+      - name: Preserve public test-of-test blocker only, never private source audio
+        uses: actions/upload-artifact@v4
+        with:
+          name: P220-77-Preset-Creative-Audio-Gate-Mutations-and-Required-Blocked-Status
+          path: ${{ runner.temp }}/p220/required-real-audio-evidence.json
+          if-no-files-found: error
+          retention-days: 14
