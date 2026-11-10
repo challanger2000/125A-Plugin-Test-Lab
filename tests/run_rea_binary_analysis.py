@@ -62,17 +62,26 @@ def analyze(binary, out, *, node, entry, timeout=120, runner=subprocess.run):
         subject = value.get("subject")
         provider = value.get("provider")
         observed = value.get("normalized_result")
-        if (not isinstance(evidence_id, str)
-                or re.fullmatch(r"ev_[0-9a-f]{64}", evidence_id) is None
-                or not isinstance(provider, dict)
-                or provider.get("id") != "ghidra"
-                or not isinstance(subject, dict)
+        failures = []
+        if not isinstance(evidence_id, str) or re.fullmatch(
+                r"ev_[0-9a-f]{64}", evidence_id) is None:
+            failures.append("evidence_id")
+        if not isinstance(provider, dict) or provider.get("id") != "ghidra":
+            failures.append("provider_id")
+        if (not isinstance(subject, dict)
                 or not isinstance(subject.get("digest"), dict)
-                or subject["digest"].get("sha256") != pinned[binary]
-                or not isinstance(observed, dict) or not observed
-                or not isinstance(value.get("operation"), str)
-                or not value["operation"]):
-            raise ValueError("P99 missing canonical, target-pinned Ghidra Evidence")
+                or subject["digest"].get("sha256") != pinned[binary]):
+            failures.append("subject_digest")
+        if not isinstance(observed, dict) or not observed:
+            failures.append("normalized_result")
+        if not isinstance(value.get("operation"), str) or not value["operation"]:
+            failures.append("operation")
+        if failures:
+            # Report field *names only*, never private decompiled data.
+            known_keys = ",".join(sorted(str(k) for k in value.keys())[:24])
+            raise ValueError(
+                "P99 canonical Ghidra Evidence mismatch: " +
+                ",".join(failures) + "; top-level keys: " + known_keys)
         if any(digest(p) != sha for p, sha in pinned.items()):
             raise ValueError("P99 target or REA tools mutated during analysis")
         raw_path.write_text(raw, encoding="utf-8")
