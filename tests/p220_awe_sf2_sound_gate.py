@@ -250,7 +250,7 @@ def check_provenance(creative,vst3,scenarios):
                 type(cr.get("original_emu8000_voice_write_delta")) is int and
                 cr["original_emu8000_voice_write_delta"]>0 and
                 cr.get("sf2_bank_program_selected")==fixture["program"] and
-                cr.get("original_sample_readback_confirmed") is True,
+                cr.get("original_sample_start_register_written") is True,
                 "CREATIVE_PROGRAM_FALLBACK_OR_NO_SAMPLE_USED:"+label)
         require(vr.get("vst3_program_selected")==fixture["program"] and
                 type(vr.get("vst3_note_on_count")) is int and
