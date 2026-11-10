@@ -92,7 +92,7 @@ def make(root):
             "creative_program_change_delivered":True,
             "original_emu8000_voice_write_delta":128,
             "sf2_bank_program_selected":x["program"],
-            "original_sample_readback_confirmed":True})
+            "original_sample_start_register_written":True})
         vst["trials"].append({**common,"wav_sha256":vs,
             "vst3_program_selected":x["program"],
             "vst3_note_on_count":1,"vst3_bank_selection_acknowledged":True})
