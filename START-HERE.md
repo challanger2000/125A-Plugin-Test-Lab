@@ -1,3 +1,12 @@
+## P220 – 77 reale SoundFont-Programme des 125A-AWE-Synthesizers: Release-Klangsperre
+
+**Stand 10.11.2026, auf isoliertem QA-Branch `qa/p220-awe-sf2-77-sound-gate`:** Die 77 wirklich vorhandenen privaten SF2-Programme 0–62 und 64–77 bilden 154 getrennte Vergleichsfälle. `tests/p220_awe_sf2_sound_gate.py` akzeptiert ausschließlich SHA-pinned Original-Creative-Win95-/86Box-Wavetable- und Windows-VST3-PCM-Receipts plus Einzel-Nachweise für Amp-ADSR, Filter, Loops, Effekt-Sends und State Recall. `tests/run_unified_qa_gaps.py --require-awe77-for awe` sperrt eine Freigabe trotz technisch grünem VST3-Prüflauf, solange der reale Vergleich nicht vorliegt.
+
+**[Test Lab #42757805935 SUCCESS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42757805935)** belegt ausschließlich das Test-Oracle: 154/154 synthetische Test-Fixture-Vergleiche sowie 10/10 erkannte Fehlermutationen; die notwendige echte 77-Preset-Originalklangprüfung ergibt **77 BLOCKED, 0 PASS**. Die [AWE-Quellcode-P220-Vorprüfung #42759282931](https://github.com/challanger2000/125A-AWE-Synthesizer/actions/runs/42759282931) ist ebenfalls SUCCESS, aber hat keine Original-WAV erzeugt. Die 154er-Gastprotokollgröße wird jetzt mit begrenzter 64-KiB-P67-Ausnahme und exakt 1.394 MIDI-Delivery-Markern geprüft; Einzel-Programmbindung bleibt unabhängig nachzuweisen.
+
+Die Benutzersoundfont und ihr PCM bleiben privat; kein öffentliches Win95-ROM/Creative-Binary, keine originalen Sample-Assets. **Keine produktiven Pluginänderungen, kein Release-GO und keine echte Studio-One-/ASIO-/physische Creative-AWE64-Abnahme.** [Konkreter Abnahmevertrag und offener Evidenzplan](docs/P220-AWE-SF2-77-ORIGINAL-CREATIVE-SONIC-GATE.md).
+
+---
 ## P98 — Universal audio-input topology and realtime evidence validity (merged to main)
 
 **The scoped P98 Test Lab host fix was merged to `main` via [PR #144](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/144), exact merge SHA `58dc3ba730bb6297ddf7636254d62d16d5bd7f9e`.** This is a stable technical QA-host correction, NOT a product release, FULL AUDIT, real DAW or physical ASIO certificate. The P25 native stress host previously passed no stereo input buffers for insert FX, producing 2,368 rejected callbacks while incorrectly reporting fast invalid calls as a realtime PASS. The fix supplies a real preallocated stereo input when the VST3 declares one, preserves the zero-input instrument path, and marks timing **NOT COVERED** if any process call fails. Other bus topologies remain unsupported and must not be silently called PASS.
