@@ -79,9 +79,20 @@ def analyze(binary, out, *, node, entry, timeout=120, runner=subprocess.run):
         if failures:
             # Report field *names only*, never private decompiled data.
             known_keys = ",".join(sorted(str(k) for k in value.keys())[:24])
+            # Provider identity and field names are public metadata; only
+            # those fields may appear in logs, never recovered instructions.
+            provider_id = (provider.get("id") if isinstance(provider, dict)
+                           else type(provider).__name__)
+            profile = value.get("analysis_profile")
+            profile_provider = (profile.get("provider") if isinstance(profile, dict)
+                                else None)
+            profile_id = (profile_provider.get("id")
+                          if isinstance(profile_provider, dict) else None)
             raise ValueError(
                 "P99 canonical Ghidra Evidence mismatch: " +
-                ",".join(failures) + "; top-level keys: " + known_keys)
+                ",".join(failures) + "; observed provider id: " +
+                str(provider_id)[:80] + "; profile provider id: " +
+                str(profile_id)[:80] + "; top-level keys: " + known_keys)
         if any(digest(p) != sha for p, sha in pinned.items()):
             raise ValueError("P99 target or REA tools mutated during analysis")
         raw_path.write_text(raw, encoding="utf-8")
