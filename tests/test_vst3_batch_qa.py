@@ -151,6 +151,28 @@ class BatchTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         load_selection(selection=selection)
 
+    def test_rea_selection_requires_tools_and_rejects_fake_green_child(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            selection, gui = setup(root)
+            manifest = json.loads(selection.read_text())
+            manifest["plugins"][0]["run_rea_analysis"] = True
+            selection.write_text(json.dumps(manifest))
+            items = load_selection(selection=selection)
+            self.assertTrue(items[0]["run_rea_analysis"])
+            self.assertFalse(items[1]["run_rea_analysis"])
+            with self.assertRaises(ValueError):
+                run(items, gui, root / "missing", runner=successful_child)
+            node, entry = root / "node.exe", root / "rea.mjs"
+            node.write_bytes(b"node")
+            entry.write_bytes(b"rea")
+            report = run(items, gui, root / "forged", runner=successful_child,
+                         rea_node=node, rea_entry=entry)
+            self.assertEqual(report["status"], "FAIL")
+            self.assertEqual([row["status"] for row in report["plugins"]],
+                             ["FAIL", "PASS"])
+            self.assertEqual(report["plugins"][0]["binary_analysis"], "NOT RUN")
+
     def test_technical_requires_hosts_and_overlong_budget_is_rejected(self):
         with tempfile.TemporaryDirectory() as t:
             root=Path(t)

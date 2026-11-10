@@ -1,3 +1,9 @@
+**P99 optional REA binary analysis:** The P74/P75 pipeline can now request
+SHA-pinned REA/Ghidra native VST3 observations. **Default: NOT RUN**;
+results are unreviewed static observations, never a DSP, GUI or release
+PASS. REA/Node/Ghidra are not automatically installed. See
+[docs/P99-REA-BINARY-ANALYSIS.md](docs/P99-REA-BINARY-ANALYSIS.md).
+
 # 125A Plugin Test Lab
 
 **P91 actual REAPER DAW integration:** Independent [Windows Actions run #42391164169](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42391164169) ran real REAPER 7.83 with a source-built VST3, created MIDI, saved and reopened the `.RPP` project and rendered a genuine 44.1 kHz/24-bit stereo WAV. The fixture is intentionally silent: this proves basic DAW workflow, **not** instrument sound, complete product coverage, loaded-module path attestation or physical ASIO hardware. A separate explicit self-hosted REAPER adapter can test reviewed installed plugins. [Instructions](docs/P91-REAPER-DAW-INTEGRATION.md).

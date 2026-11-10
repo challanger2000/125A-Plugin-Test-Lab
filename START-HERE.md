@@ -1,3 +1,13 @@
+## P99 — Optional REA binary observations (development candidate)
+
+P74/P75 optionally collect REA/Ghidra binary observations under explicit
+per-run opt-in; the default remains NOT RUN. Exact VST3 and analysis-tool
+hashes, bounded JSON evidence and fail-closed provenance are required.
+This does NOT prove full source reconstruction, Creative AWE32/EMU8000,
+musical accuracy, GUI correctness, DAW/ASIO or release readiness.
+No REA/Ghidra installation or genuine Windows REA provider run is claimed.
+See [P99](docs/P99-REA-BINARY-ANALYSIS.md).
+
 ## P98 — Universal audio-input topology and realtime evidence validity (merged to main)
 
 **The scoped P98 Test Lab host fix was merged to `main` via [PR #144](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/144), exact merge SHA `58dc3ba730bb6297ddf7636254d62d16d5bd7f9e`.** This is a stable technical QA-host correction, NOT a product release, FULL AUDIT, real DAW or physical ASIO certificate. The P25 native stress host previously passed no stereo input buffers for insert FX, producing 2,368 rejected callbacks while incorrectly reporting fast invalid calls as a realtime PASS. The fix supplies a real preallocated stereo input when the VST3 declares one, preserves the zero-input instrument path, and marks timing **NOT COVERED** if any process call fails. Other bus topologies remain unsupported and must not be silently called PASS.

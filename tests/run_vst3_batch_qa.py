@@ -97,7 +97,7 @@ def load_selection(selection=None, root=None, *, technical_all=False):
                 set(item) - {"id", "bundle", "run_technical_baseline", "approved_plan", "feature_matrix",
                              "explore_unknown_gui", "exploration_points", "exploration_max_points",
                              "exploration_repeats", "dense_gui_grid",
-                             "crosscheck_abi_gui"}):
+                             "crosscheck_abi_gui", "run_rea_analysis"}):
             raise ValueError("P75 unsupported plugin batch selection fields")
         ident = item["id"]
         if type(ident) is not str or not ID.fullmatch(ident) or ident in ids:
@@ -111,6 +111,8 @@ def load_selection(selection=None, root=None, *, technical_all=False):
                 type(item["feature_matrix"]) is not str or
                 not item["approved_plan"] or not item["feature_matrix"]):
             raise ValueError("P80 invalid approved plan/matrix reference")
+        if type(item.get("run_rea_analysis", False)) is not bool:
+            raise ValueError("P99 REA selection must be boolean")
         exploration = validate_exploration_spec(item)
         bundle, module = verify_bundle(item["bundle"])
         if bundle in paths:
@@ -119,7 +121,8 @@ def load_selection(selection=None, root=None, *, technical_all=False):
         ids.add(ident)
         selected.append({
             "id": ident, "bundle": bundle, "module": module,
-            "sha256": digest(module), "run_technical_baseline":
+            "sha256": digest(module), "run_rea_analysis": item.get("run_rea_analysis", False),
+            "run_technical_baseline":
                 item["run_technical_baseline"],
             **({"approved_plan": str(Path(item["approved_plan"]).resolve(strict=True)),
                 "feature_matrix": str(Path(item["feature_matrix"]).resolve(strict=True))}
@@ -131,7 +134,7 @@ def load_selection(selection=None, root=None, *, technical_all=False):
 
 def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
         per_plugin_timeout=600, native_timeout=110,
-        runner=subprocess.run):
+        runner=subprocess.run, rea_node=None, rea_entry=None, rea_timeout=120):
     if type(per_plugin_timeout) is not int or not 45 <= per_plugin_timeout <= 1800:
         raise ValueError("P75 invalid bounded per-plugin process timeout")
     if type(native_timeout) is not int or not 5 <= native_timeout <= 120:
@@ -149,7 +152,19 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
         raise ValueError("P75 missing real audio/stress host")
     if any(s["run_technical_baseline"] for s in selected) and audio is None:
         raise ValueError("P75 technical selected without audio/state hosts")
+    if type(rea_timeout) is not int or not 30 <= rea_timeout <= 600:
+        raise ValueError("P99 invalid REA timeout")
+    selected_rea = any(item.get("run_rea_analysis", False) for item in selected)
+    if selected_rea != (rea_node is not None and rea_entry is not None):
+        raise ValueError("P99 REA tool paths required exactly when enabled")
+    node = Path(rea_node).resolve(strict=True) if selected_rea else None
+    rea_entry_path = Path(rea_entry).resolve(strict=True) if selected_rea else None
+    if selected_rea and (not node.is_file() or not rea_entry_path.is_file()):
+        raise ValueError("P99 trusted Node/REA files missing")
     identities = {gui: digest(gui)}
+    if selected_rea:
+        identities[node] = digest(node)
+        identities[rea_entry_path] = digest(rea_entry_path)
     if audio is not None:
         identities[audio] = digest(audio)
         identities[stress] = digest(stress)
@@ -162,11 +177,13 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                               "run_technical_baseline", "approved_plan",
                               "feature_matrix", "explore_unknown_gui",
                               "exploration_points", "exploration_max_points",
-                              "exploration_repeats", "dense_gui_grid", "crosscheck_abi_gui"} or
+                              "exploration_repeats", "dense_gui_grid", "crosscheck_abi_gui",
+                              "run_rea_analysis"} or
                 ("approved_plan" in entry) != ("feature_matrix" in entry) or
                 type(entry["id"]) is not str or not ID.fullmatch(entry["id"]) or
                 entry["id"] in observed_ids or
-                type(entry["run_technical_baseline"]) is not bool):
+                type(entry["run_technical_baseline"]) is not bool or
+                type(entry.get("run_rea_analysis", False)) is not bool):
             raise ValueError("P75 invalid duplicated selected plugin record")
         validate_exploration_spec(entry)
         bundle, module = verify_bundle(entry["bundle"])
@@ -210,6 +227,8 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                "status": "FAIL", "technical_requested":
                    entry["run_technical_baseline"],
                "exploration_requested": entry.get("explore_unknown_gui", False),
+               "rea_requested": entry.get("run_rea_analysis", False),
+               "binary_analysis": "NOT RUN",
                "faults": []}
         try:
             if (digest(entry["module"]) != entry["sha256"] or
@@ -237,6 +256,10 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                     cmd += ["--dense-gui-grid", str(entry["dense_gui_grid"])]
                 if entry.get("crosscheck_abi_gui", False):
                     cmd += ["--crosscheck-abi-gui"]
+            if entry.get("run_rea_analysis", False):
+                cmd += ["--run-rea-analysis", "--rea-node", str(node),
+                        "--rea-entry", str(rea_entry_path),
+                        "--rea-timeout", str(rea_timeout)]
             process = runner(cmd, capture_output=True, text=True,
                              errors="replace", check=False,
                              timeout=per_plugin_timeout)
@@ -293,6 +316,14 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                         outcome.get("unknown_gui_semantics") != "UNAPPROVED OBSERVATIONS ONLY")) or
                       (outcome["unknown_gui_exploration"] == "NOT APPLICABLE - NO EDITOR" and
                        outcome["exploratory_clicks_performed"] != 0))) or
+                    (entry.get("run_rea_analysis", False) and (
+                        outcome.get("binary_analysis") != "OBSERVATION_CAPTURED" or
+                        not isinstance(outcome.get("binary_analysis_evidence_sha256"), str) or
+                        not (folder / "rea-binary" / "REA-RESULT.json").is_file() or
+                        digest(folder / "rea-binary" / "REA-RESULT.json") !=
+                            outcome["binary_analysis_evidence_sha256"])) or
+                    (not entry.get("run_rea_analysis", False) and
+                     outcome.get("binary_analysis", "NOT RUN") != "NOT RUN") or
                     (not entry.get("explore_unknown_gui", False) and
                      (outcome.get("unknown_gui_exploration", "NOT RUN") != "NOT RUN" or
                       outcome.get("exploratory_clicks_performed", 0) != 0))):
@@ -305,6 +336,7 @@ def run(selected, gui_host, out, *, audio_host=None, stress_host=None,
                 if digest(pp) != ph or digest(mp) != mh:
                     raise ValueError("P80 reviewed product plan changed during run")
             row["status"] = "PASS"
+            row["binary_analysis"] = outcome.get("binary_analysis", "NOT RUN")
             row["verified_stage"] = expected
             row["required_feature_coverage"] = outcome["required_feature_coverage"]
             row["exploratory_clicks_performed"] = outcome.get("exploratory_clicks_performed", 0)
@@ -336,6 +368,9 @@ def main():
     p.add_argument("--audio-host", type=Path)
     p.add_argument("--stress-host", type=Path)
     p.add_argument("--run-technical-baseline", action="store_true")
+    p.add_argument("--rea-node", type=Path)
+    p.add_argument("--rea-entry", type=Path)
+    p.add_argument("--rea-timeout", type=int, default=120)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--per-plugin-timeout", type=int, default=600)
     p.add_argument("--native-timeout", type=int, default=110)
@@ -347,7 +382,9 @@ def main():
         report = run(selected, args.gui_host, args.out,
                      audio_host=args.audio_host, stress_host=args.stress_host,
                      per_plugin_timeout=args.per_plugin_timeout,
-                     native_timeout=args.native_timeout)
+                     native_timeout=args.native_timeout,
+                     rea_node=args.rea_node, rea_entry=args.rea_entry,
+                     rea_timeout=args.rea_timeout)
     except (OSError, ValueError, TypeError, KeyError,
             json.JSONDecodeError) as error:
         args.out.mkdir(parents=True, exist_ok=True)

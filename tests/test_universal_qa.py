@@ -8,6 +8,7 @@ import unittest
 
 from run_universal_qa import execute, preflight, SCHEMA
 from run_vst3_auto_discovery import digest
+from run_rea_binary_analysis import SCHEMA as REA_SCHEMA
 from test_product_test_plan import make_plan
 from test_product_feature_coverage import matrix_for
 
@@ -58,6 +59,7 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(result["status"], "INVENTORY_COMPLETE")
             self.assertEqual(result["approved_product_cases"], "NOT DECLARED")
             self.assertEqual(result["required_feature_coverage"], "NOT DECLARED")
+            self.assertEqual(result["binary_analysis"], "NOT RUN")
             self.assertEqual(result["gui_clicks_automatically_authorized"], 0)
             self.assertFalse(result["release_approved"])
 
@@ -127,6 +129,44 @@ class PipelineTests(unittest.TestCase):
                              run_technical=True,
                              onboarding=lambda *a,**kw:bad)
             self.assertEqual(rejected["status"],"FAIL")
+
+    def test_rea_opt_in_observes_but_never_certifies_and_rejects_forgery(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            plan, module, host = make_plan(root)
+            node, entry = root / "node.exe", root / "rea.mjs"
+            node.write_bytes(b"node mock")
+            entry.write_bytes(b"REA mock")
+            def observed(binary, out, *, node, entry, timeout):
+                out.mkdir(parents=True, exist_ok=True)
+                raw = out / "REA-RAW-OUTPUT.json"
+                raw.write_text('{"evidence": "unreviewed"}', encoding="utf-8")
+                result = {"schema": REA_SCHEMA, "status": "OBSERVATION_CAPTURED",
+                          "binary_sha256": digest(binary),
+                          "node_sha256": digest(node), "rea_entry_sha256": digest(entry),
+                          "rea_exit_code": 0, "raw_sha256": digest(raw),
+                          "semantic_verification": "NOT ESTABLISHED",
+                          "release_approved": False}
+                (out / "REA-RESULT.json").write_text(json.dumps(result))
+                return result
+            kwargs = {"onboarding": lambda *a, **kw: onboard_for(plan, host),
+                      "run_rea": True, "rea_node": node, "rea_entry": entry}
+            good = execute(module.parents[2], host, root / "rea-ok",
+                           rea_executor=observed, **kwargs)
+            self.assertEqual(good["status"], "INVENTORY_COMPLETE")
+            self.assertEqual(good["binary_analysis"], "OBSERVATION_CAPTURED")
+            self.assertFalse(good["release_approved"])
+            def forged(binary, out, **kw):
+                result = observed(binary, out, **kw)
+                result["binary_sha256"] = "0" * 64
+                return result
+            bad = execute(module.parents[2], host, root / "rea-forged",
+                          rea_executor=forged, **kwargs)
+            self.assertEqual(bad["status"], "FAIL")
+            self.assertEqual(bad["binary_analysis"], "NOT RUN")
+            with self.assertRaises(ValueError):
+                execute(module.parents[2], host, root / "no-rea-tools",
+                        onboarding=kwargs["onboarding"], run_rea=True)
 
     def test_preflight_blocks_wrong_module_or_partial_contract_pair(self):
         with tempfile.TemporaryDirectory() as t:
