@@ -5,6 +5,8 @@ on:
     paths:
       - tests/p220_awe_sf2_sound_gate.py
       - tests/test_p220_awe_sf2_sound_gate.py
+      - tests/run_unified_qa_gaps.py
+      - tests/test_p220_awe_unified_release.py
       - .github/workflows/p220-awe-sf2-77-gate.yml
   workflow_dispatch:
 permissions:
@@ -19,6 +21,12 @@ jobs:
         run: |
           python3 -m py_compile tests/p220_awe_sf2_sound_gate.py tests/test_p220_awe_sf2_sound_gate.py
           python3 tests/test_p220_awe_sf2_sound_gate.py
+      - name: Verify actual Test Lab P89 consolidated release blocker rejects absent 77-sound despite technical AWE PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/test_p220_awe_unified_release.py
+          python3 tests/test_p89_unified_qa_gaps.py
       - name: Prove private original Creative WAV absent in public CI blocks every real preset
         shell: bash
         run: |
