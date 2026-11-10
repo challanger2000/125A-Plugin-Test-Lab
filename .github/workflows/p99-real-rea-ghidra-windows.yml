@@ -93,7 +93,19 @@ jobs:
           }
           $env:REA_ANALYSIS_PROVIDER = 'ghidra'
           python tests/run_universal_qa.py --plugin $bundle[0].FullName --gui-host $hostExe[0].FullName --out build/p99-actual --timeout 110 --run-rea-analysis --rea-node $node --rea-entry $entry --rea-timeout 540
-          if ($LASTEXITCODE -ne 0) { throw 'P99 actual REA/Ghidra P74 run failed' }
+          if ($LASTEXITCODE -ne 0) {
+            $reaPath = 'build/p99-actual/rea-binary/REA-RESULT.json'
+            if (Test-Path -LiteralPath $reaPath) {
+              $details = Get-Content -LiteralPath $reaPath -Raw | ConvertFrom-Json
+              Write-Output "P99 REA failure classification: $($details.status)"
+              foreach ($fault in @($details.faults)) {
+                Write-Output "P99 REA failure reason (max 1200 chars): $fault"
+              }
+            } else {
+              Write-Output 'P99 REA-RESULT.json not produced'
+            }
+            throw 'P99 actual REA/Ghidra P74 run failed'
+          }
           $result = Get-Content 'build/p99-actual/UNIVERSAL-QA-RESULT.json' -Raw | ConvertFrom-Json
           $observed = Get-Content 'build/p99-actual/rea-binary/REA-RESULT.json' -Raw | ConvertFrom-Json
           $raw = Get-Content 'build/p99-actual/rea-binary/REA-RAW-OUTPUT.json' -Raw | ConvertFrom-Json
