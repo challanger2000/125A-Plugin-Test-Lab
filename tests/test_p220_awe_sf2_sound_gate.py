@@ -25,7 +25,7 @@ def require(ok,label):
 def wave_file(path,prog,vel=64,backend=0):
     # Real independent PCM generation here only creates deliberately
     # *synthetic* unit fixtures. It never claims Win95, SF2, or VST3.
-    sr=44100;n=int(sr*0.55)
+    sr=44100;n=int(sr*3.0)
     import struct
     frequency=125.0 + (prog%63)*15.0
     buf=bytearray()
@@ -153,7 +153,7 @@ def run():
         # Silence is a full valid WAV with a matching SHA and correct format.
         with wave.open(str(path),"wb") as wf:
             wf.setnchannels(2);wf.setsampwidth(2);wf.setframerate(44100)
-            wf.writeframes(b"\0\0\0\0"*(int(44100*.55)))
+            wf.writeframes(b"\0\0\0\0"*(int(44100*3.0)))
         bad=copy.deepcopy(vst)
         bad["trials"][i]["wav_sha256"]=hashlib.sha256(path.read_bytes()).hexdigest()
         silence=evaluate(plan,creative,bad,cdir,vdir)
