@@ -8,6 +8,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import sys
 
 from run_external_daw_capture_check import run as compare_external_capture
 
