@@ -172,6 +172,41 @@ class BatchTests(unittest.TestCase):
             self.assertEqual([row["status"] for row in report["plugins"]],
                              ["FAIL", "PASS"])
             self.assertEqual(report["plugins"][0]["binary_analysis"], "NOT RUN")
+            def real_contract_child(cmd, **kwargs):
+                outcome = successful_child(cmd, **kwargs)
+                if "--run-rea-analysis" in cmd:
+                    folder = Path(cmd[cmd.index("--out") + 1])
+                    bundle = Path(cmd[cmd.index("--plugin") + 1])
+                    dll = next(x for x in bundle.rglob("*.vst3") if x.is_file())
+                    rea_folder = folder / "rea-binary"
+                    rea_folder.mkdir(parents=True, exist_ok=True)
+                    raw = rea_folder / "REA-RAW-OUTPUT.json"
+                    raw.write_text('{"evidence": 1}', encoding="utf-8")
+                    reevidence = {
+                        "schema": "125a-rea-binary-observation-v1",
+                        "status": "OBSERVATION_CAPTURED",
+                        "binary_sha256": digest(dll),
+                        "node_sha256": digest(node),
+                        "rea_entry_sha256": digest(entry),
+                        "rea_exit_code": 0,
+                        "raw_sha256": digest(raw),
+                        "semantic_verification": "NOT ESTABLISHED",
+                        "release_approved": False,
+                    }
+                    rea_result = rea_folder / "REA-RESULT.json"
+                    rea_result.write_text(json.dumps(reevidence), encoding="utf-8")
+                    report_path = folder / "UNIVERSAL-QA-RESULT.json"
+                    child = json.loads(report_path.read_text())
+                    child["binary_analysis"] = "OBSERVATION_CAPTURED"
+                    child["binary_analysis_evidence_sha256"] = digest(rea_result)
+                    report_path.write_text(json.dumps(child))
+                return outcome
+            positive = run(items, gui, root / "rea-positive", runner=real_contract_child,
+                           rea_node=node, rea_entry=entry)
+            self.assertEqual(positive["status"], "BATCH_TECHNICAL_PASS")
+            self.assertEqual(positive["passed_plugins"], 2)
+            self.assertEqual([p["binary_analysis"] for p in positive["plugins"]],
+                             ["OBSERVATION_CAPTURED", "NOT RUN"])
 
     def test_technical_requires_hosts_and_overlong_budget_is_rejected(self):
         with tempfile.TemporaryDirectory() as t:

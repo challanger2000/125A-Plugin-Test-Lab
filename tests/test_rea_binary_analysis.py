@@ -28,7 +28,7 @@ class REATests(unittest.TestCase):
             self.assertEqual(report["binary_sha256"], digest(target))
             self.assertEqual(report["raw_sha256"], digest(root / "good" / "REA-RAW-OUTPUT.json"))
             self.assertEqual(commands[0][0][2:],
-                             ["inspect", str(target), "--provider", "ghidra", "--json"])
+                             ["inspect", str(target.resolve()), "--provider", "ghidra", "--json"])
             self.assertFalse(commands[0][1]["check"])
             self.assertEqual(report["semantic_verification"], "NOT ESTABLISHED")
             self.assertFalse(report["release_approved"])
