@@ -12,7 +12,7 @@ It starts only the user-specified Node executable with the user-specified
 REA `scripts/rea.mjs`, using subprocess arguments (no shell). Node, entry
 script and VST3 binary are hashed both before and after the command.
 
-P99 accepts exit code 0 only with canonical REA Evidence: a valid Evidence ID, provider ID `ghidra`, target SHA-256 in the subject digest, a named operation and nonempty normalized result. A generic JSON dictionary is a failed analysis.
+P99 accepts exit code 0 only with canonical REA Evidence: a valid Evidence ID, outer provider ID `rea-workflow` and a nested, provenance-committed upstream analysis-profile provider ID `ghidra`, target SHA-256 in the subject digest, a named operation and nonempty normalized result. A generic JSON dictionary is a failed analysis.
 It records `REA-RAW-OUTPUT.json` and `REA-RESULT.json`; P74 separately
 checks the report's schema, source/tool hashes and physical evidence file.
 P75 checks the per-plugin P74 result and its physical REA report digest.
@@ -88,3 +88,14 @@ Scanned directories have REA disabled by default.
 
 Current status when first committed: integration candidate awaiting
 independent Windows CI and an actual trusted REA/Ghidra installation test.
+
+### P99 actual-provider contract correction
+
+REA `inspect` invokes the `binary_overview` composed workflow. REA 6.8.0
+therefore deliberately records the outer Evidence `provider.id=rea-workflow`.
+The Ghidra backend is committed separately by
+`analysis_profile.parameters.upstream_analysis_profile.provider.id=ghidra`.
+A validator that demands the outer ID be `ghidra` would falsely reject
+valid REA/Ghidra analysis; accepting only `rea-workflow` without checking
+its upstream profile could falsely accept a different analyzer. P99 verifies
+**both identities** and source SHA-256, without assuming semantic fidelity.

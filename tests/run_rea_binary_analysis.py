@@ -38,7 +38,8 @@ def analyze(binary, out, *, node, entry, timeout=120, runner=subprocess.run):
         "node_sha256": pinned[node], "rea_entry_sha256": pinned[entry],
         "rea_exit_code": None, "raw_sha256": None,
         "semantic_verification": "NOT ESTABLISHED",
-        "observed_provider": None, "rea_evidence_id": None,
+        "observed_provider": None, "verified_upstream_provider": None,
+        "rea_evidence_id": None,
         "release_approved": False, "faults": [],
     }
     try:
@@ -62,12 +63,28 @@ def analyze(binary, out, *, node, entry, timeout=120, runner=subprocess.run):
         subject = value.get("subject")
         provider = value.get("provider")
         observed = value.get("normalized_result")
+        profile = value.get("analysis_profile")
+        upstream = (profile.get("parameters", {}).get("upstream_analysis_profile")
+                    if isinstance(profile, dict) and
+                    isinstance(profile.get("parameters"), dict) else None)
+        upstream_provider = (upstream.get("provider") if isinstance(upstream, dict)
+                             else None)
         failures = []
         if not isinstance(evidence_id, str) or re.fullmatch(
                 r"ev_[0-9a-f]{64}", evidence_id) is None:
             failures.append("evidence_id")
-        if not isinstance(provider, dict) or provider.get("id") != "ghidra":
-            failures.append("provider_id")
+        # "inspect" calls binary_overview, a REA composed workflow.
+        # The outer provider MUST be rea-workflow; the actual analysis
+        # engine is committed in the upstream analysis profile.
+        if not isinstance(provider, dict) or provider.get("id") != "rea-workflow":
+            failures.append("workflow_provider_id")
+        if (not isinstance(profile, dict)
+                or not isinstance(profile.get("provider"), dict)
+                or profile["provider"].get("id") != "rea-workflow"):
+            failures.append("workflow_profile_id")
+        if (not isinstance(upstream_provider, dict)
+                or upstream_provider.get("id") != "ghidra"):
+            failures.append("upstream_ghidra_provider_id")
         if (not isinstance(subject, dict)
                 or not isinstance(subject.get("digest"), dict)
                 or subject["digest"].get("sha256") != pinned[binary]):
@@ -83,21 +100,24 @@ def analyze(binary, out, *, node, entry, timeout=120, runner=subprocess.run):
             # those fields may appear in logs, never recovered instructions.
             provider_id = (provider.get("id") if isinstance(provider, dict)
                            else type(provider).__name__)
-            profile = value.get("analysis_profile")
             profile_provider = (profile.get("provider") if isinstance(profile, dict)
                                 else None)
             profile_id = (profile_provider.get("id")
                           if isinstance(profile_provider, dict) else None)
+            upstream_id = (upstream_provider.get("id")
+                           if isinstance(upstream_provider, dict) else None)
             raise ValueError(
                 "P99 canonical Ghidra Evidence mismatch: " +
                 ",".join(failures) + "; observed provider id: " +
                 str(provider_id)[:80] + "; profile provider id: " +
-                str(profile_id)[:80] + "; top-level keys: " + known_keys)
+                str(profile_id)[:80] + "; upstream provider id: " +
+                str(upstream_id)[:80] + "; top-level keys: " + known_keys)
         if any(digest(p) != sha for p, sha in pinned.items()):
             raise ValueError("P99 target or REA tools mutated during analysis")
         raw_path.write_text(raw, encoding="utf-8")
         report["raw_sha256"] = digest(raw_path)
         report["observed_provider"] = provider["id"]
+        report["verified_upstream_provider"] = upstream_provider["id"]
         report["rea_evidence_id"] = evidence_id
         report["status"] = "OBSERVATION_CAPTURED"
     except (OSError, ValueError, TypeError, json.JSONDecodeError,

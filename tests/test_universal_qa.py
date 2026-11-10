@@ -146,6 +146,8 @@ class PipelineTests(unittest.TestCase):
                           "node_sha256": digest(node), "rea_entry_sha256": digest(entry),
                           "rea_exit_code": 0, "raw_sha256": digest(raw),
                           "semantic_verification": "NOT ESTABLISHED",
+                          "observed_provider": "rea-workflow",
+                          "verified_upstream_provider": "ghidra",
                           "release_approved": False}
                 (out / "REA-RESULT.json").write_text(json.dumps(result))
                 return result

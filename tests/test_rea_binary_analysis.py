@@ -13,7 +13,17 @@ from run_rea_binary_analysis import SCHEMA, analyze, digest
 def canonical(target):
     return {
         "evidence_id": "ev_" + "a" * 64,
-        "provider": {"id": "ghidra", "name": "Ghidra", "version": None},
+        "provider": {"id": "rea-workflow", "name": "REA composed investigation workflow", "version": "1"},
+        "analysis_profile": {
+            "provider": {"id": "rea-workflow", "name": "REA composed investigation workflow", "version": "1"},
+            "parameters": {
+                "upstream_analysis_profile": {
+                    "provider": {"id": "ghidra", "name": "Ghidra", "version": "12.1.4"},
+                    "parameters": {},
+                },
+                "workflow_revision": 4,
+            },
+        },
         "subject": {"digest": {"sha256": digest(target)}, "format": "pe"},
         "operation": "binary_overview",
         "normalized_result": {"procedure_count": 3},
@@ -37,7 +47,8 @@ class REATests(unittest.TestCase):
             self.assertEqual(report["status"], "OBSERVATION_CAPTURED")
             self.assertEqual(report["binary_sha256"], digest(target))
             self.assertEqual(report["raw_sha256"], digest(root / "good" / "REA-RAW-OUTPUT.json"))
-            self.assertEqual(report["observed_provider"], "ghidra")
+            self.assertEqual(report["observed_provider"], "rea-workflow")
+            self.assertEqual(report["verified_upstream_provider"], "ghidra")
             self.assertEqual(report["rea_evidence_id"], "ev_" + "a"*64)
             self.assertEqual(commands[0][0][2:],
                              ["inspect", str(target.resolve()), "--provider", "ghidra", "--json"])
@@ -59,6 +70,13 @@ class REATests(unittest.TestCase):
                 SimpleNamespace(returncode=0, stderr="", stdout='{"ok":false}'),
                 SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
                     {**canonical(target), "provider": {"id": "placeholder"}})),
+                SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
+                    {**canonical(target), "analysis_profile": {
+                        **canonical(target)["analysis_profile"],
+                        "parameters": {"upstream_analysis_profile": {
+                            "provider": {"id":"not-ghidra"}}}}})),
+                SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
+                    {**canonical(target), "analysis_profile": None})),
                 SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
                     {**canonical(target), "subject": {"digest": {"sha256": "0"*64}}})),
             ]

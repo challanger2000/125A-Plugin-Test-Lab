@@ -173,6 +173,8 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
                     or inspection.get("rea_entry_sha256") != hashes[rea_entry_path]
                     or inspection.get("rea_exit_code") != 0
                     or inspection.get("semantic_verification") != "NOT ESTABLISHED"
+                    or inspection.get("observed_provider") != "rea-workflow"
+                    or inspection.get("verified_upstream_provider") != "ghidra"
                     or inspection.get("release_approved") is not False
                     or not isinstance(inspection.get("raw_sha256"), str)
                     or not raw.is_file() or raw.stat().st_size > 2_000_000

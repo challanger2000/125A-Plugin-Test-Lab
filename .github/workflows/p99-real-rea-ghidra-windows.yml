@@ -117,9 +117,12 @@ jobs:
               $result.binary_analysis -ne 'OBSERVATION_CAPTURED' -or
               $result.release_approved -ne $false -or
               $observed.binary_sha256 -ne $actualSha -or
-              $observed.observed_provider -ne 'ghidra' -or
+              $observed.observed_provider -ne 'rea-workflow' -or
+              $observed.verified_upstream_provider -ne 'ghidra' -or
               $observed.semantic_verification -ne 'NOT ESTABLISHED' -or
-              $raw.provider.id -ne 'ghidra' -or
+              $raw.provider.id -ne 'rea-workflow' -or
+              $raw.analysis_profile.provider.id -ne 'rea-workflow' -or
+              $raw.analysis_profile.parameters.upstream_analysis_profile.provider.id -ne 'ghidra' -or
               $raw.subject.digest.sha256 -ne $actualSha) {
             throw 'P99 genuine REA result failed independent provider/source/semantic checks'
           }
