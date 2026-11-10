@@ -1,5 +1,10 @@
 # P74 — One-command end-to-end universal VST3 QA
 
+**P99 opt-in:** `--run-rea-analysis --rea-node <node.exe> --rea-entry <rea.mjs>`
+captures a separate, SHA-pinned REA/Ghidra binary observation. The default
+is NOT RUN. This is NOT musical correctness, DAW acceptance or release
+approval. See [P99](P99-REA-BINARY-ANALYSIS.md).
+
 P68–P73 implemented individual discoveries and test adapters. P74
 exposes one top-level tool for **any source-defined or independently
 approved Windows x64 VST3**. It supports both VST3s with GUI (native

@@ -18,6 +18,7 @@ from run_gui_dense_audit import run as dense_run
 from run_gui_parameter_coverage import run as coverage_gap_run
 from run_product_test_plan import execute as contract_execute, validate as validate_contract
 from product_feature_coverage import validate_matrix
+from run_rea_binary_analysis import analyze as rea_analyze, SCHEMA as REA_SCHEMA
 
 SCHEMA = "125a-universal-vst3-qa-pipeline-v1"
 
@@ -47,7 +48,9 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
             explorer=exploration_run, exploration_repeats=1,
             repeatability_runner=repeatability_run,
             dense_grid=None, dense_runner=dense_run,
-            crosscheck_abi_gui=False, coverage_gap_runner=coverage_gap_run):
+            crosscheck_abi_gui=False, coverage_gap_runner=coverage_gap_run,
+            run_rea=False, rea_node=None, rea_entry=None, rea_timeout=120,
+            rea_executor=rea_analyze):
     bundle, dll = verify_bundle(plugin)
     gui = Path(gui_host).resolve(strict=True)
     if not gui.is_file():
@@ -89,7 +92,18 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
         raise ValueError("P74 native audio/state-stress test hosts absent")
     if run_technical and audio is None:
         raise ValueError("P74 native technical tests require both native hosts")
+    if type(run_rea) is not bool or type(rea_timeout) is not int or not 30 <= rea_timeout <= 600:
+        raise ValueError("P99 invalid REA opt-in flag or timeout")
+    if run_rea != (rea_node is not None and rea_entry is not None):
+        raise ValueError("P99 REA requires explicit opt-in with Node and entry paths")
+    rea_node_path = Path(rea_node).resolve(strict=True) if run_rea else None
+    rea_entry_path = Path(rea_entry).resolve(strict=True) if run_rea else None
+    if run_rea and (not rea_node_path.is_file() or not rea_entry_path.is_file()):
+        raise ValueError("P99 trusted REA tools missing")
     hashes = {dll: digest(dll), gui: digest(gui)}
+    if run_rea:
+        hashes[rea_node_path] = digest(rea_node_path)
+        hashes[rea_entry_path] = digest(rea_entry_path)
     if audio is not None:
         hashes[audio] = digest(audio)
         hashes[stress] = digest(stress)
@@ -119,6 +133,9 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
         "abi_gui_parameter_crosscheck": "NOT RUN",
         "abi_parameters_without_sampled_gui_transition": None,
         "all_product_features_automatically_discovered": False,
+        "binary_analysis": "NOT RUN",
+        "binary_analysis_evidence_sha256": None,
+        "binary_analysis_semantics": "NOT ESTABLISHED",
         "real_asio_hardware": "NOT RUN",
         "commercial_daw_session": "NOT RUN",
         "release_approved": False,
@@ -141,6 +158,32 @@ def execute(plugin, gui_host, out, *, audio_host=None, stress_host=None,
                 or onboarding_result.get("required_feature_coverage") != "NOT DECLARED"):
             raise ValueError("P74 source VST3/GUI automatic discovery incomplete or misattributed")
         report["discovery"] = "PASS"
+        if run_rea:
+            inspection = rea_executor(
+                dll, out / "rea-binary", node=rea_node_path,
+                entry=rea_entry_path, timeout=rea_timeout)
+            rea_dir = out / "rea-binary"
+            raw = rea_dir / "REA-RAW-OUTPUT.json"
+            result_path = rea_dir / "REA-RESULT.json"
+            if (not isinstance(inspection, dict)
+                    or inspection.get("schema") != REA_SCHEMA
+                    or inspection.get("status") != "OBSERVATION_CAPTURED"
+                    or inspection.get("binary_sha256") != hashes[dll]
+                    or inspection.get("node_sha256") != hashes[rea_node_path]
+                    or inspection.get("rea_entry_sha256") != hashes[rea_entry_path]
+                    or inspection.get("rea_exit_code") != 0
+                    or inspection.get("semantic_verification") != "NOT ESTABLISHED"
+                    or inspection.get("observed_provider") != "rea-workflow"
+                    or inspection.get("verified_upstream_provider") != "ghidra"
+                    or inspection.get("release_approved") is not False
+                    or not isinstance(inspection.get("raw_sha256"), str)
+                    or not raw.is_file() or raw.stat().st_size > 2_000_000
+                    or digest(raw) != inspection["raw_sha256"]
+                    or not result_path.is_file() or result_path.stat().st_size > 100_000
+                    or json.loads(result_path.read_text(encoding="utf-8")) != inspection):
+                raise ValueError("P99 REA observations missing, invalid, or unpinned")
+            report["binary_analysis"] = "OBSERVATION_CAPTURED"
+            report["binary_analysis_evidence_sha256"] = digest(result_path)
         if explore_unknown_gui:
             if onboarding_result.get("gui_editor_status") == "VST3_NO_EDITOR_EXPOSED":
                 report["unknown_gui_exploration"] = "NOT APPLICABLE - NO EDITOR"
@@ -344,6 +387,11 @@ def main():
     p.add_argument("--stress-host", type=Path)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--run-technical-baseline", action="store_true")
+    p.add_argument("--run-rea-analysis", action="store_true",
+                   help="Optional trusted REA/Ghidra binary observation")
+    p.add_argument("--rea-node", type=Path)
+    p.add_argument("--rea-entry", type=Path)
+    p.add_argument("--rea-timeout", type=int, default=120)
     p.add_argument("--explore-unknown-gui", action="store_true",
                    help="Explicitly opt in to risky, bounded exploratory clicks on unknown controls")
     p.add_argument("--exploration-points", type=str,
@@ -373,7 +421,10 @@ def main():
             exploration_max_points=a.exploration_max_points,
             exploration_repeats=a.exploration_repeats,
             dense_grid=a.dense_gui_grid,
-            crosscheck_abi_gui=a.crosscheck_abi_gui)
+            crosscheck_abi_gui=a.crosscheck_abi_gui,
+            run_rea=a.run_rea_analysis,
+            rea_node=a.rea_node, rea_entry=a.rea_entry,
+            rea_timeout=a.rea_timeout)
     except (OSError, ValueError, TypeError, KeyError,
             json.JSONDecodeError) as error:
         a.out.mkdir(parents=True, exist_ok=True)

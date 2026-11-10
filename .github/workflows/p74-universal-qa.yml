@@ -7,6 +7,9 @@ on:
       - 'tests/test_universal_qa.py'
       - '.github/workflows/p74-universal-qa.yml'
       - 'docs/P74-UNIVERSAL-QA-PIPELINE.md'
+      - 'tests/run_rea_binary_analysis.py'
+      - 'tests/test_rea_binary_analysis.py'
+      - 'docs/P99-REA-BINARY-ANALYSIS.md'
   workflow_dispatch:
 
 permissions:
@@ -22,8 +25,10 @@ jobs:
         shell: pwsh
         run: |
           python -m unittest discover -s tests -p test_universal_qa.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P74 orchestration regression failed' }
+          python -m unittest discover -s tests -p test_rea_binary_analysis.py -v
           if ($LASTEXITCODE -ne 0) { throw 'P74 full QA orchestration security regression' }
-          python -m py_compile tests/run_universal_qa.py tests/test_universal_qa.py
+          python -m py_compile tests/run_universal_qa.py tests/test_universal_qa.py tests/run_rea_binary_analysis.py tests/test_rea_binary_analysis.py
           if ($LASTEXITCODE -ne 0) { throw 'P74 Python syntax failed' }
 
   real-vst3-end-to-end:

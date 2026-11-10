@@ -1,3 +1,22 @@
+## P99 — Optional REA/Ghidra binary observation (Windows-verified, PR #149)
+
+The scoped P99 implementation on `feature/p99-rea-binary-analysis-20261110`
+passed genuine Windows x64 REA 6.8.0 + Ghidra 12.1.4 acceptance
+[Actions #42757572628](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42757572628)
+at exact source commit `d71829b76e183c8d836331644ba3d40db6d0a87a`.
+The source-built VST3 was actually analyzed; its SHA-256, canonical REA
+Evidence ID, outer `rea-workflow` and upstream `ghidra` identities were
+validated. P74 [#42757572357](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42757572357)
+and P75 [#42757572362](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42757572362)
+also succeeded with native Windows VST3 positive and negative fixtures.
+
+P74/P75 collect these observations only under explicit per-run opt-in;
+default is `NOT RUN`. No licensed third-party ROMs, SF2s or native drivers
+were used. A successful REA observation is **not** verification of complete
+decompilation, original AWE32/EMU8000 semantics, acoustic fidelity,
+GUI functions, physical ASIO, commercial DAW, or product release readiness.
+See [P99 scope and execution](docs/P99-REA-BINARY-ANALYSIS.md).
+
 ## P98 — Universal audio-input topology and realtime evidence validity (merged to main)
 
 **The scoped P98 Test Lab host fix was merged to `main` via [PR #144](https://github.com/challanger2000/125A-Plugin-Test-Lab/pull/144), exact merge SHA `58dc3ba730bb6297ddf7636254d62d16d5bd7f9e`.** This is a stable technical QA-host correction, NOT a product release, FULL AUDIT, real DAW or physical ASIO certificate. The P25 native stress host previously passed no stereo input buffers for insert FX, producing 2,368 rejected callbacks while incorrectly reporting fast invalid calls as a realtime PASS. The fix supplies a real preallocated stereo input when the VST3 declares one, preserves the zero-input instrument path, and marks timing **NOT COVERED** if any process call fails. Other bus topologies remain unsupported and must not be silently called PASS.

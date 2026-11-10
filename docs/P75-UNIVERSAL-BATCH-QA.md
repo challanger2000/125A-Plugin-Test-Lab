@@ -1,5 +1,11 @@
 # P75 — Crash-isolated multi-VST3 batch QA
 
+**P99 opt-in:** Individual manifest entries may specify
+`"run_rea_analysis": true` when the caller supplies `--rea-node` and
+`--rea-entry`. A directory scan never enables REA automatically.
+Failure of one selected REA stage fails that plugin row without blocking
+subsequent plugins. See [P99](P99-REA-BINARY-ANALYSIS.md).
+
 P74 supplied one command per plugin. P75 runs the *same universal
 command* for a bounded set of Windows x64 VST3s and delivers one
 consolidated machine-readable report. The Test Lab core has no special
