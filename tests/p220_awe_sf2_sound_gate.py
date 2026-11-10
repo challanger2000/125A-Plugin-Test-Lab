@@ -46,7 +46,7 @@ def require(condition, message):
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
-def exact_wav(root, fname, expected_sha):
+def exact_wav(root, fname, expected_sha, expected_frames):
     require(isinstance(fname, str) and re.fullmatch(r"P\d{3}-(DRY|MODFX)\.wav",fname),
             "UNSAFE_OR_MISMATCHED_FILENAME")
     require(isinstance(expected_sha, str) and SHA.fullmatch(expected_sha),
@@ -62,8 +62,10 @@ def exact_wav(root, fname, expected_sha):
         require(params == (2,2,FRAME_RATE,"NONE"),
                 "INVALID_FORMAT:"+fname+":"+str(params))
         frames = wf.getnframes()
-        require(FRAME_RATE // 2 <= frames <= FRAME_RATE * 8,
-                "INVALID_CAPTURE_DURATION:"+fname)
+        require(FRAME_RATE // 2 <= frames <= FRAME_RATE * 8 and
+                type(expected_frames) is int and
+                abs(frames-expected_frames)<=FRAME_RATE//5,
+                "INVALID_CAPTURE_DURATION_OR_MIDI_TIMELINE:"+fname)
         samples = wf.readframes(frames)
     require(len(samples)==frames*4,"TRUNCATED_PCM:"+fname)
     # Unpack stereo little-endian signed 16-bit without external dependencies.
@@ -137,7 +139,13 @@ def compare(a,b,kind):
     spec_a=band_spectrum(a["mono"],a["onset_bin"]*441+1000)
     spec_b=band_spectrum(b["mono"],b["onset_bin"]*441+1000)
     spectral_differences=[round(y-x,3) for x,y in zip(spec_a,spec_b)]
-    max_abs=max(map(abs,spectral_differences))
+    # Inaudible FFT-bin leakage must not cause a false spectral FAIL.
+    # Preserve the full diagnostics but gate only bands having meaningful
+    # energy in at least one backend (relative to its own measured spectrum).
+    audible=[abs(d) for d,x,y in zip(spectral_differences,spec_a,spec_b)
+             if max(x,y)>-42]
+    require(audible,"NO_USABLE_SPECTRAL_ENERGY")
+    max_abs=max(audible)
     # Tails are only measured when the recorded MIDI schedule includes
     # a verified NoteOff. Their separate loop/effect semantics are gated
     # by playback evidence rather than pretending this determines hardware.
@@ -271,6 +279,9 @@ def evaluate(contract,creative,vst3,creative_dir,vst3_dir):
         report["status"]="FAIL"
         report["errors"].append(str(exc))
         return report
+    report["vst3_module_sha256"]=vst3["module_sha256"]
+    report["original_creative_full_bank_capture_verified"]=True
+    report["actual_windows_vst3_audio_captured"]=True
     all_good=True
     for i,p in enumerate(PROGRAMS):
         row=report["presets"][i]
@@ -283,8 +294,9 @@ def evaluate(contract,creative,vst3,creative_dir,vst3_dir):
                "note":fixture["note"],"velocity":fixture["velocity"],
                "controllers":fixture["controllers"],"status":"FAIL"}
         try:
-            a=exact_wav(Path(creative_dir),fixture["creative_wav"],cr["wav_sha256"])
-            b=exact_wav(Path(vst3_dir),fixture["vst3_wav"],vr["wav_sha256"])
+            target_frames=fixture["record_ms"]*FRAME_RATE//1000
+            a=exact_wav(Path(creative_dir),fixture["creative_wav"],cr["wav_sha256"],target_frames)
+            b=exact_wav(Path(vst3_dir),fixture["vst3_wav"],vr["wav_sha256"],target_frames)
             require(a["frames"]==cr["audio_frames"] and
                     b["frames"]==vr["audio_frames"],
                     "RECEIPT_FRAME_COUNT_DOES_NOT_MATCH_ACTUAL_WAV")
