@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="125A P106 Inert MSI Fixture" Manufacturer="125A QA Fixtures"
+           Version="1.0.0" UpgradeCode="{C695A417-E64D-4287-9F36-2EAFC5AB01A7}"
+           Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer fixture is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="P106TestInstallDir" Name="125A-P106-MSI-Only-Test">
+        <Component Id="P106TestComponent" Guid="{E8CEEC47-48DA-4ABA-9931-19A573E5C0A1}">
+          <File Id="P106TestPayload" Source="p106-msi-marker.txt" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Complete" Level="1" Title="P106 inert file">
+      <ComponentRef Id="P106TestComponent" />
+    </Feature>
+  </Package>
+</Wix>
