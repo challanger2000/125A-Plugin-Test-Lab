@@ -9,7 +9,7 @@ import tempfile
 import unittest
 import wave
 
-from run_external_daw_capture_check import run, digest, SCHEMA
+from run_external_daw_capture_check import run, digest, SCHEMA, _compare
 
 
 def save_wav(path, values, sample_rate=44100, channels=1):
@@ -159,6 +159,44 @@ class ExternalCaptureTests(unittest.TestCase):
                 c.pop(key)
                 with self.assertRaises(ValueError):
                     run(c,self.root/("missing_"+key))
+
+    def test_sample_exact_uses_unit_gain_and_keeps_legacy_behavior(self):
+        ref={"samples_by_channel":[self.samples,self.samples]}
+        changed={"samples_by_channel":[[x*.88 for x in self.samples]]*2}
+        self.assertTrue(_compare(ref,changed,0,.98)["matches_reference"])
+        strict=_compare(ref,changed,0,.98,sample_exact=True)
+        self.assertFalse(strict["matches_reference"])
+        self.assertFalse(strict["gain_normalized"])
+        self.assertGreater(strict["channel_results"][0]["max_absolute_error"],2/32768)
+
+    def test_sample_exact_two_lsb_budget_boundary(self):
+        ref={"samples_by_channel":[self.samples]}
+        for delta,expected in ((1/32768,True),(2/32768,True),(3/32768,False)):
+            # Binary fractions are exactly representable; this tests the
+            # declared boundary, not a platform-dependent decimal epsilon.
+            base=[round(x*32768)/32768 for x in self.samples]
+            actual=_compare({"samples_by_channel":[base]},
+                {"samples_by_channel":[[x+delta for x in base]]},0,.98,sample_exact=True)
+            self.assertEqual(actual["matches_reference"],expected)
+
+    def test_sample_exact_rejects_fault_between_legacy_stride_samples(self):
+        stream=self.samples*5
+        right=list(stream);right[-3]+=.1
+        ref={"samples_by_channel":[stream,stream]}
+        changed={"samples_by_channel":[stream,right]}
+        self.assertTrue(_compare(ref,changed,0,.98)["matches_reference"])
+        strict=_compare(ref,changed,0,.98,sample_exact=True)
+        self.assertFalse(strict["matches_reference"])
+        self.assertTrue(strict["channel_results"][0]["matches_reference"])
+        self.assertFalse(strict["channel_results"][1]["matches_reference"])
+        self.assertEqual(strict["compared_frames"],len(stream))
+
+    def test_sample_exact_refuses_lag_or_different_channel_window_sizes(self):
+        ref={"samples_by_channel":[self.samples,self.samples]}
+        for capture,lag in ((ref,1),({"samples_by_channel":[self.samples]},0),
+                            ({"samples_by_channel":[self.samples,self.samples[:-1]]},0)):
+            with self.assertRaises(ValueError):
+                _compare(ref,capture,lag,.98,sample_exact=True)
 
 
 if __name__ == "__main__":

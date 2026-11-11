@@ -12,6 +12,7 @@ import sys
 
 from run_external_daw_capture_check import run as compare_external_capture
 from p220_awe_sf2_sound_gate import COMPARISON_VERSION as P220_COMPARISON_VERSION
+from p220_awe_sf2_sound_gate import DRY_VERSION
 
 SCHEMA = "125a-p89-unified-qa-review-v1"
 BATCH_SCHEMA = "125a-vst3-batch-report-v1"
@@ -62,6 +63,46 @@ def awe77_sound_report(evidence, module_sha):
             return "FAIL"
         if any(item["detail_gates"][g].get("status")!="PASS" for g in expected_gates):
             return "FAIL"
+    dry=evidence.get("sample_exact_dry",{})
+    if (not isinstance(dry,dict) or dry.get("comparison_version")!=DRY_VERSION or
+            dry.get("status")!="PASS" or dry.get("release_approved") is not False or
+            dry.get("bank_sha256")!=P220_SHA or dry.get("vst3_module_sha256")!=module_sha or
+            not SHA.fullmatch(str(dry.get("rom_sha256",""))) or dry.get("sample_rate")!=44100):
+        return "BLOCKED"
+    cases=dry.get("cases",[])
+    if (not isinstance(cases,list) or len(cases)!=77 or
+            [c.get("id") for c in cases if isinstance(c,dict)]!=[f"P{p:03d}-DRY" for p in expected]):
+        return "FAIL"
+    for case in cases:
+        observations=case.get("observations",[])
+        if (case.get("comparison_version")!=DRY_VERSION or case.get("status")!="PASS" or
+                case.get("comparison_status")!="PASS" or
+                case.get("source_scope")!="SUPPLIED_REAL_CAPTURE_RECEIPTS" or
+                not isinstance(observations,list) or len(observations)!=2 or
+                any(not isinstance(o,dict) or o.get("synthetic") is not False or
+                    o.get("all_32_voice_sends_zero") is not True or
+                    o.get("complete_send_write_history") is not True or
+                    o.get("gui_controller_processor_zero") is not True or
+                    o.get("rom_sha256")!=dry["rom_sha256"] or o.get("bank_sha256")!=P220_SHA or
+                    o.get("sample_rate")!=44100 for o in observations)):
+            return "FAIL"
+        if any(observations[0].get(k)!=observations[1].get(k) for k in
+               ("window_frames","note_on_frame_in_window","note_off_frame_in_window")):
+            return "FAIL"
+        for key in ("window_comparison","release_comparison"):
+            pcm=case.get(key,{})
+            signed=pcm.get("stereo_comparison",{}).get("signed_pcm",{}) if isinstance(pcm,dict) else {}
+            channels=pcm.get("channel_results",[]) if isinstance(pcm,dict) else []
+            if (not isinstance(pcm,dict) or pcm.get("status")!="PASS" or
+                    pcm.get("sample_exact") is not True or pcm.get("gain_normalized") is not False or
+                    signed.get("lag_frames")!=0 or signed.get("status")!="PASS" or
+                    signed.get("sample_exact") is not True or signed.get("gain_normalized") is not False or
+                    signed.get("compared_frames")!=pcm.get("measured_audio_frames") or
+                    not isinstance(channels,list) or len(channels)!=2 or
+                    [c.get("channel") for c in channels if isinstance(c,dict)]!=[1,2] or
+                    any(c.get("status")!="PASS" or type(c.get("max_absolute_sample_error")) not in (int,float) or
+                        not 0<=c["max_absolute_sample_error"]<=2/32768 for c in channels)):
+                return "FAIL"
     return "PASS"
 
 

@@ -97,5 +97,57 @@ class SoundReleaseIntegration(unittest.TestCase):
         self.assertEqual(r["plugins"][0]["required_awe_77_sonic_gate"],"NOT APPLICABLE")
         self.assertEqual(r["status"],"RECONCILED_REPORT_COMPLETE")
 
+    def test_complete_cached_stereo_screen_without_dry_events_is_blocked(self):
+        # Deliberately constructed REPORT-PARSER fixture, not capture proof.
+        # Unlike the old empty-list mutant, this passes every old stereo-v2
+        # field check and must still be stopped by the new mandatory dry gate.
+        from p220_awe_sf2_sound_gate import BANK_SHA,PROGRAMS,COMPARISON_VERSION
+        case={"status":"PASS","audio_comparison_version":COMPARISON_VERSION,
+              "channel_results":[{"channel":i,"status":"PASS"} for i in (1,2)],
+              "stereo_comparison":{"status":"PASS","signed_pcm":{"status":"PASS"}}}
+        gates={k:{"status":"PASS"} for k in ("amplitude_adsr","filter_sweeps","loop_seams",
+                "dry_wet_reverb_chorus","program_recall_and_reload")}
+        cached={"schema":"125a-testlab-awe-sf2-77-sonic-gate-v1",
+                "audio_comparison_version":COMPARISON_VERSION,"status":"PASS",
+                "private_sf2_sha256":BANK_SHA,"vst3_module_sha256":"c"*64,
+                "original_creative_full_bank_capture_verified":True,"actual_windows_vst3_audio_captured":True,
+                "passed_presets":77,"passed_scenarios":154,"failed_scenarios":0,"release_approved":False,
+                "presets":[{"program":p,"status":"PASS","scenario_results":[copy.deepcopy(case),copy.deepcopy(case)],
+                            "detail_gates":copy.deepcopy(gates)} for p in PROGRAMS]}
+        self.assertEqual(awe77_sound_report(cached,"c"*64),"BLOCKED")
+        cached["sample_exact_dry"]={"status":"PASS"}  # No raw/numeric/event evidence.
+        self.assertEqual(awe77_sound_report(cached,"c"*64),"BLOCKED")
+
+    def test_full_gate_routes_dry_through_event_windows_without_legacy_block_crop(self):
+        # A ROUTING unit test, separate from the actual-WAV dry regressions.
+        # Validated dry captures may contain explicit pre/post DSP padding.
+        # The legacy whole-file reader must never replace their exact window.
+        from unittest.mock import patch
+        import p220_awe_sf2_sound_gate as gate
+        from test_p220_awe_sf2_sound_gate import base
+        contract,creative,vst=base();contract["sample_exact_dry"]={"routing_fixture":True}
+        for f in contract["scenarios"]:
+            common={k:f[k] for k in ("id","program","note","velocity","controllers")}
+            common.update(note_off_observed=True,audio_frames=132300)
+            creative["trials"].append({**common,"wav_sha256":"a"*64,
+                "creative_program_change_delivered":True,"original_emu8000_voice_write_delta":1,
+                "sf2_bank_program_selected":f["program"],"original_sample_start_register_written":True})
+            vst["trials"].append({**common,"wav_sha256":"b"*64,"vst3_program_selected":f["program"],
+                "vst3_note_on_count":1,"vst3_bank_selection_acknowledged":True})
+        dry={"status":"BLOCKED","cases":[{"id":f"P{p:03d}-DRY","status":"BLOCKED",
+            "window_comparison":{"status":"PASS","measured_audio_frames":132300}}
+            for p in gate.PROGRAMS]}
+        def wet_reader(root,name,sha,frames):
+            self.assertTrue(name.endswith("-MODFX.wav"),"DRY raw block padding reached legacy crop")
+            return {"sha256":sha,"frames":frames}
+        with patch.object(gate,"evaluate_dry",return_value=dry), \
+                patch.object(gate,"exact_wav",side_effect=wet_reader) as reader, \
+                patch.object(gate,"compare",return_value={"status":"PASS"}):
+            result=gate.evaluate(contract,creative,vst,self.root,self.root)
+        self.assertEqual(reader.call_count,154)  # Only 77 wet pairs, two files each.
+        self.assertEqual(result["status"],"BLOCKED")
+        self.assertTrue(all(p["scenario_results"][0]["sample_exact_dry"]["status"]=="BLOCKED"
+                            for p in result["presets"]))
+
 if __name__=="__main__":
     unittest.main()

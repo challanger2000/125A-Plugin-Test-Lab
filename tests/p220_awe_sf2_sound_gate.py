@@ -22,6 +22,9 @@ from run_external_daw_capture_check import _compare as compare_existing_pcm
 SCHEMA = "125a-awe-sf2-77-audio-contract-v1"
 RESULT_SCHEMA = "125a-testlab-awe-sf2-77-sonic-gate-v1"
 COMPARISON_VERSION = "p220-stereo-v2"
+DRY_VERSION = "p220-sample-exact-dry-v1"
+DRY_SCHEMA = "125a-p220-sample-exact-dry-contract-v1"
+TRACE_SCHEMA = "125a-p220-midi-register-sample-trace-v1"
 BANK_SHA = "d5b99ec38fddf59f53f66b90921e170d207bf3bbd73960f6e4175c39ef68349b"
 VXD_SHA = "d343f2428ab3e593c9e42a668cf521b7801e1239792eaf7f2b11b5f179bc7c9a"
 PROGRAMS = tuple(p for p in range(78) if p != 63)
@@ -72,7 +75,7 @@ def exact_wav(root, fname, expected_sha, expected_frames):
         frames = wf.getnframes()
         require(FRAME_RATE // 2 <= frames <= FRAME_RATE * 8 and
                 type(expected_frames) is int and
-                abs(frames-expected_frames)<=FRAME_RATE//5,
+                frames==expected_frames,
                 "INVALID_CAPTURE_DURATION_OR_MIDI_TIMELINE:"+fname)
         samples = wf.readframes(frames)
     require(len(samples)==frames*4,"TRUNCATED_PCM:"+fname)
@@ -130,7 +133,7 @@ def corr(a,b):
 def signal_rms(samples):
     return math.sqrt(sum(v*v for v in samples)/len(samples))
 
-def channel_comparison(a,b,channel):
+def channel_comparison(a,b,channel,*,full_window=False):
     ra,rb=signal_rms(a),signal_rms(b)
     pa,pb=max(abs(v) for v in a),max(abs(v) for v in b)
     row={"channel":channel,"reference_rms":ra,"capture_rms":rb,
@@ -142,7 +145,8 @@ def channel_comparison(a,b,channel):
                    activity="QUIET_IN_BOTH" if max(ra,rb)<MIN_RMS else "CHANNEL_ACTIVITY_MISMATCH")
         return row
     gain_db=20*math.log10(rb/ra);peak_db=20*math.log10(pb/pa)
-    env=lambda s:[signal_rms(s[i:i+441]) for i in range(0,min(len(s),441*150)-440,441)]
+    env=lambda s:[signal_rms(s[i:i+441]) for i in range(
+        0,(len(s) if full_window else min(len(s),441*150))-440,441)]
     ea,eb=env(a),env(b)
     envelope_corr=corr(ea,eb)
     # A flat, matching envelope is a valid steady tone, not an undefined
@@ -173,24 +177,35 @@ def stereo_structure(channels):
             "mid_rms":math.sqrt(mid/len(left)),"side_rms":math.sqrt(side/len(left)),
             "side_energy_fraction":side/(mid+side) if mid+side>0 else 0.}
 
-def compare(a,b,kind):
-    lag_ms=abs(a["onset_bin"]-b["onset_bin"])*10
-    require(lag_ms<=ONSET_LAG_MAX_MS,"UNBOUNDED_CAPTURE_ONSET_LAG")
-    frames=min(a["frames"]-a["onset_bin"]*441,
-               b["frames"]-b["onset_bin"]*441,FRAME_RATE*2)
+def compare(a,b,kind,*,sample_exact=False,allow_silent=False):
+    if sample_exact:
+        require(a["frames"]==b["frames"],"DRY_WINDOW_LENGTH_MISMATCH")
+        frames=a["frames"];lag_ms=0
+        aa=a["channels"];bb=b["channels"]
+    else:
+        lag_ms=abs(a["onset_bin"]-b["onset_bin"])*10
+        require(lag_ms<=ONSET_LAG_MAX_MS,"UNBOUNDED_CAPTURE_ONSET_LAG")
+        frames=min(a["frames"]-a["onset_bin"]*441,
+                   b["frames"]-b["onset_bin"]*441,FRAME_RATE*2)
+        aa=[s[a["onset_bin"]*441:a["onset_bin"]*441+frames] for s in a["channels"]]
+        bb=[s[b["onset_bin"]*441:b["onset_bin"]*441+frames] for s in b["channels"]]
     require(frames>=FRAME_RATE//2,"INSUFFICIENT_ACTIVE_PCM")
-    aa=[s[a["onset_bin"]*441:a["onset_bin"]*441+frames] for s in a["channels"]]
-    bb=[s[b["onset_bin"]*441:b["onset_bin"]*441+frames] for s in b["channels"]]
     active=[i for i,s in enumerate(aa) if signal_rms(s)>=MIN_RMS]
-    require(active,"NO_PLAYABLE_NOTE_AUDIO")
+    require(active or (sample_exact and allow_silent),"NO_PLAYABLE_NOTE_AUDIO")
     # Reuse the existing P90 signed PCM oracle. It estimates one common
     # lag and requires every active channel to agree at that SAME lag.
     # Positive gain and residual checks detect polarity/delay faults even
     # when channel spectra and RMS magnitudes alone are unchanged.
     try:
-        pcm=compare_existing_pcm({"samples_by_channel":[aa[i] for i in active]},
-            {"samples_by_channel":[bb[i] for i in active]},
-            PCM_FINE_LAG_MAX_FRAMES,PCM_CORRELATION_MIN)
+        if active:
+            pcm=compare_existing_pcm({"samples_by_channel":[aa[i] for i in active]},
+                {"samples_by_channel":[bb[i] for i in active]},
+                0 if sample_exact else PCM_FINE_LAG_MAX_FRAMES,PCM_CORRELATION_MIN,
+                sample_exact=sample_exact)
+        else:
+            pcm={"matches_reference":True,"lag_frames":0,"channel_results":[],
+                 "compared_frames":frames,"sample_exact":True,"gain_normalized":False,
+                 "activity":"QUIET_REFERENCE_RELEASE"}
         pcm["status"]="PASS" if pcm["matches_reference"] else "FAIL"
         for row,index in zip(pcm["channel_results"],active):row["channel"]=index+1
     except ValueError as exc:
@@ -200,7 +215,13 @@ def compare(a,b,kind):
     frames-=abs(offset)
     aa=[s[start_a:start_a+frames] for s in aa]
     bb=[s[start_b:start_b+frames] for s in bb]
-    channels=[channel_comparison(x,y,i+1) for i,(x,y) in enumerate(zip(aa,bb))]
+    channels=[channel_comparison(x,y,i+1,full_window=sample_exact)
+              for i,(x,y) in enumerate(zip(aa,bb))]
+    if sample_exact:
+        for row,x,y in zip(channels,aa,bb):
+            row["max_absolute_sample_error"]=max(abs(u-v) for u,v in zip(x,y))
+            if row["max_absolute_sample_error"]>2/32768.0:
+                row["status"]="FAIL"
     sa,sb=stereo_structure(aa),stereo_structure(bb)
     correlation_delta=(abs(sa["lr_correlation"]-sb["lr_correlation"])
         if all(x.get("activity")=="ACTIVE" for x in channels) else None)
@@ -211,14 +232,16 @@ def compare(a,b,kind):
         side_delta<=SIDE_ENERGY_FRACTION_DELTA_MAX)
     energy_a=math.sqrt(sum(x["reference_rms"]**2 for x in channels)/2)
     energy_b=math.sqrt(sum(x["capture_rms"]**2 for x in channels)/2)
-    require(min(energy_a,energy_b)>=MIN_RMS,"NO_PLAYABLE_NOTE_AUDIO")
+    require(min(energy_a,energy_b)>=MIN_RMS or
+            (sample_exact and allow_silent),"NO_PLAYABLE_NOTE_AUDIO")
     active_rows=[x for x in channels if x.get("activity")=="ACTIVE"]
     max_spec=max((x["max_abs_spectral_difference_db"] for x in active_rows),default=0.)
     worst_bands=[max((x["spectral_difference_db_8_centers"][i] for x in active_rows),
                      key=abs,default=0.) for i in range(8)]
     return {"status":"PASS" if stereo_pass else "FAIL",
         "audio_comparison_version":COMPARISON_VERSION,
-        "rms_level_native_minus_creative_db":round(20*math.log10(energy_b/energy_a),3),
+        "rms_level_native_minus_creative_db":round(20*math.log10(energy_b/energy_a),3)
+            if min(energy_a,energy_b)>0 else None,
         "log_envelope_correlation":round(min((x["log_envelope_correlation"] for x in active_rows),default=0.),5),
         "onset_lag_ms":lag_ms,"channel_results":channels,
         "stereo_comparison":{"status":"PASS" if stereo_pass else "FAIL",
@@ -228,6 +251,7 @@ def compare(a,b,kind):
         "max_abs_spectral_difference_db":round(max_spec,3),
         "center_frequencies_hz":[110,220,440,880,1760,3520,7040,11000],
         "measured_audio_frames":frames,
+        "sample_exact":sample_exact,"gain_normalized":False if sample_exact else None,
         "scope":"emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"}
 
 def load_json(path):
@@ -236,6 +260,242 @@ def load_json(path):
     path=Path(path)
     require(0 < path.stat().st_size <= MAX_BYTES,"MISSING_OR_OVERSIZED_JSON:"+path.name)
     return json.loads(path.read_text(encoding="utf-8"))
+
+def dry_integer(value, minimum, maximum, label):
+    require(type(value) is int and minimum<=value<=maximum,"DRY_INVALID_"+label)
+    return value
+
+def dry_trace(spec,fixture,receipt,root,backend,*,allow_synthetic=False):
+    """Validate supplied raw observations, not attest who actually recorded them.
+
+    The independently approved contract pins BOTH WAV and event-file hashes.
+    Native diagnostics and synthetic fixtures cannot become real capture proof.
+    """
+    label=fixture["id"]
+    require(spec.get("schema")==DRY_SCHEMA,"MISSING_SAMPLE_EXACT_DRY_CONTRACT")
+    require(SHA.fullmatch(str(spec.get("rom_sha256",""))) and
+            spec.get("bank_sha256")==BANK_SHA and
+            spec.get("sample_rate")==FRAME_RATE and
+            spec.get("channels")==["L","R"],"DRY_SOURCE_IDENTITY_CONTRACT")
+    pre=dry_integer(spec.get("pre_note_frames"),441,FRAME_RATE,"PRE_NOTE_FRAMES")
+    duration=dry_integer(spec.get("note_length_frames"),1,FRAME_RATE*4,"NOTE_LENGTH")
+    count=dry_integer(spec.get("window_frames"),FRAME_RATE,FRAME_RATE*8,"WINDOW_FRAMES")
+    require(duration==fixture["note_off_ms"]*FRAME_RATE//1000 and
+            count==fixture["record_ms"]*FRAME_RATE//1000 and
+            count-pre-duration>=FRAME_RATE//2,"DRY_APPROVED_EVENT_WINDOW")
+    pin=spec.get("captures",{}).get(label,{}).get(backend,{})
+    name=label+".events.json"
+    require(receipt.get("event_trace")==name and
+            SHA.fullmatch(str(pin.get("trace_sha256",""))) and
+            receipt.get("event_trace_sha256")==pin["trace_sha256"] and
+            receipt.get("wav_sha256")==pin.get("wav_sha256"),"DRY_UNPINNED_WAV_OR_EVENT_TRACE")
+    path=Path(root)/name
+    require(path.is_file() and 0<path.stat().st_size<=MAX_BYTES,"DRY_MISSING_EVENT_TRACE")
+    raw=path.read_bytes()
+    require(sha256(raw)==pin["trace_sha256"],"DRY_STALE_EVENT_TRACE_SHA")
+    trace=json.loads(raw.decode("utf-8"))
+    require(isinstance(trace,dict) and trace.get("schema")==TRACE_SCHEMA and
+            trace.get("backend")==backend,"DRY_INVALID_EVENT_TRACE_SCHEMA")
+    kind=trace.get("capture_kind")
+    expected_kind=("ORIGINAL_CREATIVE_86BOX" if backend=="creative" else
+                   spec.get("vst3_capture_kind"))
+    allowed=(kind==expected_kind and expected_kind in
+             ("ORIGINAL_CREATIVE_86BOX","WINDOWS_VST3","WINDOWS_DAW_VST3"))
+    synthetic=kind=="SYNTHETIC_FIXTURE"
+    require(allowed or (allow_synthetic and synthetic),"DRY_NON_REAL_CAPTURE:"+str(kind))
+    tap=("86box_emu8000_stereo_output" if backend=="creative" else
+         "windows_daw_post_plugin_output" if expected_kind=="WINDOWS_DAW_VST3" else
+         "windows_vst3_process_output")
+    require(trace.get("audio_tap")==tap and trace.get("channel_map")==["L","R"],
+            "DRY_WRONG_AUDIO_TAP_OR_CHANNEL_MAP")
+    require(trace.get("rom_sha256")==spec["rom_sha256"] and
+            trace.get("bank_sha256")==BANK_SHA and
+            trace.get("sample_rate")==FRAME_RATE and
+            trace.get("wav_sha256")==pin.get("wav_sha256") and
+            trace.get("program")==fixture["program"] and
+            trace.get("bank")==fixture["user_bank"] and
+            trace.get("channel")==fixture["channel"] and
+            trace.get("note")==fixture["note"] and
+            trace.get("velocity")==fixture["velocity"],"DRY_CAPTURE_IDENTITY_MISMATCH")
+    identity="driver_sha256" if backend=="creative" else "module_sha256"
+    approved=VXD_SHA if backend=="creative" else spec.get("vst3_module_sha256")
+    require(SHA.fullmatch(str(approved)) and trace.get(identity)==approved,
+            "DRY_WRONG_DRIVER_OR_VST3_MODULE")
+    if expected_kind=="WINDOWS_DAW_VST3":
+        daw=trace.get("daw_session",{})
+        require(all(isinstance(daw.get(k),str) and daw[k].strip() for k in ("name","version")) and
+                daw.get("insert_effect_count")==0 and daw.get("track_gain_db")==0 and
+                daw.get("master_gain_db")==0 and daw.get("normalized") is False,
+                "DRY_DAW_SIGNAL_CHAIN_NOT_NEUTRAL")
+    frames=dry_integer(trace.get("audio_frames"),FRAME_RATE//2,FRAME_RATE*8,"AUDIO_FRAMES")
+    require(receipt.get("audio_frames")==frames,"DRY_RECEIPT_FRAME_COUNT")
+    blocks=trace.get("process_blocks")
+    require(isinstance(blocks,list) and 0<len(blocks)<=32768,"DRY_MISSING_PROCESS_BLOCKS")
+    cursor=0;starts={}
+    for block in blocks:
+        require(isinstance(block,dict) and block.get("start_frame")==cursor,
+                "DRY_PROCESS_BLOCK_GAP_OR_OVERLAP")
+        length=dry_integer(block.get("frames"),1,8192,"PROCESS_BLOCK_LENGTH")
+        starts[cursor]=length;cursor+=length
+    require(cursor==frames,"DRY_PROCESS_BLOCKS_DO_NOT_COVER_PCM")
+    events=trace.get("midi_events")
+    require(isinstance(events,list) and len(events)==3,"DRY_UNEXPECTED_MIDI_EVENTS")
+    for index,(event,event_kind) in enumerate(zip(events,("bank_program","note_on","note_off"))):
+        require(isinstance(event,dict) and event.get("kind")==event_kind and
+                event.get("sequence")==index and event.get("channel")==fixture["channel"],
+                "DRY_MIDI_EVENT_IDENTITY")
+        start=event.get("block_start");offset=event.get("sample_offset")
+        require(type(start) is int and start in starts and type(offset) is int and
+                0<=offset<starts[start] and event.get("frame")==start+offset,
+                "DRY_MIDI_SAMPLE_OFFSET_NOT_ACTUAL_BLOCK_EVENT")
+        if index==0:
+            require(event.get("bank")==fixture["user_bank"] and
+                    event.get("program")==fixture["program"],"DRY_MIDI_BANK_PROGRAM")
+        else:
+            require(event.get("note")==fixture["note"] and
+                    event.get("velocity")== (fixture["velocity"] if index==1 else 0),
+                    "DRY_MIDI_NOTE_OR_VELOCITY")
+    require(events[0]["frame"]<=events[1]["frame"] and
+            events[2]["frame"]-events[1]["frame"]==duration,"DRY_MIDI_NOTE_OFF_SHIFT")
+    samples=trace.get("sample_events")
+    require(isinstance(samples,list) and len(samples)==2,"DRY_MISSING_SAMPLE_BOUNDARIES")
+    clock_offset=dry_integer(pin.get("sample_to_audio_offset_frames"),-FRAME_RATE,FRAME_RATE,"CLOCK_OFFSET")
+    for index,(event,event_kind) in enumerate(zip(samples,("voice_start","voice_release")),1):
+        require(isinstance(event,dict) and event.get("kind")==event_kind and
+                event.get("midi_sequence")==index,"DRY_SAMPLE_EVENT_TRIGGER")
+        counter=dry_integer(event.get("sample_counter"),0,2**53,"SAMPLE_COUNTER")
+        frame=dry_integer(event.get("frame"),0,frames-1,"SAMPLE_FRAME")
+        latency=dry_integer(pin.get("midi_to_sample_"+("on" if index==1 else "off")+"_frames"),
+                            0,FRAME_RATE,"MIDI_TO_SAMPLE_LATENCY")
+        require(frame==counter+clock_offset and frame==events[index]["frame"]+latency,
+                "DRY_UNPROVED_MIDI_REGISTER_SAMPLE_ALIGNMENT")
+    onset,off=[x["frame"] for x in samples]
+    require(off-onset==duration,"DRY_REGISTER_NOTE_OFF_SHIFT")
+    voices=trace.get("voices")
+    require(isinstance(voices,list) and 1<=len(voices)<=32 and
+            all(type(v) is int and 0<=v<32 for v in voices) and len(set(voices))==len(voices),
+            "DRY_INVALID_ACTIVE_VOICES")
+    registers=trace.get("register_events")
+    expected={(voice,kind,index,frame) for voice in voices
+              for kind,index,frame in (("voice_start",1,onset),("voice_release",2,off))}
+    require(isinstance(registers,list) and len(registers)==len(expected) and
+            all(isinstance(r,dict) for r in registers) and
+            {(r.get("voice"),r.get("kind"),r.get("midi_sequence"),r.get("frame")) for r in registers}==expected,
+            "DRY_MISSING_OR_SHIFTED_REGISTER_EVENTS")
+    window=trace.get("window",{})
+    start=onset-pre
+    require(start>=0 and window.get("start_frame")==start and window.get("frames")==count and
+            start+count<=frames and window.get("discarded_prefix_frames")==start and
+            window.get("discarded_suffix_frames")==frames-start-count,
+            "DRY_WINDOW_NOT_EXACT_EVENT_BOUNDED")
+    fx=trace.get("effects",{})
+    require(isinstance(fx,dict) and fx.get("requested_percent")=={"reverb":0,"chorus":0} and
+            fx.get("control_origin")== ("CREATIVE_CONTROL" if backend=="creative" else "PLUGIN_GUI") and
+            fx.get("observed_start_frame")==0 and fx.get("observed_frames")==frames and
+            fx.get("complete_write_history") is True,"DRY_EFFECT_CONTROL_OR_OBSERVATION_MISSING")
+    controls=fx.get("control_events")
+    require(isinstance(controls,list) and 2<=len(controls)<=128 and
+            all(isinstance(e,dict) for e in controls) and
+            {e.get("control") for e in controls}=={"reverb","chorus"},
+            "DRY_MISSING_GUI_TO_PROCESSOR_OBSERVATIONS")
+    for control in controls:
+        require(control.get("origin")==fx["control_origin"] and
+                type(control.get("frame")) is int and 0<=control["frame"]<=onset and
+                all(type(control.get(k)) in (int,float) and control[k]==0 for k in
+                    ("display_percent","controller_value","processor_value")),
+                "DRY_GUI_CONTROLLER_PROCESSOR_ZERO_MISMATCH")
+    for field in ("initial_voice_sends","final_voice_sends"):
+        sends=fx.get(field)
+        require(isinstance(sends,list) and len(sends)==32 and
+                all(isinstance(v,dict) for v in sends) and
+                [v.get("voice") for v in sends]==list(range(32)) and
+                all(type(v.get(k)) is int and v[k]==0 for v in sends for k in ("reverb","chorus")),
+                "DRY_NONZERO_OR_UNOBSERVED_HARDWARE_SENDS")
+    writes=fx.get("send_writes")
+    require(isinstance(writes,list) and len(writes)<=32768,"DRY_MISSING_SEND_WRITE_HISTORY")
+    for write in writes:
+        require(isinstance(write,dict) and type(write.get("frame")) is int and
+                0<=write["frame"]<frames and type(write.get("voice")) is int and
+                0<=write["voice"]<32 and
+                all(type(write.get(k)) is int and write[k]==0 for k in ("reverb","chorus")),
+                "DRY_ACTIVE_EFFECT_SEND_WRITE")
+    require(fx.get("return_mute")=={"reverb":True,"chorus":True},"DRY_EFFECT_RETURN_NOT_MUTED")
+    wav=exact_wav(Path(root),fixture[backend+"_wav"],pin["wav_sha256"],frames)
+    return wav,trace,{"capture_kind":kind,"audio_tap":tap,"trace_sha256":pin["trace_sha256"],
+                      "wav_sha256":pin["wav_sha256"],"window_start":start,"window_frames":count,
+                      "discarded_prefix_frames":start,"discarded_suffix_frames":frames-start-count,
+                      "note_on_frame_in_window":pre,"note_off_frame_in_window":pre+duration,
+                      "all_32_voice_sends_zero":True,"complete_send_write_history":True,
+                      "gui_controller_processor_zero":True,
+                      "rom_sha256":trace["rom_sha256"],"bank_sha256":trace["bank_sha256"],
+                      "sample_rate":FRAME_RATE,
+                      "synthetic":synthetic}
+
+def dry_compare(spec,fixture,cr,vr,creative_dir,vst3_dir,*,allow_synthetic=False):
+    result={"id":fixture["id"],"comparison_version":DRY_VERSION,"status":"BLOCKED",
+            "comparison_status":"NOT RUN","release_approved":False,
+            "provenance":"HASH_PINNED_SUPPLIED_OBSERVATIONS_NOT_INDEPENDENT_CAPTURE_ATTESTATION"}
+    try:
+        require(fixture.get("variant")=="DRY","NOT_A_DRY_SCENARIO")
+        decoded=[];observations=[]
+        for receipt,root,backend in ((cr,creative_dir,"creative"),(vr,vst3_dir,"vst3")):
+            wav,trace,observed=dry_trace(spec,fixture,receipt,root,backend,allow_synthetic=allow_synthetic)
+            observed["backend"]=backend;observations.append(observed)
+            start=observed["window_start"];count=observed["window_frames"]
+            window=[s[start:start+count] for s in wav["channels"]]
+            require(max(abs(v) for ch in window for v in ch[:spec["pre_note_frames"]])<=2/32768.0,
+                    "DRY_AUDIO_BEFORE_ACTUAL_NOTE_ON")
+            decoded.append({"frames":count,"channels":window})
+        result["observations"]=observations
+        require(observations[0]["wav_sha256"]!=observations[1]["wav_sha256"],
+                "SAME_WAV_BYTES_REUSED_AS_INDEPENDENT_CREATIVE_AND_VST3")
+        result["window_comparison"]=compare(*decoded,"DRY",sample_exact=True)
+        release_start=spec["pre_note_frames"]+spec["note_length_frames"]
+        release=[{"frames":d["frames"]-release_start,
+                  "channels":[s[release_start:] for s in d["channels"]]} for d in decoded]
+        result["release_comparison"]=compare(*release,"DRY",sample_exact=True,allow_silent=True)
+        ok=all(result[k]["status"]=="PASS" for k in ("window_comparison","release_comparison"))
+        result["comparison_status"]="PASS" if ok else "FAIL"
+        synthetic=any(x["synthetic"] for x in observations)
+        result["source_scope"]="SYNTHETIC_FIXTURE_ONLY" if synthetic else "SUPPLIED_REAL_CAPTURE_RECEIPTS"
+        result["status"]=("BLOCKED" if synthetic else "PASS") if ok else "FAIL"
+    except (EvidenceError,ValueError,KeyError,TypeError,OSError,EOFError,wave.Error,OverflowError) as exc:
+        result["reason"]=str(exc)
+        result["status"]="BLOCKED" if str(exc).startswith(("MISSING_","DRY_MISSING_","DRY_NON_REAL_CAPTURE")) else "FAIL"
+        result["comparison_status"]="NOT RUN"
+    return result
+
+def evaluate_dry(contract,creative,vst3,creative_dir,vst3_dir):
+    scenarios=[x for x in validate_contract(contract) if x["variant"]=="DRY"]
+    report={"schema":"125a-p220-sample-exact-dry-result-v1","comparison_version":DRY_VERSION,
+            "status":"BLOCKED","release_approved":False,"expected_cases":77,"passed_cases":0,
+            "cases":[{"id":x["id"],"status":"BLOCKED","comparison_status":"NOT RUN",
+                      "reason":"NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"} for x in scenarios],
+            "capture_producer_execution":"NOT RUN_BY_THIS_COMPARATOR",
+            "physical_awe64":"NOT RUN","daw_asio_verification":"NOT RUN"}
+    spec=contract.get("sample_exact_dry")
+    if not isinstance(spec,dict) or creative is None or vst3 is None:
+        report["reason"]="MISSING_SAMPLE_EXACT_DRY_CONTRACT_OR_REAL_CAPTURES"
+        return report
+    report.update(rom_sha256=spec.get("rom_sha256"),bank_sha256=spec.get("bank_sha256"),
+                  vst3_module_sha256=spec.get("vst3_module_sha256"),sample_rate=spec.get("sample_rate"))
+    try:
+        require(set(spec.get("captures",{}))=={x["id"] for x in scenarios},"DRY_NOT_EXACTLY_77_CAPTURE_PAIRS")
+        sources=[]
+        for source in (creative,vst3):
+            require(isinstance(source,dict),"DRY_INVALID_RECEIPTS")
+            selected=[x for x in source.get("trials",[]) if isinstance(x,dict) and x.get("id") in spec["captures"]]
+            sources.append({**source,"trials":selected})
+        check_provenance(*sources,scenarios)
+        require(vst3.get("module_sha256")==spec.get("vst3_module_sha256"),"DRY_MODULE_RECEIPT_MISMATCH")
+        report["cases"]=[dry_compare(spec,f,cr,vr,creative_dir,vst3_dir)
+                         for f,cr,vr in zip(scenarios,sources[0]["trials"],sources[1]["trials"])]
+        report["status"]=("PASS" if all(x["status"]=="PASS" for x in report["cases"]) else
+                          "FAIL" if any(x["status"]=="FAIL" for x in report["cases"]) else "BLOCKED")
+        report["passed_cases"]=sum(x["status"]=="PASS" for x in report["cases"])
+    except (EvidenceError,ValueError,TypeError,KeyError) as exc:
+        report.update(status="FAIL",reason=str(exc))
+    return report
 
 def validate_contract(c):
     require(isinstance(c,dict) and c.get("schema")==SCHEMA,"MISSING_APPROVED_CAPTURE_CONTRACT")
@@ -351,6 +611,8 @@ def evaluate(contract,creative,vst3,creative_dir,vst3_dir):
     report["vst3_module_sha256"]=vst3["module_sha256"]
     report["original_creative_full_bank_capture_verified"]=True
     report["actual_windows_vst3_audio_captured"]=True
+    dry_report=evaluate_dry(contract,creative,vst3,creative_dir,vst3_dir)
+    dry_by_id={x["id"]:x for x in dry_report["cases"]}
     all_good=True
     for i,p in enumerate(PROGRAMS):
         row=report["presets"][i]
@@ -363,22 +625,34 @@ def evaluate(contract,creative,vst3,creative_dir,vst3_dir):
                "note":fixture["note"],"velocity":fixture["velocity"],
                "controllers":fixture["controllers"],"status":"FAIL"}
         try:
-            target_frames=fixture["record_ms"]*FRAME_RATE//1000
-            a=exact_wav(Path(creative_dir),fixture["creative_wav"],cr["wav_sha256"],target_frames)
-            b=exact_wav(Path(vst3_dir),fixture["vst3_wav"],vr["wav_sha256"],target_frames)
-            require(a["frames"]==cr["audio_frames"] and
-                    b["frames"]==vr["audio_frames"],
-                    "RECEIPT_FRAME_COUNT_DOES_NOT_MATCH_ACTUAL_WAV")
-            require(a["sha256"]!=b["sha256"],
-                    "SAME_WAV_BYTES_REUSED_AS_INDEPENDENT_CREATIVE_AND_VST3")
-            entry.update(compare(a,b,fixture["variant"]))
-            entry["creative_wav_sha256"]=a["sha256"]
-            entry["vst3_wav_sha256"]=b["sha256"]
+            if fixture["variant"]=="DRY" and isinstance(contract.get("sample_exact_dry"),dict):
+                dry=dry_by_id[fixture["id"]]
+                entry.update(dry.get("window_comparison",{}))
+                entry.update(status=dry["status"],sample_exact_dry={
+                    "id":fixture["id"],"status":dry["status"],"comparison_version":DRY_VERSION,
+                    "detail_location":"sample_exact_dry.cases"})
+                if dry.get("reason"):entry["reason"]=dry["reason"]
+                if dry.get("observations"):
+                    entry["creative_wav_sha256"]=dry["observations"][0]["wav_sha256"]
+                    entry["vst3_wav_sha256"]=dry["observations"][1]["wav_sha256"]
+            else:
+                target_frames=fixture["record_ms"]*FRAME_RATE//1000
+                a=exact_wav(Path(creative_dir),fixture["creative_wav"],cr["wav_sha256"],target_frames)
+                b=exact_wav(Path(vst3_dir),fixture["vst3_wav"],vr["wav_sha256"],target_frames)
+                require(a["frames"]==cr["audio_frames"] and
+                        b["frames"]==vr["audio_frames"],
+                        "RECEIPT_FRAME_COUNT_DOES_NOT_MATCH_ACTUAL_WAV")
+                require(a["sha256"]!=b["sha256"],
+                        "SAME_WAV_BYTES_REUSED_AS_INDEPENDENT_CREATIVE_AND_VST3")
+                entry.update(compare(a,b,fixture["variant"]))
+                entry["creative_wav_sha256"]=a["sha256"]
+                entry["vst3_wav_sha256"]=b["sha256"]
         except (EvidenceError,ValueError,OSError,EOFError,wave.Error) as exc:
             entry["reason"]=str(exc)
         row["scenario_results"].append(entry)
         if entry["status"]!="PASS":
-            row["status"]="FAIL";all_good=False
+            row["status"]="FAIL" if entry["status"]=="FAIL" or row["status"]=="FAIL" else "BLOCKED"
+            all_good=False
     # A two-scenario screen cannot prove actual loop boundaries and chorus
     # algorithm identity for every possible SF2 instrument. Explicitly
     # require separately attested targeted tests before full SONIC gate PASS.
@@ -405,21 +679,28 @@ def evaluate(contract,creative,vst3,creative_dir,vst3_dir):
     report["passed_presets"]=sum(p["status"]=="PASS" for p in report["presets"])
     report["status"]="PASS" if all_good else (
         "FAIL" if any(p["status"]=="FAIL" for p in report["presets"]) else "BLOCKED")
+    report["screen_status"]=report["status"]
+    report["sample_exact_dry"]=dry_report
+    if report["status"]=="PASS" and report["sample_exact_dry"]["status"]!="PASS":
+        report["status"]=report["sample_exact_dry"]["status"]
     return report
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--dry-only",action="store_true",
+                    help="Use the same P220 gate for the 77 event-bounded DRY pairs only")
     for flag in ("contract","creative_receipts","vst3_receipts","creative_audio_dir",
                  "vst3_audio_dir","out"):
         ap.add_argument("--"+flag.replace("_","-"),dest=flag,type=Path,required=(flag in ("contract","out")))
     a=ap.parse_args()
-    report={"schema":RESULT_SCHEMA,"status":"BLOCKED","release_approved":False,
+    report={"schema":"125a-p220-sample-exact-dry-result-v1" if a.dry_only else RESULT_SCHEMA,
+            "status":"BLOCKED","release_approved":False,
             "errors":[],"presets":[{"program":p,"status":"BLOCKED",
                           "reason":"NO_CAPTURE_CONTRACT"} for p in PROGRAMS]}
     try:
         contract=load_json(a.contract)
         require(contract is not None,"MISSING_CAPTURE_CONTRACT")
-        report=evaluate(contract,load_json(a.creative_receipts),
+        report=(evaluate_dry if a.dry_only else evaluate)(contract,load_json(a.creative_receipts),
                         load_json(a.vst3_receipts),a.creative_audio_dir,
                         a.vst3_audio_dir)
     except (EvidenceError,ValueError,KeyError,TypeError,OSError,OverflowError) as exc:
@@ -427,10 +708,14 @@ def main():
         report["errors"].append(str(exc))
     a.out.parent.mkdir(exist_ok=True,parents=True)
     a.out.write_text(json.dumps(report,indent=2,ensure_ascii=False)+"\n")
-    print("P220 original Creative 77-preset sound evidence:",
-          report["status"],"PASS",report.get("passed_presets",0),"/77",
-          "scenarios",report.get("passed_scenarios",0),"/154",
-          "release_approved=False")
+    if a.dry_only:
+        print("P220 sample-exact dry capture evidence:",report["status"],
+              "PASS",report.get("passed_cases",0),"/77; release_approved=False")
+    else:
+        print("P220 original Creative 77-preset sound evidence:",
+              report["status"],"PASS",report.get("passed_presets",0),"/77",
+              "scenarios",report.get("passed_scenarios",0),"/154",
+              "release_approved=False")
     if report["status"]!="PASS":
         raise SystemExit(1)
 

@@ -89,11 +89,16 @@ def _pcm(path, declared_hash):
             "sha256": declared_hash}
 
 
-def _compare(ref, capture, max_offset, threshold):
+def _compare(ref, capture, max_offset, threshold, *, sample_exact=False):
     # The common lag is estimated with channel one, then ALL real channels
     # must independently pass the exact same lag, gain and PCM residual
     # requirements. A good left channel cannot conceal a broken right.
-    a, b = ref["samples_by_channel"][0], capture["samples_by_channel"][0]
+    reference_channels, capture_channels = ref["samples_by_channel"], capture["samples_by_channel"]
+    if sample_exact and (max_offset != 0 or not reference_channels or
+            len(reference_channels) != len(capture_channels) or
+            len({len(s) for s in reference_channels + capture_channels}) != 1):
+        raise ValueError("P90 sample-exact comparison requires equal channels/windows and zero lag budget")
+    a, b = reference_channels[0], capture_channels[0]
     window = min(8192, len(a)//3, len(b)//3)
     if window < 1000:
         raise ValueError("P90 insufficient signal for independent comparison")
@@ -117,7 +122,7 @@ def _compare(ref, capture, max_offset, threshold):
     overlap = min(len(a)-start_a, len(b)-start_b)
     if overlap < int(.75 * min(len(a), len(b))):
         raise ValueError("P90 captured waveform overlaps too little")
-    stride = max(1, overlap//40000)
+    stride = 1 if sample_exact else max(1, overlap//40000)
     comparisons = []
     for channel, (ref_stream, recorded_stream) in enumerate(zip(
             ref["samples_by_channel"], capture["samples_by_channel"]), start=1):
@@ -130,12 +135,22 @@ def _compare(ref, capture, max_offset, threshold):
             raise ValueError("P90 channel has insufficient captured signal energy")
         gain = xy/xx
         corr = xy/math.sqrt(xx*yy)
-        nrmse = math.sqrt(max(0, yy-2*gain*xy+gain*gain*xx)/yy)
+        # The opt-in digital dry contract uses every sample at UNIT gain.
+        # estimated_gain remains diagnostic; it never rescales either stream.
+        error_gain = 1.0 if sample_exact else gain
+        nrmse = math.sqrt(max(0, yy-2*error_gain*xy+error_gain*error_gain*xx)/yy)
+        max_error = max(abs(y-x) for x,y in zip(aa,bb))
         valid_channel = corr >= threshold and .2 <= gain <= 5.0 and nrmse <= .18
+        if sample_exact:
+            # Predeclared digital 16-bit budget: at most two quantization
+            # steps between independently rounded captures. Not an analogue
+            # hardware tolerance or a changed legacy P90/ASIO threshold.
+            valid_channel = valid_channel and max_error <= 2/32768.0
         comparisons.append({
             "channel": channel, "correlation": round(corr, 7),
             "relative_rms_error": round(nrmse, 7),
             "estimated_gain": round(gain, 7),
+            "max_absolute_error": max_error,
             "matches_reference": valid_channel
         })
     valid = (all(x["matches_reference"] for x in comparisons)
@@ -148,6 +163,8 @@ def _compare(ref, capture, max_offset, threshold):
         "channel_results": comparisons,
         "channels_compared": len(comparisons),
         "compared_frames": overlap,
+        "sample_exact": sample_exact,
+        "gain_normalized": not sample_exact,
         "matches_reference": valid
     }
 
