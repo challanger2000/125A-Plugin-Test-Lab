@@ -23,8 +23,6 @@ jobs:
     env:
       PYTHONUTF8: "1"
       PYTHONDONTWRITEBYTECODE: "1"
-      P220_INTEGRATION_ROOT: ${{ runner.temp }}/p220-main-integration
-      P220_INTEGRATION_OUT: ${{ runner.temp }}/p220-main-evidence
     defaults:
       run:
         shell: bash
@@ -35,16 +33,20 @@ jobs:
       - name: Assemble pinned main plus corrected QA in a temporary detached worktree; preserve branch refs
         run: |
           set -euo pipefail
+          export P220_INTEGRATION_ROOT="$RUNNER_TEMP/p220-main-integration"
+          export P220_INTEGRATION_OUT="$RUNNER_TEMP/p220-main-evidence"
+          echo "P220_INTEGRATION_ROOT=$P220_INTEGRATION_ROOT" >> "$GITHUB_ENV"
+          echo "P220_INTEGRATION_OUT=$P220_INTEGRATION_OUT" >> "$GITHUB_ENV"
           python tests/prepare_p220_main_integration.py prepare --repo "$GITHUB_WORKSPACE" --worktree "$P220_INTEGRATION_ROOT" --out "$P220_INTEGRATION_OUT"
           python tests/prepare_p220_main_integration.py self-test --repo "$GITHUB_WORKSPACE" --worktree "$P220_INTEGRATION_ROOT" --out "$P220_INTEGRATION_OUT" 2>&1 | tee "$P220_INTEGRATION_OUT/identity-negative-control.log"
       - name: Run exact 77-program/154-scenario SOUND-oracle adversarial test-of-test, not original Creative
-        working-directory: ${{ env.P220_INTEGRATION_ROOT }}
+        working-directory: ${{ runner.temp }}/p220-main-integration
         run: |
           set -euo pipefail
           python -m py_compile tests/p220_awe_sf2_sound_gate.py tests/test_p220_awe_sf2_sound_gate.py
           python tests/test_p220_awe_sf2_sound_gate.py --stereo-evidence "$P220_INTEGRATION_OUT/p220-stereo-v2.json" 2>&1 | tee "$P220_INTEGRATION_OUT/p220-full.log"
       - name: Verify actual Test Lab P89 consolidated release blocker rejects absent 77-sound despite technical AWE PASS
-        working-directory: ${{ env.P220_INTEGRATION_ROOT }}
+        working-directory: ${{ runner.temp }}/p220-main-integration
         shell: bash
         run: |
           set -euo pipefail
@@ -52,14 +54,14 @@ jobs:
           python tests/test_p89_unified_qa_gaps.py 2>&1 | tee "$P220_INTEGRATION_OUT/p89.log"
           python tests/test_p90_external_capture_check.py 2>&1 | tee "$P220_INTEGRATION_OUT/p90.log"
       - name: Verify preserved main P99 REA and P74 P75 contracts with existing adversarial unit suites
-        working-directory: ${{ env.P220_INTEGRATION_ROOT }}
+        working-directory: ${{ runner.temp }}/p220-main-integration
         run: |
           set -euo pipefail
           python -m unittest discover -s tests -p test_rea_binary_analysis.py -v 2>&1 | tee "$P220_INTEGRATION_OUT/rea.log"
           python -m unittest discover -s tests -p test_universal_qa.py -v 2>&1 | tee "$P220_INTEGRATION_OUT/universal.log"
           python -m unittest discover -s tests -p test_vst3_batch_qa.py -v 2>&1 | tee "$P220_INTEGRATION_OUT/batch.log"
       - name: Prove private original Creative WAV absent in public CI blocks every real preset
-        working-directory: ${{ env.P220_INTEGRATION_ROOT }}
+        working-directory: ${{ runner.temp }}/p220-main-integration
         shell: bash
         run: |
           set -euo pipefail
