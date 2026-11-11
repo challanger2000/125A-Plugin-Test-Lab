@@ -100,7 +100,7 @@ def exact_wav(root, fname, expected_sha, expected_frames):
             "envelope":e,"onset_bin":onset,"rms":total_rms,
             "peak":stereo_peak}
 
-def band_spectrum(mono, start):
+def band_spectrum(mono, start,*,relative=True):
     # Audio spectrum in 8 fixed Goertzel bands, per stable 1024-frame window.
     # This is an independent *diagnostic screening* metric; waveform-level
     # filter shape, full loop identity and actual physical chip need more.
@@ -119,7 +119,12 @@ def band_spectrum(mono, start):
             b=a;a=nxt
         power.append(max(a*a+b*b-coeff*a*b,1e-20))
     whole=sum(power)
-    return [10*math.log10(v/whole) for v in power]
+    if relative:
+        return [10*math.log10(v/whole) for v in power]
+    # Hann coherent-gain calibration to full-scale peak amplitude. This is
+    # a fixed analysis-window correction, never a capture level adjustment.
+    coherent_gain=sum(0.5-0.5*math.cos(2*math.pi*j/(N-1)) for j in range(N))
+    return [10*math.log10(4*v/(coherent_gain*coherent_gain)) for v in power]
 
 def corr(a,b):
     require(len(a)==len(b) and len(a)>10,"INVALID_ENVELOPE_ALIGNMENT")
@@ -133,7 +138,7 @@ def corr(a,b):
 def signal_rms(samples):
     return math.sqrt(sum(v*v for v in samples)/len(samples))
 
-def channel_comparison(a,b,channel,*,full_window=False):
+def channel_comparison(a,b,channel,*,full_window=False,spectral_start=1000):
     ra,rb=signal_rms(a),signal_rms(b)
     pa,pb=max(abs(v) for v in a),max(abs(v) for v in b)
     row={"channel":channel,"reference_rms":ra,"capture_rms":rb,
@@ -153,7 +158,10 @@ def channel_comparison(a,b,channel,*,full_window=False):
     # failed correlation. Level is still tested independently above.
     if max(ea)-min(ea)<1e-10 and max(eb)-min(eb)<1e-10:
         envelope_corr=1.0
-    sa,sb=band_spectrum(a,1000),band_spectrum(b,1000)
+    sa,sb=(band_spectrum(s,spectral_start,relative=not full_window) for s in (a,b))
+    if full_window:
+        row.update(spectrum_reference_dbfs=sa,spectrum_capture_dbfs=sb,
+                   spectrum_start_frame=spectral_start)
     differences=[y-x for x,y in zip(sa,sb)]
     audible=[abs(d) for d,x,y in zip(differences,sa,sb) if max(x,y)>-42]
     require(audible,"NO_USABLE_CHANNEL_SPECTRAL_ENERGY")
@@ -177,7 +185,7 @@ def stereo_structure(channels):
             "mid_rms":math.sqrt(mid/len(left)),"side_rms":math.sqrt(side/len(left)),
             "side_energy_fraction":side/(mid+side) if mid+side>0 else 0.}
 
-def compare(a,b,kind,*,sample_exact=False,allow_silent=False):
+def compare(a,b,kind,*,sample_exact=False,allow_silent=False,spectral_start=1000):
     if sample_exact:
         require(a["frames"]==b["frames"],"DRY_WINDOW_LENGTH_MISMATCH")
         frames=a["frames"];lag_ms=0
@@ -215,7 +223,7 @@ def compare(a,b,kind,*,sample_exact=False,allow_silent=False):
     frames-=abs(offset)
     aa=[s[start_a:start_a+frames] for s in aa]
     bb=[s[start_b:start_b+frames] for s in bb]
-    channels=[channel_comparison(x,y,i+1,full_window=sample_exact)
+    channels=[channel_comparison(x,y,i+1,full_window=sample_exact,spectral_start=spectral_start)
               for i,(x,y) in enumerate(zip(aa,bb))]
     if sample_exact:
         for row,x,y in zip(channels,aa,bb):
@@ -449,7 +457,8 @@ def dry_compare(spec,fixture,cr,vr,creative_dir,vst3_dir,*,allow_synthetic=False
         result["observations"]=observations
         require(observations[0]["wav_sha256"]!=observations[1]["wav_sha256"],
                 "SAME_WAV_BYTES_REUSED_AS_INDEPENDENT_CREATIVE_AND_VST3")
-        result["window_comparison"]=compare(*decoded,"DRY",sample_exact=True)
+        result["window_comparison"]=compare(*decoded,"DRY",sample_exact=True,
+                                            spectral_start=spec["pre_note_frames"]+1000)
         release_start=spec["pre_note_frames"]+spec["note_length_frames"]
         release=[{"frames":d["frames"]-release_start,
                   "channels":[s[release_start:] for s in d["channels"]]} for d in decoded]

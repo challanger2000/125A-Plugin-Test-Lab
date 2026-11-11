@@ -465,6 +465,13 @@ def dry_regressions(root,evidence_out=None,*,compare_baseline=False,fixtures_out
         observed="PASS" if result["comparison_status"]=="PASS" else result["status"]
         require(observed==expected,name+": expected "+expected+" observed "+observed+" "+str(result.get("reason")))
         require(result["release_approved"] is False and result["status"]!="PASS",name+" cannot approve synthetic sound")
+        if expected=="PASS":
+            for ch in result["window_comparison"]["channel_results"]:
+                if ch.get("activity")=="ACTIVE":
+                    require(ch["spectrum_start_frame"]>=pre and
+                            max(ch["spectrum_reference_dbfs"])>-42 and
+                            max(ch["spectrum_reference_dbfs"])-min(ch["spectrum_reference_dbfs"])>10,
+                            name+": spectrum must measure active audio after the actual note-on, not preroll silence")
         row={"id":name,"expected":expected,"actual":observed,"result":result}
         if baseline and name in ("independent_1lsb","shifted_midi_note_off","extra_dsp_block_in_window",
                                  "hidden_wet_pcm_despite_zero_metadata","one_late_sample_fault",
