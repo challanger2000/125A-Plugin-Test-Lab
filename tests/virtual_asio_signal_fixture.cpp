@@ -5,6 +5,7 @@
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include "public.sdk/source/vst/vsteditcontroller.h"
 #include "pluginterfaces/vst/vstspeaker.h"
+#include "pluginterfaces/vst/ivstprocesscontext.h"
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
@@ -45,6 +46,18 @@ public:
             return kResultFalse;
         const auto rate = processSetup.sampleRate;
         if (!(rate >= 44100. && rate <= 96000.)) return kResultFalse;
+        // Independently test the actual ASIO host's VST3 transport contract.
+        // projectTimeMusic is meaningless without its associated validity bit.
+        // A host that writes a plausible PPQ number but omits the flag MUST
+        // fail this real VST3's process() path, not obtain a fake audio PASS.
+        if (!d.processContext ||
+            !(d.processContext->state & ProcessContext::kPlaying) ||
+            !(d.processContext->state & ProcessContext::kTempoValid) ||
+            !(d.processContext->state & ProcessContext::kProjectTimeMusicValid) ||
+            std::abs(d.processContext->tempo - 120.) > 1.e-6 ||
+            std::abs(d.processContext->projectTimeMusic -
+                     (static_cast<double>(position_) / rate) * 2.) > 1.e-6)
+            return kResultFalse;
         float* left = d.outputs[0].channelBuffers32[0];
         float* right = d.outputs[0].channelBuffers32[1];
         for (int32 i = 0; i < d.numSamples; ++i) {

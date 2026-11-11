@@ -26,7 +26,7 @@ powershell -NoProfile -File tests/Prepare-VirtualASIO.ps1 -Mode Install `
   -OutputFolder C:\QA\P96 -ApproveDriverInstallation
 ```
 
-The script rejects missing installers and invalid **Authenticode signatures** before launching the official, interactive vendor installers and records the previous boot fingerprint.
+**Before running Install**, independently identify the exact SHA-256 of each downloaded official vendor executable. Supply the two 64-hex fingerprints explicitly (the placeholders in the command are not executable values). The script rejects missing/mismatched hashes and invalid **Authenticode signatures** before launching either interactive installer, checks both process exit codes, and records the prior boot fingerprint **only after both processes have returned success**. A valid signature alone does not establish correct vendor identity; the user must review the vendor source/publisher and exact file hash independently. An installer exit code cannot prove that the driver was installed or routed correctly.
 
 **Manually restart Windows**, then execute:
 

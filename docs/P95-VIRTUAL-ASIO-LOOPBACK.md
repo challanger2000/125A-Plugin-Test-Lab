@@ -7,11 +7,23 @@ The P95 native Windows executable is built from the already-audited P58 ASIO hos
 The independent Python P95 analyzer requires:
 - the real native driver's SHA-256 and fresh nonce evidence (no deadlines, xruns or DSP errors),
 - consistent sample rate, buffer size and exact PCM frame count from each ASIO callback,
+- **independent** emitted source PCM specification (phase-locked 317/557 Hz, exact per-channel gate/level pattern, bounded sample/RMS error) before accepting any return,
 - non-silent output **and** non-silent captured input on both channels,
-- positive correlation after bounded latency alignment,
+- positive correlation after bounded latency alignment **including zero-delay boundary**,
+- return gain constrained to +/-3 dB per channel (the virtual cable path must not silently hide a 4x increase); this is a provisional QA threshold, not a hardware calibration,
+- P102 signed-sample DC-to-RMS sanity: full-wave-rectified audio may preserve identical RMS envelopes and gain yet be audibly wrong; captured DC/RMS above 12% is rejected on either channel. This is only a bounded distortion detector, not a complete waveform-fidelity guarantee.
+- P103 signed PCM correlation now compares both captured channels against the emitted waveform with **one shared sample-level lag** (sampled at intervals for bounded cost), rejecting single-channel and stereo polarity inversion even when RMS/gain are unchanged. This is a limited waveform/phase sanity check, not a metrological sample-perfect transport or calibrated latency certification.
+- P104 checks **every** signed captured PCM sample after the shared-lag selection, allowing a constant positive channel gain but requiring gain-normalized residual <= 15%. A 32:1 alignment sampler alone is not sufficient: inversion of 31/32 interstitial samples leaves the sampled test unchanged and must fail. This remains a bounded transport-fidelity threshold rather than an independent hardware calibration.
+- P105 requires the captured input to be effectively silent **before the first causally possible returned sample** (initial prefix RMS <= 0.001), then checks 256-frame local residual windows with the same positive fitted gain. Isolated half-kilobuffer dropouts or unrelated pre-return sound must not be buried in the global session average. Both thresholds are deliberately fixture-specific and must be calibrated with real authorized loopback hardware before broader claims.
 - consistent L/R latency and no swapped/crosstalk-dominated channels.
 
-Result `VIRTUAL_ASIO_LOOPBACK_PASS` is virtual driver evidence **only**. It does **not** approve physical ASIO hardware, a commercial DAW, actual external USB hardware, or any product release. No cloud mock test produces this result legitimately. The Linux unit test explicitly fabricates PCM samples only to verify that the oracle accepts good and rejects silent, swapped, truncated and wrong-rate traces.
+Result `VIRTUAL_ASIO_LOOPBACK_PASS` is virtual driver evidence **only**. It does **not** approve physical ASIO hardware, a commercial DAW, actual external USB hardware, or any product release. No cloud mock test produces this result legitimately. The Linux unit tests explicitly fabricate PCM only to verify the oracle accepts the correct 317/557 Hz stimulus and rejects silent, swapped, truncated, wrong-rate, wrong-source-frequency and +12.041 dB return-gain traces. A separate 0-sample delay boundary must report 0, not 256. These tests do NOT run a Windows audio driver or authorize product release.
+
+## P101: PCM content is not proof of driver execution
+
+The standalone `verify_virtual_asio_loopback.py` can evaluate deliberately fabricated PCM and JSON callback metadata. Its successful status `VIRTUAL_ASIO_PCM_LOOPBACK_PASS` means **PCM content agrees with the P95 stimulus/return contract only**. The standalone report deliberately sets `pcm_content_verified=true`, `driver_execution_verified=false` and `virtual_loopback_verified=false`, even if the content is correct. Never treat this report, even with plausible driver metadata, as proof of a running ASIO driver.
+
+Only `run_virtual_asio_loopback.py` may report `VIRTUAL_ASIO_LOOPBACK_PASS`, after the separately consented native executable returns successfully, the fresh nonce, exact native/module hashes, real callback counts and PCM evidence are checked, and the content-only verifier passes. That top-level report alone records `driver_execution_verified=true` for the **virtual** driver session; this is not physical hardware, a commercial DAW or release certification. Synthetic regression fixtures must always leave driver execution false.
 
 ## Real Windows run
 

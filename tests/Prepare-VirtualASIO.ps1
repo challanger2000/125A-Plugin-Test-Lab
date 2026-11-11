@@ -15,6 +15,8 @@ param(
     [ValidateSet('Preflight','Install','Verify')][string]$Mode = 'Preflight',
     [string]$ASIO4ALLInstaller = '',
     [string]$VBCableExtracted = '',
+    [ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$ApprovedASIO4ALLSHA256 = '',
+    [ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$ApprovedVBCableSHA256 = '',
     [string]$OutputFolder = 'artifacts/P96',
     [switch]$ApproveDriverInstallation
 )
@@ -93,7 +95,10 @@ function Get-Readiness {
         reboot_fingerprint = Get-BootFingerprint
     }
 }
-function Resolve-InstallerFile([string]$File, [string]$Purpose) {
+function Resolve-InstallerFile([string]$File, [string]$Purpose, [string]$ApprovedHash) {
+    if ([string]::IsNullOrWhiteSpace($ApprovedHash)) {
+        throw "$Purpose requires a separately reviewed installer SHA256 fingerprint"
+    }
     if ([string]::IsNullOrWhiteSpace($File)) {
         throw "$Purpose installer path required"
     }
@@ -107,6 +112,9 @@ function Resolve-InstallerFile([string]$File, [string]$Purpose) {
         throw "$Purpose installer signature is not valid. Verify publisher directly; refusing UAC."
     }
     $hash = (Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hash -cne $ApprovedHash.ToLowerInvariant()) {
+        throw "$Purpose installer SHA256 differs from independently approved vendor package"
+    }
     return @{path = $resolved; sha256 = $hash; signer = [string]$sig.SignerCertificate.Subject}
 }
 function Write-Result($Report) {
@@ -142,20 +150,28 @@ if ($Mode -eq 'Install') {
         throw 'P96 extracted VB-CABLE driver directory required (not ZIP)'
     }
     $vb = Join-Path $VBCableExtracted 'VBCABLE_Setup_x64.exe'
-    $asio = Resolve-InstallerFile $ASIO4ALLInstaller 'ASIO4ALL'
-    $cable = Resolve-InstallerFile $vb 'VB-CABLE'
+    $asio = Resolve-InstallerFile $ASIO4ALLInstaller 'ASIO4ALL' $ApprovedASIO4ALLSHA256
+    $cable = Resolve-InstallerFile $vb 'VB-CABLE' $ApprovedVBCableSHA256
     $report.asio4all_installer_sha256 = $asio.sha256
     $report.vb_cable_installer_sha256 = $cable.sha256
     $report.asio4all_installer_signer = $asio.signer
     $report.vb_cable_installer_signer = $cable.signer
     $report.boot_before_install = Get-BootFingerprint
+    # Only record a staged installation AFTER both interactive installers
+    # exited successfully; neither exit status proves live driver routing.
+    $asioProcess = Start-Process -FilePath $asio.path -Wait -PassThru
+    if ($asioProcess.ExitCode -ne 0) {
+        throw "ASIO4ALL installer exited with code $($asioProcess.ExitCode)"
+    }
+    $cableProcess = Start-Process -FilePath $cable.path -Wait -PassThru
+    if ($cableProcess.ExitCode -ne 0) {
+        throw "VB-CABLE installer exited with code $($cableProcess.ExitCode)"
+    }
+    $report.asio4all_installer_exit_code = $asioProcess.ExitCode
+    $report.vb_cable_installer_exit_code = $cableProcess.ExitCode
     $report.status = 'INSTALLERS_LAUNCHED_REBOOT_REQUIRED'
     Write-Result $report
-    # Use only the vendor-supported *interactive* installer UI. Exit codes
-    # cannot confirm driver load or selected ASIO4ALL channels.
-    Start-Process -FilePath $asio.path -Wait
-    Start-Process -FilePath $cable.path -Wait
-    Write-Warning 'Installation is NOT verified. Restart Windows manually, then run -Mode Verify.'
+    Write-Warning 'Installers returned success, but driver installation is NOT verified. Reboot and run -Mode Verify.'
     exit 0
 }
 $state = Get-Readiness

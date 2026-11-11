@@ -79,9 +79,155 @@ class P95VirtualLoopback(unittest.TestCase):
                          report["faults"])
         self.assertGreater(report["metrics"]["left_correlation"], .8)
         self.assertGreater(report["metrics"]["right_correlation"], .8)
+        self.assertTrue(report["pcm_content_verified"])
+        self.assertFalse(report["driver_execution_verified"])
+        self.assertFalse(report["virtual_loopback_verified"])
         self.assertFalse(report["physical_asio_hardware_verified"])
         self.assertFalse(report["commercial_daw_verified"])
         self.assertFalse(report["release_approved"])
+
+    def test_deliberately_wrong_oscillator_frequency_must_fail(self):
+        # Do not mistake a valid return of WRONG source music for a good
+        # QA oscillator. Change only original output + its returned input.
+        from array import array
+        frames, rate, delay = self.frames, self.rate, 3072
+        signals = ([], [])
+        for n in range(frames):
+            t = n / rate
+            gates = (((0x6d4e92b5 >> (int(t/.061) % 32)) & 1),
+                     ((0xb39a4d27 >> (int(t/.083) % 32)) & 1))
+            signals[0].append(.040*gates[0]*math.sin(2*math.pi*911*t))
+            signals[1].append(.055*gates[1]*math.sin(2*math.pi*1277*t))
+        values = array("f")
+        for n in range(frames):
+            values.extend((signals[0][n], signals[1][n],
+                           signals[0][n-delay]*.84 if n >= delay else 0.,
+                           signals[1][n-delay]*.72 if n >= delay else 0.))
+        path = self.root / "wrong-source.f32"
+        path.write_bytes(struct.pack("<8sIIII", MAGIC, rate, frames,
+                                     self.block, 4)+values.tobytes())
+        report = verify_pcm(path, self.proof, self.root/"wrong-source-result")
+        self.assertEqual(report["status"], "FAIL")
+        self.assertIn("source PCM differs", " ".join(report["faults"]))
+
+    def test_fourfold_input_gain_is_rejected(self):
+        path = self.make_trace()
+        values = array("f")
+        raw = path.read_bytes()
+        values.frombytes(raw[24:])
+        for n in range(self.frames):
+            values[4*n+2] *= 4
+            values[4*n+3] *= 4
+        path.write_bytes(raw[:24]+values.tobytes())
+        report = verify_pcm(path, self.proof, self.root/"gain-result")
+        self.assertEqual(report["status"], "FAIL")
+        self.assertIn("return gain", " ".join(report["faults"]))
+
+    def test_full_wave_rectified_input_cannot_pass_as_transparent_audio(self):
+        # Full-wave rectification preserves every input RMS envelope window,
+        # thus it defeated the previous unsigned envelope-only oracle.
+        path = self.make_trace()
+        raw = path.read_bytes()
+        values = array("f")
+        values.frombytes(raw[24:])
+        for n in range(self.frames):
+            values[4*n+2] = abs(values[4*n+2])
+            values[4*n+3] = abs(values[4*n+3])
+        path.write_bytes(raw[:24] + values.tobytes())
+        result = verify_pcm(path, self.proof, self.root / "rectified-return")
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("DC offset", " ".join(result["faults"]))
+        self.assertFalse(result["pcm_content_verified"])
+        self.assertFalse(result["driver_execution_verified"])
+
+    def test_inverted_return_polarity_cannot_pass(self):
+        # A negative waveform is not equivalent to the actual signed PCM,
+        # although its RMS envelope and transfer gain are unchanged.
+        for channels in ((2,), (2, 3)):
+            with self.subTest(channels=channels):
+                path = self.make_trace()
+                raw = path.read_bytes()
+                values = array("f")
+                values.frombytes(raw[24:])
+                for n in range(self.frames):
+                    for channel in channels:
+                        values[4*n + channel] = -values[4*n + channel]
+                path.write_bytes(raw[:24] + values.tobytes())
+                out = self.root / ("polarity-" + "-".join(map(str, channels)))
+                result = verify_pcm(path, self.proof, out)
+                self.assertEqual(result["status"], "FAIL", result)
+                self.assertIn("signed stereo PCM", " ".join(result["faults"]))
+                self.assertFalse(result["driver_execution_verified"])
+
+    def test_between_decimated_samples_polarity_corruption_fails(self):
+        # P104: old P103 signed match inspects just n % 32 == 0.
+        # Invert the other 31 of 32 captured frames while preserving
+        # exact energy, DC~0, every 256-frame RMS envelope and the
+        # emitted output reference. The verifier MUST reject it.
+        path = self.make_trace()
+        raw = path.read_bytes()
+        values = array("f")
+        values.frombytes(raw[24:])
+        delay = 3072
+        for n in range(delay, self.frames):
+            if (n - delay) % 32 != 0:
+                values[4*n + 2] = -values[4*n + 2]
+                values[4*n + 3] = -values[4*n + 3]
+        path.write_bytes(raw[:24] + values.tobytes())
+        result = verify_pcm(path, self.proof, self.root / "interstitial-polarity")
+        self.assertEqual(result["status"], "FAIL", result)
+        self.assertIn("full-resolution", " ".join(result["faults"]))
+        self.assertFalse(result["pcm_content_verified"])
+
+    def test_unexplained_input_before_first_output_arrives_fails(self):
+        # P105: samples in [0, real_lag) are outside P104 comparison.
+        # Inject an unrelated full-level signal only there, without
+        # changing output or any aligned capture PCM sample.
+        path = self.make_trace(delay=3072)
+        raw = path.read_bytes()
+        values = array("f")
+        values.frombytes(raw[24:])
+        for n in range(256, 2816):
+            values[4*n+2] = .025 * math.sin(2*math.pi*823*n/self.rate)
+            values[4*n+3] = .030 * math.sin(2*math.pi*1103*n/self.rate)
+        path.write_bytes(raw[:24] + values.tobytes())
+        result = verify_pcm(path, self.proof, self.root / "unexplained-prefix")
+        self.assertEqual(result["status"], "FAIL", result)
+        self.assertIn("pre-return", " ".join(result["faults"]))
+
+    def test_short_return_dropout_fails_despite_good_global_correlation(self):
+        # P105: 512 frames of silence can be lost among >100k frames.
+        # Global normalized error alone may stay below threshold.
+        path = self.make_trace(delay=3072)
+        raw = path.read_bytes()
+        values = array("f")
+        values.frombytes(raw[24:])
+        for n in range(22016, 22528):
+            values[4*n+2] = 0.
+            values[4*n+3] = 0.
+        path.write_bytes(raw[:24] + values.tobytes())
+        result = verify_pcm(path, self.proof, self.root / "short-dropout")
+        self.assertEqual(result["status"], "FAIL", result)
+        self.assertIn("local PCM", " ".join(result["faults"]))
+
+    def test_sample_accurate_common_lag_not_multiple_of_256(self):
+        # A valid ASIO return may have non-256-aligned endpoint latency.
+        # The signed comparison must not falsely fail such a clean trace.
+        path = self.make_trace(delay=3073)
+        report = verify_pcm(path, self.proof, self.root / "odd-sample-lag")
+        self.assertEqual(report["status"], "VIRTUAL_ASIO_PCM_LOOPBACK_PASS",
+                         report["faults"])
+        self.assertEqual(report["metrics"]["signed_pcm_common_lag_frames"], 3073)
+        self.assertGreater(report["metrics"]["signed_pcm_l"], 0.99)
+        self.assertGreater(report["metrics"]["signed_pcm_r"], 0.99)
+        self.assertFalse(report["driver_execution_verified"])
+
+    def test_zero_frame_delay_is_measured_as_zero(self):
+        path = self.make_trace(delay=0)
+        report = verify_pcm(path, self.proof, self.root/"zero-delay")
+        self.assertEqual(report["status"], "VIRTUAL_ASIO_PCM_LOOPBACK_PASS",
+                         report["faults"])
+        self.assertEqual(report["metrics"]["latency_frames_estimate"], 0)
 
     def test_silence_is_not_a_loopback(self):
         path = self.make_trace(silence=True)

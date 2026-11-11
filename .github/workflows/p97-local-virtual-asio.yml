@@ -26,6 +26,7 @@ jobs:
           if ($state.status -notin @('DRIVERS_READY_LIVE_AUDIO_NOT_RUN','DRIVERS_NOT_READY_LIVE_AUDIO_NOT_RUN') -or
               $state.native_virtual_asio_callbacks -ne 'NOT_RUN' -or
               $state.virtual_pcm_loopback -ne 'NOT_RUN' -or
+              $state.driver_execution_verified -ne $false -or
               $state.physical_asio_hardware_verified -ne $false -or
               $state.commercial_daw_verified -ne $false -or
               $state.release_approved -ne $false) {
@@ -40,7 +41,8 @@ jobs:
           $state = Get-Content artifacts/P97-ci-no-consent/P97-ACCEPTANCE.json -Raw | ConvertFrom-Json
           if (-not $rejected -or $state.status -ne 'NOT_RUN_OR_FAILED' -or
               $state.native_virtual_asio_callbacks -ne 'NOT_RUN' -or
-              $state.virtual_pcm_loopback -ne 'NOT_RUN') {
+              $state.virtual_pcm_loopback -ne 'NOT_RUN' -or
+              $state.driver_execution_verified -ne $false) {
             throw 'P97 native virtual sound driver invocation was possible without opt-in'
           }
           Write-Output 'P97 explicit no-consent negative PASS; actual ASIO hardware/audio NOT RUN'

@@ -66,7 +66,7 @@ def envelope(samples, channel, frames, window=256):
 
 def normalized_correlation(a, b, lag):
     # a is earlier ASIO output. b is later ASIO input. Lag is nonnegative.
-    if lag <= 0 or lag >= len(a) or len(a) != len(b):
+    if lag < 0 or lag >= len(a) or len(a) != len(b):
         return -1.
     n = len(a) - lag
     av = a[:n]
@@ -81,23 +81,215 @@ def normalized_correlation(a, b, lag):
     return cross / math.sqrt(power_a * power_b)
 
 
+def signed_stereo_match(samples, frames, coarse_left, coarse_right):
+    """P103: find a SHARED lag without using polarity, then check signed PCM.
+
+    Picking the lag by maximum *signed* correlation can hide an inverted
+    channel: an oscillator half-cycle shift mimics positive correlation.
+    Instead locate both channels jointly via absolute-value waveform
+    correlation, which is polarity-independent, and only then inspect the
+    true signed waveforms at that *same* independently selected lag.
+    """
+    center = round((coarse_left + coarse_right) * 128)
+    start = max(0, center - 256)
+    stop = min(frames // 3, center + 256)
+    positions = range(0, frames - stop, 32)
+    refs = []
+    for channel in (0, 1):
+        src = [samples[4*n + channel] for n in positions]
+        energy = sum(v*v for v in src)
+        if energy <= 1.e-9:
+            raise ValueError("P103 insufficient output energy for signed PCM")
+        refs.append((src, [abs(v) for v in src], energy))
+    best = (-1., None, None)
+    # Exact sample-by-sample lag search, decimated only along the audio
+    # timeline; does not assume a driver delay divisible by 2 or 256.
+    for lag in range(start, stop + 1):
+        abs_scores = []
+        for channel in (0, 1):
+            src, src_abs, energy = refs[channel]
+            capture = [samples[4*(n+lag) + channel+2] for n in positions]
+            return_energy = sum(v*v for v in capture)
+            if return_energy <= 1.e-9:
+                abs_scores.append(-1.)
+                continue
+            dot = sum(x*abs(y) for x,y in zip(src_abs, capture))
+            abs_scores.append(dot / math.sqrt(energy*return_energy))
+        quality = min(abs_scores)
+        if quality > best[0]:
+            best = (quality, lag, abs_scores)
+    if best[0] < 0.94:
+        raise ValueError("P103 captured stereo PCM magnitude waveform mismatch")
+    lag = best[1]
+    signed_scores = []
+    for channel in (0, 1):
+        src, _, energy = refs[channel]
+        returned = [samples[4*(n+lag) + channel+2] for n in positions]
+        return_energy = sum(v*v for v in returned)
+        if return_energy <= 1.e-9:
+            raise ValueError("P103 insufficient return energy for signed PCM")
+        signed_scores.append(sum(x*y for x,y in zip(src, returned)) /
+                             math.sqrt(energy*return_energy))
+    if min(signed_scores) < 0.92:
+        raise ValueError("P103 signed stereo PCM waveform/phase mismatch")
+    # P104 full-resolution residual: the 32:1 phase/alignment sampler
+    # must not become the audio-integrity oracle. With a fixed common
+    # lag, measure every returned PCM sample against its emitted sample,
+    # allowing one constant positive transfer gain per channel. Both
+    # signal energy and mismatch energy include all interstitial frames.
+    residuals = []
+    # P105: the first lag capture frames have no causal emitted
+    # counterpart in this freshly activated zero-initialized fixture.
+    # Contamination here must not be ignored by P104's aligned overlap.
+    pre_return_rms = []
+    for channel in (0, 1):
+        if lag == 0:
+            pre_return_rms.append(0.)
+            continue
+        prefix_energy = sum(samples[4*n + channel+2] ** 2
+                            for n in range(lag))
+        prefix_rms = math.sqrt(prefix_energy / lag)
+        if prefix_rms > 0.001:
+            raise ValueError("P105 unexplained pre-return audio before first emitted output")
+        pre_return_rms.append(prefix_rms)
+    max_local_residuals = []
+    for channel in (0, 1):
+        src_power = 0.
+        capture_power = 0.
+        dot = 0.
+        for n in range(frames - lag):
+            source = samples[4*n + channel]
+            returned = samples[4*(n+lag) + channel+2]
+            src_power += source * source
+            capture_power += returned * returned
+            dot += source * returned
+        if src_power < 1.e-9 or capture_power < 1.e-9:
+            raise ValueError("P104 insufficient full-resolution PCM energy")
+        gain = dot / src_power
+        if gain <= 0.:
+            raise ValueError("P104 full-resolution PCM polarity mismatch")
+        # Least-squares normalized residual from all samples; a
+        # time-varying distortion cannot be hidden by average gain.
+        relative_error = math.sqrt(max(
+            0., 1. - dot*dot/(src_power*capture_power)))
+        if relative_error > 0.15:
+            raise ValueError("P104 full-resolution PCM waveform distortion")
+        # P105: whole-session correlation can bury a short dropout in a
+        # long recording. Apply the same global positive gain to local
+        # 256-frame windows and reject significant isolated damage.
+        local_max = 0.
+        for begin in range(0, frames - lag, 256):
+            window_end = min(begin + 256, frames - lag)
+            source_energy = 0.
+            error_energy = 0.
+            for n in range(begin, window_end):
+                source = samples[4*n + channel]
+                captured = samples[4*(n+lag) + channel+2]
+                difference = captured - gain * source
+                source_energy += (gain * source) ** 2
+                error_energy += difference * difference
+            length = window_end - begin
+            error_rms = math.sqrt(error_energy / length)
+            signal_rms = math.sqrt(source_energy / length)
+            relative_local_error = error_rms / max(signal_rms, 0.003)
+            local_max = max(local_max, relative_local_error)
+            if error_rms > 0.004 and relative_local_error > 0.45:
+                raise ValueError("P105 local PCM dropout or waveform corruption")
+        max_local_residuals.append(local_max)
+        residuals.append(relative_error)
+    return {"signed_pcm_l": round(signed_scores[0], 5),
+            "signed_pcm_r": round(signed_scores[1], 5),
+            "signed_pcm_common_lag_frames": lag,
+            "pcm_magnitude_alignment": round(best[0], 5),
+            "full_resolution_pcm_residual_l": round(residuals[0], 6),
+            "full_resolution_pcm_residual_r": round(residuals[1], 6),
+            "pre_return_rms_l": round(pre_return_rms[0], 7),
+            "pre_return_rms_r": round(pre_return_rms[1], 7),
+            "max_local_pcm_error_l": round(max_local_residuals[0], 6),
+            "max_local_pcm_error_r": round(max_local_residuals[1], 6)}
+
+
+def verify_known_source_signal(trace):
+    """Independent frozen P95 test specification, not output-to-input matching.
+
+    The built QA fixture must produce a 317 Hz / 557 Hz phase-locked, gated
+    stereo signal, starting at phase zero after activation. Check *every*
+    emitted sample, not only the coarse amplitude envelope. This function is
+    specific to the P95 fixture; do not apply it to arbitrary customer VST3s.
+    """
+    rate, frames, samples = trace["rate"], trace["frames"], trace["samples"]
+    patterns = (0x6d4e92b5, 0xb39a4d27)
+    cells = (0.061, 0.083)
+    hz = (317., 557.)
+    amplitude = (0.040, 0.055)
+    max_deviation = 0.
+    sum_error_sq = [0., 0.]
+    sum_ref_sq = [0., 0.]
+    for n in range(frames):
+        t = n / rate
+        for ch in (0, 1):
+            gate = (patterns[ch] >> (int(t / cells[ch]) % 32)) & 1
+            expected = (amplitude[ch] * math.sin(2. * math.pi * hz[ch] * t)
+                        if gate else 0.)
+            actual = samples[4*n + ch]
+            error = abs(actual - expected)
+            max_deviation = max(max_deviation, error)
+            sum_error_sq[ch] += error * error
+            sum_ref_sq[ch] += expected * expected
+    relative = [
+        math.sqrt(sum_error_sq[ch] / max(sum_ref_sq[ch], 1.e-15))
+        for ch in (0, 1)
+    ]
+    # Float32 arithmetic differs slightly between compilers/CPUs; allow
+    # minute float roundoff, but reject wrong frequencies, channels, silence,
+    # phase resets, drifting DSP clock, mutated envelopes and level.
+    if max_deviation > 0.0001 or max(relative) > 0.003:
+        raise ValueError("P95 emitted VST3 source PCM differs from independently "
+                         "declared 317/557 Hz, channel gate and phase contract")
+    return {
+        "reference_hz_l": hz[0],
+        "reference_hz_r": hz[1],
+        "source_max_sample_error": round(max_deviation, 9),
+        "source_relative_rms_error_l": round(relative[0], 8),
+        "source_relative_rms_error_r": round(relative[1], 8),
+        "source_contract": "PASS"
+    }
+
+
 def analyze(trace):
     rate, frames, s = trace["rate"], trace["frames"], trace["samples"]
     env = [envelope(s, ch, frames) for ch in range(4)]
     if len(env[0]) < 250:
         raise ValueError("P95 too little true ASIO audio for reliable loopback")
+    source_metrics = verify_known_source_signal(trace)
     rms = [math.sqrt(sum(v*v for v in e) / len(e)) for e in env]
     if min(rms[:2]) < .008:
         raise ValueError("P95 source VST3 generated no sufficiently audible stereo signature")
     if min(rms[2:]) < .003:
         raise ValueError("P95 VB-CABLE did not return meaningful signal on both input channels")
-    # Coarse timing evidence: loopback must follow output by at least one 256
-    # frame window. Maximum alignment lag one second, no fixed ASIO latency.
+    # P102 independent signed-waveform sanity check. RMS envelopes lose
+    # polarity entirely: full-wave rectification has *identical* RMS
+    # envelopes, transfer gain and timing to an intact loopback. A
+    # near-transparent ASIO4ALL/VB-CABLE route must not introduce a
+    # persistent DC component this large relative to the returned signal.
+    # Compare mean against true sample RMS; normal source has zero DC.
+    input_dc_ratios = []
+    for ch in (2, 3):
+        mean = sum(s[4*n + ch] for n in range(frames)) / frames
+        power = sum(s[4*n + ch] ** 2 for n in range(frames)) / frames
+        if power <= 1.e-12:
+            raise ValueError("P95 insufficient audio energy for DC offset validation")
+        ratio = abs(mean) / math.sqrt(power)
+        if ratio > 0.12:
+            raise ValueError("P95 virtual ASIO returned audio has excessive DC offset")
+        input_dc_ratios.append(ratio)
+    # Coarse timing evidence: include zero-lag in a 256-frame envelope grid.
+    # Maximum alignment lag one second, no fixed ASIO latency.
     longest = min(len(env[0]) // 3, int(rate / 256))
     searches = []
     for expected, captured in ((0, 2), (1, 3), (0, 3), (1, 2)):
         scores = [(normalized_correlation(env[expected], env[captured], lag),
-                   lag) for lag in range(1, longest + 1)]
+                   lag) for lag in range(0, longest + 1)]
         searches.append(max(scores))
     (corr_l, lag_l), (corr_r, lag_r), (wrong_l, _), (wrong_r, _) = searches
     if min(corr_l, corr_r) < .75:
@@ -106,7 +298,31 @@ def analyze(trace):
         raise ValueError("P95 left and right channel latencies diverge")
     if corr_l < wrong_r + .15 or corr_r < wrong_l + .15:
         raise ValueError("P95 swapped or ambiguous VB-CABLE stereo routing")
+    signed_metrics = signed_stereo_match(s, frames, lag_l, lag_r)
+    # Measure transfer gain at the independently selected aligned lag.
+    # The QA fixture's expected 0.84/0.72 return gain is a test simulation;
+    # the live virtual cable is expected to be approximately transparent.
+    # Allow +/- 3 dB per channel to accommodate real endpoint settings,
+    # but never accept an unapproved +12 dB or 4x return-gain distortion.
+    gains_db = []
+    for out_ch, in_ch, lag in ((0, 2, lag_l), (1, 3, lag_r)):
+        src = env[out_ch][:len(env[out_ch]) - lag]
+        dst = env[in_ch][lag:]
+        src_energy = sum(x*x for x in src)
+        dst_energy = sum(y*y for y in dst)
+        if src_energy <= 1.e-12 or dst_energy <= 1.e-12:
+            raise ValueError("P95 insufficient audio energy for return gain")
+        db = 10. * math.log10(dst_energy / src_energy)
+        if abs(db) > 3.0:
+            raise ValueError("P95 return gain differs by more than 3 dB from transparent cable")
+        gains_db.append(db)
     return {
+        **source_metrics,
+        **signed_metrics,
+        "return_gain_db_l": round(gains_db[0], 4),
+        "input_dc_to_rms_l": round(input_dc_ratios[0], 6),
+        "input_dc_to_rms_r": round(input_dc_ratios[1], 6),
+        "return_gain_db_r": round(gains_db[1], 4),
         "sample_rate": rate, "frames": frames, "buffer_frames": trace["block"],
         "output_rms_l": round(rms[0], 7),
         "output_rms_r": round(rms[1], 7),
@@ -127,6 +343,8 @@ def verify_pcm(trace_path, native_evidence_path, out):
     out.mkdir(parents=True, exist_ok=True)
     report = {"schema": SCHEMA, "status": "FAIL",
               "virtual_loopback_verified": False,
+              "pcm_content_verified": False,
+              "driver_execution_verified": False,
               "physical_asio_hardware_verified": False,
               "commercial_daw_verified": False,
               "release_approved": False, "faults": []}
@@ -161,7 +379,7 @@ def verify_pcm(trace_path, native_evidence_path, out):
         report["plugin_sha256"] = evidence["product_sha256"]
         report["executor_sha256"] = evidence["executor_sha256"]
         report["status"] = "VIRTUAL_ASIO_PCM_LOOPBACK_PASS"
-        report["virtual_loopback_verified"] = True
+        report["pcm_content_verified"] = True
     except (OSError, ValueError, TypeError, KeyError, UnicodeError,
             struct.error, json.JSONDecodeError, OverflowError) as error:
         report["faults"].append(str(error))

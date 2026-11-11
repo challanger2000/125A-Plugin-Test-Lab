@@ -28,6 +28,7 @@ def run(plan, out, *, acknowledge=False, platform=sys.platform,
     report_path = folder / "P95-VIRTUAL-LOOPBACK-RUN.json"
     report = {"schema": RESULT, "status": "NOT_RUN",
               "loopback_pcm": "NOT_RUN", "asio4all_callbacks": "NOT_RUN",
+              "driver_execution_verified": False,
               "physical_asio_hardware_verified": False,
               "commercial_daw_verified": False, "release_approved": False,
               "faults": []}
@@ -88,9 +89,13 @@ def run(plan, out, *, acknowledge=False, platform=sys.platform,
             executor_sha=native_sha, driver=driver, scenario=s)
         report["asio4all_callbacks"] = "ACTUAL_CALLBACK_EVIDENCE_ACCEPTED"
         pcm = verify_pcm(trace, evidence, folder / "independent")
-        if pcm["status"] != "VIRTUAL_ASIO_PCM_LOOPBACK_PASS":
+        if (pcm["status"] != "VIRTUAL_ASIO_PCM_LOOPBACK_PASS"
+                or not pcm.get("pcm_content_verified")
+                or pcm.get("driver_execution_verified")
+                or pcm.get("virtual_loopback_verified")):
             raise ValueError("P95 independently captured PCM invalid: " +
                              ";".join(pcm["faults"]))
+        report["driver_execution_verified"] = True
         report["status"] = "VIRTUAL_ASIO_LOOPBACK_PASS"
         report["loopback_pcm"] = pcm["status"]
         report["metrics"] = pcm["metrics"]
