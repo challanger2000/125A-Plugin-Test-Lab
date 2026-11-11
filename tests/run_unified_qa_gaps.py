@@ -11,6 +11,7 @@ import re
 import sys
 
 from run_external_daw_capture_check import run as compare_external_capture
+from p220_awe_sf2_sound_gate import COMPARISON_VERSION as P220_COMPARISON_VERSION
 
 SCHEMA = "125a-p89-unified-qa-review-v1"
 BATCH_SCHEMA = "125a-vst3-batch-report-v1"
@@ -25,6 +26,7 @@ def awe77_sound_report(evidence, module_sha):
     """Do not promote P74 technical PASS to private-SF2 sound acceptance."""
     if (not isinstance(evidence,dict)
             or evidence.get("schema")!="125a-testlab-awe-sf2-77-sonic-gate-v1"
+            or evidence.get("audio_comparison_version")!=P220_COMPARISON_VERSION
             or evidence.get("status")!="PASS"
             or evidence.get("private_sf2_sha256")!=P220_SHA
             or evidence.get("vst3_module_sha256")!=module_sha
@@ -47,6 +49,15 @@ def awe77_sound_report(evidence, module_sha):
             return "FAIL"
         if [case.get("status") for case in item["scenario_results"]] != ["PASS","PASS"]:
             return "FAIL"
+        for case in item["scenario_results"]:
+            channels=case.get("channel_results",[])
+            if (case.get("audio_comparison_version")!=P220_COMPARISON_VERSION
+                    or case.get("stereo_comparison",{}).get("status")!="PASS"
+                    or case.get("stereo_comparison",{}).get("signed_pcm",{}).get("status")!="PASS"
+                    or not isinstance(channels,list) or len(channels)!=2
+                    or [c.get("channel") for c in channels if isinstance(c,dict)]!=[1,2]
+                    or any(c.get("status")!="PASS" for c in channels)):
+                return "FAIL"
         if set(item.get("detail_gates",{}))!=set(expected_gates):
             return "FAIL"
         if any(item["detail_gates"][g].get("status")!="PASS" for g in expected_gates):

@@ -1,5 +1,90 @@
 # P220 – Verbindliches 77-Preset-Klang-Gate des 125A-AWE-Synthesizers
 
+## Stereo-Korrektur aus AWE-Issue #104 – 11.11.2026
+
+**Vergleichsversion: `p220-stereo-v2`; Testversion: `p220-stereo-regression-v2`.**
+Bestehender Branch `qa/p220-awe-sf2-77-sound-gate`; keine Änderungen an
+Produkt-Engine, ASIO-Limits oder Freigabestatus. Die folgenden Nachweise
+betreffen ausschließlich die Qualität des Vergleichswerkzeugs. Originale
+Creative-/VST3-Aufnahmen und reale Klangtreue bleiben **NOT RUN / BLOCKED**.
+
+**Reproduzierter Fehler:** Der alte Vergleicher summierte `(L+R)/2` vor
+RMS-, Hüllkurven- und Spektralprüfung. Ein asymmetrisches Stereo-WAV mit
+vollständig vertauschten Kanälen bestand deshalb. Ebenso konnten
+einseitige Gain-, Polaritäts- und Zeitfehler verborgen bleiben; gültiges
+gegenphasiges Stereo wurde dagegen fälschlich als stumm zurückgewiesen.
+Die neuen Tests wurden zuerst gegen die unveränderte alte Implementierung
+ausgeführt: 7/13 Erwartungen erfüllt, fünf Stereo-Mutanten falsch grün
+und die passende Antiphasen-Kontrolle falsch rot.
+
+**Korrektur im vorhandenen P220/P89-Pfad:**
+
+- Unveränderte PCM16-WAVs und SHA-Receipts bleiben Eingang. Stereoenergie
+  bestimmt Signalpräsenz und groben Onset; L/R werden getrennt erhalten.
+- Jeder aktive Kanal muss RMS, Peak, 10-ms-Log-Hüllkurve und die acht
+  bisherigen Goertzel-Spektralbänder bestehen. Ein guter linker Kanal
+  kann keine fehlerhafte rechte Spur mehr verdecken.
+- Die bereits vorhandene **P90**-Funktion `_compare` schätzt nach dem
+  groben Onset **einen gemeinsamen** feinen Zeitversatz. Alle aktiven
+  Kanäle müssen an genau diesem Versatz positive PCM-Korrelation und
+  kleinen Residualfehler zeigen. Kein separater Kanalversatz und keine
+  Polaritätskorrektur werden zur Reparatur eines schlechten Captures benutzt.
+- L/R-Korrelation sowie Mid-/Side-RMS und Side-Energieanteil werden
+  zusätzlich ausgewiesen. Passende Referenz-/Capture-Ruhe in einem Kanal
+  ist zulässig; ein Referenzkanal mit Signal und ein stummer Capturekanal
+  schlagen fehl. Dual-Mono hat keine unterscheidbare Kanalreihenfolge.
+- P89 verlangt `audio_comparison_version=p220-stereo-v2`, Stereo- und
+  PCM-PASS sowie beide Kanalresultate in jedem Szenario. Alte rein
+  monofone grüne Reports bleiben BLOCKED und dürfen nicht wiederverwendet
+  werden. Fehlende fallweise Stereonachweise ergeben FAIL.
+
+**Vor Auswertung festgelegte Screening-Grenzen:**
+
+| Größe | Grenze |
+|---|---|
+| Absolutes RMS- und Peakdelta je aktivem Kanal | jeweils ≤ 1,0 dB |
+| Log-Hüllkurvenkorrelation je Kanal | ≥ 0,90 |
+| Spektraldelta in bedeutenden Bändern je Kanal | ≤ 4 dB; bisherige −42-dB-Bandmaske |
+| Differenz L/R-Korrelation | ≤ 0,10, wenn beide Kanäle aktiv sind |
+| Differenz Side-Energieanteil `S²/(M²+S²)` | ≤ 0,05 |
+| Gemeinsam erlaubter grober Aufnahme-Onset | bisherige ≤ 250 ms |
+| Gemeinsamer feiner P90-Versatz nach 10-ms-Onset-Raster | ±441 Frames |
+| P90 signed PCM | Korrelation ≥ 0,90, positiver Gain 0,2..5, gainbereinigter relativer Residualfehler ≤ 0,18 |
+| Ruhegrenze je Kanal | bisherige RMS-Grenze 0,00015 |
+
+Die P90-Gain-Schätzung dient nur der Residualmetrik: der unabhängige
+absolute 1-dB-Pegeltest bleibt verpflichtend. Die Original-WAVs werden
+weder normalisiert noch verändert. Diese technischen Screening-Grenzen
+sind **keine gemessenen universellen Hardware-/Wahrnehmungstoleranzen**.
+Kein Nachweis für Sampleidentität, beliebig kleine Kanalversätze,
+Recorder-Clock-Drift, sämtliche musikalischen Effekte oder echte
+Equal-State-/Originaltreiber-Provenienz wird daraus abgeleitet.
+
+**Gezielte echte WAV-Gegenproben (synthetisch erzeugtes PCM):**
+
+- PASS-Kontrollen: asymmetrisches Stereo mit unabhängigem 1-LSB-Unterschied,
+  unverändertes Dual-Mono nach Kanaltausch, passende Antiphase, passendes
+  Hard-Left mit stiller rechter Referenz, gemeinsamer +0,5-dB-Gain und
+  gemeinsamer Aufnahmeversatz von 211 Frames.
+- Erwartetes FAIL: asymmetrischer L/R-Tausch; nur L bzw. R stumm;
+  R −3 dB; R polaritätsinvertiert; beide Polaritäten invertiert;
+  ausschließlich R um 128 Frames verzögert. Alle Mutanten haben korrekt
+  formatierte Dateien und frisch passende SHA-Receipts: ein kaputter
+  Hash oder Parserfehler ist nicht ihr Ablehnungsgrund.
+- Die zehn vorhandenen 77-Preset-/154-Szenarien-Mutationen, P89-Sperrlogik
+  und die unveränderten P90-Capture-Regressionen bleiben Bestandteil
+  desselben bestehenden Workflows. Er läuft gezielt auf Ubuntu und
+  Windows; dies ist kein nativer Plugin-Neubuild und kein Originalklangtest.
+
+Aufruf: `python tests/test_p220_awe_sf2_sound_gate.py --stereo-evidence <JSON>`.
+`--stereo-only` führt nur die 13 gezielten Stereoerwartungen aus. Das
+JSON enthält beide WAV-Hashes, Werkzeug-/Testquellhash, Version,
+Einzelmessungen, Soll-/Ist-Ergebnisse und `release_approved=false`.
+Die tatsächlichen CI-Run-/Commit-Nachweise werden nach Abschluss hier
+nachgetragen; bis dahin Windows **NOT RUN**.
+
+---
+
 **Status am 10.11.2026:** Test-/Release-Sperrlogik und Negativmutationen technisch geprüft, **echte Originaltreiber- und Windows-VST3-Klangabnahme der privaten 77-Preset-Bank NICHT RUN / BLOCKED**. Das ist KEIN Klang-PASS und keine Verkaufsfreigabe.
 
 ## Referenzen und Zuständigkeiten

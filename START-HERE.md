@@ -1,3 +1,13 @@
+## P220 Stereo-v2 / AWE #104 – QA-Korrektur, keine Produktfreigabe
+
+Bestehender P220-Vergleicher erhält kanalweise RMS/Peak/Envelope/Spektrum,
+gemeinsame P90-PCM-Zeitausrichtung und L/R-/Mid-Side-Prüfung. Die gezielten
+asymmetrischen Stereo-WAV-Tests reproduzieren den alten L/R-Swap-False-PASS;
+P89 blockiert alte Mono-Reports. Reale Original-Creative-/VST3-Klangabnahme
+bleibt **BLOCKED / NOT RUN**; keine Engine- oder ASIO-Grenzwertänderung.
+[Versionen, 13 Gegenproben und Toleranzen](docs/P220-AWE-SF2-77-ORIGINAL-CREATIVE-SONIC-GATE.md).
+Windows-Nachweis erst nach dem tatsächlichen bestehenden P220-CI-Lauf.
+
 ## P220 – 77 reale SoundFont-Programme des 125A-AWE-Synthesizers: Release-Klangsperre
 
 **Stand 10.11.2026, auf isoliertem QA-Branch `qa/p220-awe-sf2-77-sound-gate`:** Die 77 wirklich vorhandenen privaten SF2-Programme 0–62 und 64–77 bilden 154 getrennte Vergleichsfälle. `tests/p220_awe_sf2_sound_gate.py` akzeptiert ausschließlich SHA-pinned Original-Creative-Win95-/86Box-Wavetable- und Windows-VST3-PCM-Receipts plus Einzel-Nachweise für Amp-ADSR, Filter, Loops, Effekt-Sends und State Recall. `tests/run_unified_qa_gaps.py --require-awe77-for awe` sperrt eine Freigabe trotz technisch grünem VST3-Prüflauf, solange der reale Vergleich nicht vorliegt.

@@ -60,6 +60,7 @@ class SoundReleaseIntegration(unittest.TestCase):
 
     def test_forged_meta_green_cannot_approve_77_missing_sound_files(self):
         bad={"schema":"125a-testlab-awe-sf2-77-sonic-gate-v1",
+             "audio_comparison_version":"p220-stereo-v2",
              "private_sf2_sha256":"d5b99ec38fddf59f53f66b90921e170d207bf3bbd73960f6e4175c39ef68349b",
              "status":"PASS","release_approved":False,"passed_presets":77,
              "passed_scenarios":154,"failed_scenarios":0,
@@ -74,6 +75,16 @@ class SoundReleaseIntegration(unittest.TestCase):
         report.write_text(json.dumps(bad))
         r=review(self.batch,self.root/"bad-sha",awe77_reports={"awe":str(report)})
         self.assertEqual(r["plugins"][0]["required_awe_77_sonic_gate"],"BLOCKED")
+
+    def test_legacy_mono_reports_remain_blocked_even_with_positive_counters(self):
+        legacy={"schema":"125a-testlab-awe-sf2-77-sonic-gate-v1",
+             "private_sf2_sha256":"d5b99ec38fddf59f53f66b90921e170d207bf3bbd73960f6e4175c39ef68349b",
+             "status":"PASS","release_approved":False,"passed_presets":77,
+             "passed_scenarios":154,"failed_scenarios":0,
+             "vst3_module_sha256":"c"*64,
+             "original_creative_full_bank_capture_verified":True,
+             "actual_windows_vst3_audio_captured":True}
+        self.assertEqual(awe77_sound_report(legacy,"c"*64),"BLOCKED")
 
     def test_unrelated_plugin_remains_generic_technical_check(self):
         x=copy.deepcopy(self.batch_report)

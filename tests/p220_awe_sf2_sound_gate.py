@@ -17,9 +17,11 @@ import struct
 import sys
 import wave
 from pathlib import Path
+from run_external_daw_capture_check import _compare as compare_existing_pcm
 
 SCHEMA = "125a-awe-sf2-77-audio-contract-v1"
 RESULT_SCHEMA = "125a-testlab-awe-sf2-77-sonic-gate-v1"
+COMPARISON_VERSION = "p220-stereo-v2"
 BANK_SHA = "d5b99ec38fddf59f53f66b90921e170d207bf3bbd73960f6e4175c39ef68349b"
 VXD_SHA = "d343f2428ab3e593c9e42a668cf521b7801e1239792eaf7f2b11b5f179bc7c9a"
 PROGRAMS = tuple(p for p in range(78) if p != 63)
@@ -32,6 +34,12 @@ LEVEL_TOLERANCE_DB = 1.0
 ENVELOPE_CORR_MIN = 0.90
 SPECTRAL_DIFF_DB_MAX = 4.0
 ONSET_LAG_MAX_MS = 250
+STEREO_CORRELATION_DELTA_MAX = 0.10
+SIDE_ENERGY_FRACTION_DELTA_MAX = 0.05
+PCM_CORRELATION_MIN = 0.90
+# After the existing 10-ms onset-bin alignment, retain ONE common fine
+# offset for both channels. Never repair a faulty channel with its own lag.
+PCM_FINE_LAG_MAX_FRAMES = 441
 MIN_RMS = 0.00015
 MAX_BYTES = 8 * 1024 * 1024
 MAX_WAV_BYTES = 20 * 1024 * 1024
@@ -70,19 +78,22 @@ def exact_wav(root, fname, expected_sha, expected_frames):
     require(len(samples)==frames*4,"TRUNCATED_PCM:"+fname)
     # Unpack stereo little-endian signed 16-bit without external dependencies.
     vals = struct.unpack("<"+str(frames*2)+"h",samples)
-    mono = [(vals[i]+vals[i+1])/65536.0 for i in range(0,len(vals),2)]
+    channels = [[v/32768.0 for v in vals[ch::2]] for ch in range(2)]
+    mono = [(l+r)*.5 for l,r in zip(*channels)]
     stereo_peak = max(abs(v) for v in vals)/32768.0
     require(stereo_peak < 0.99997, "CLIPPED_PCM:"+fname)
-    total_rms = math.sqrt(sum(x*x for x in mono)/len(mono))
+    # Stereo energy, not the mono sum: authentic anti-phase stereo is
+    # audible, while a silent/missing channel must stay observable.
+    total_rms = math.sqrt(sum(sum(x*x for x in ch) for ch in channels)/(frames*2))
     require(total_rms >= MIN_RMS,"SILENT_AUDIO:"+fname)
     block = 441
-    e = [math.sqrt(sum(x*x for x in mono[i:i+block])/block)
-         for i in range(0,len(mono)-block+1,block)]
+    e = [math.sqrt(sum(sum(x*x for x in ch[i:i+block]) for ch in channels)/(block*2))
+         for i in range(0,frames-block+1,block)]
     onset_threshold = max(MIN_RMS, max(e)*0.08)
     eligible = [i for i,a in enumerate(e) if a >= onset_threshold]
     require(eligible,"NO_AUDIBLE_ONSET:"+fname)
     onset = eligible[0]
-    return {"sha256":sha256(raw),"frames":frames,"mono":mono,
+    return {"sha256":sha256(raw),"frames":frames,"mono":mono,"channels":channels,
             "envelope":e,"onset_bin":onset,"rms":total_rms,
             "peak":stereo_peak}
 
@@ -116,51 +127,108 @@ def corr(a,b):
     den=math.sqrt(sum((x-am)**2 for x in aa)*sum((y-bm)**2 for y in bb))
     return num/den if den>1e-12 else 0.0
 
+def signal_rms(samples):
+    return math.sqrt(sum(v*v for v in samples)/len(samples))
+
+def channel_comparison(a,b,channel):
+    ra,rb=signal_rms(a),signal_rms(b)
+    pa,pb=max(abs(v) for v in a),max(abs(v) for v in b)
+    row={"channel":channel,"reference_rms":ra,"capture_rms":rb,
+         "reference_peak":pa,"capture_peak":pb,"status":"FAIL"}
+    if min(ra,rb)<MIN_RMS:
+        # Legitimate hard pan is not a missing-channel failure when the
+        # independently captured reference has that same quiet channel.
+        row.update(status="PASS" if max(ra,rb)<MIN_RMS else "FAIL",
+                   activity="QUIET_IN_BOTH" if max(ra,rb)<MIN_RMS else "CHANNEL_ACTIVITY_MISMATCH")
+        return row
+    gain_db=20*math.log10(rb/ra);peak_db=20*math.log10(pb/pa)
+    env=lambda s:[signal_rms(s[i:i+441]) for i in range(0,min(len(s),441*150)-440,441)]
+    ea,eb=env(a),env(b)
+    envelope_corr=corr(ea,eb)
+    # A flat, matching envelope is a valid steady tone, not an undefined
+    # failed correlation. Level is still tested independently above.
+    if max(ea)-min(ea)<1e-10 and max(eb)-min(eb)<1e-10:
+        envelope_corr=1.0
+    sa,sb=band_spectrum(a,1000),band_spectrum(b,1000)
+    differences=[y-x for x,y in zip(sa,sb)]
+    audible=[abs(d) for d,x,y in zip(differences,sa,sb) if max(x,y)>-42]
+    require(audible,"NO_USABLE_CHANNEL_SPECTRAL_ENERGY")
+    maximum=max(audible)
+    row.update(activity="ACTIVE",rms_delta_db=gain_db,peak_delta_db=peak_db,
+        log_envelope_correlation=envelope_corr,
+        spectral_difference_db_8_centers=differences,
+        max_abs_spectral_difference_db=maximum,
+        status="PASS" if abs(gain_db)<=LEVEL_TOLERANCE_DB and
+            abs(peak_db)<=LEVEL_TOLERANCE_DB and envelope_corr>=ENVELOPE_CORR_MIN and
+            maximum<=SPECTRAL_DIFF_DB_MAX else "FAIL")
+    return row
+
+def stereo_structure(channels):
+    left,right=channels
+    ll=sum(x*x for x in left);rr=sum(x*x for x in right)
+    lr=sum(x*y for x,y in zip(left,right))
+    mid=max(0.,(ll+rr+2*lr)/4)
+    side=max(0.,(ll+rr-2*lr)/4)
+    return {"lr_correlation":lr/math.sqrt(ll*rr) if ll>0 and rr>0 else None,
+            "mid_rms":math.sqrt(mid/len(left)),"side_rms":math.sqrt(side/len(left)),
+            "side_energy_fraction":side/(mid+side) if mid+side>0 else 0.}
+
 def compare(a,b,kind):
-    # Remove *only* variable starting silence. Do not RMS-normalize first:
-    # absolute level differences are an independent release-critical result.
-    a_e=a["envelope"];b_e=b["envelope"]
     lag_ms=abs(a["onset_bin"]-b["onset_bin"])*10
-    require(lag_ms <= ONSET_LAG_MAX_MS,"UNBOUNDED_CAPTURE_ONSET_LAG")
-    x=a_e[a["onset_bin"]:];y=b_e[b["onset_bin"]:]
-    window=min(len(x),len(y),150)
-    require(window>=50,"INSUFFICIENT_ALIGNED_AUDIO")
-    envelope_corr=corr(x[:window],y[:window])
-    # Measure gain on active audio after onset, not pre-roll silence.
+    require(lag_ms<=ONSET_LAG_MAX_MS,"UNBOUNDED_CAPTURE_ONSET_LAG")
     frames=min(a["frames"]-a["onset_bin"]*441,
                b["frames"]-b["onset_bin"]*441,FRAME_RATE*2)
     require(frames>=FRAME_RATE//2,"INSUFFICIENT_ACTIVE_PCM")
-    aa=a["mono"][a["onset_bin"]*441:a["onset_bin"]*441+frames]
-    bb=b["mono"][b["onset_bin"]*441:b["onset_bin"]*441+frames]
-    rms_a=math.sqrt(sum(v*v for v in aa)/frames)
-    rms_b=math.sqrt(sum(v*v for v in bb)/frames)
-    require(rms_a>=MIN_RMS and rms_b>=MIN_RMS,"NO_PLAYABLE_NOTE_AUDIO")
-    gain_db=20*math.log10(rms_b/rms_a)
-    spec_a=band_spectrum(a["mono"],a["onset_bin"]*441+1000)
-    spec_b=band_spectrum(b["mono"],b["onset_bin"]*441+1000)
-    spectral_differences=[round(y-x,3) for x,y in zip(spec_a,spec_b)]
-    # Inaudible FFT-bin leakage must not cause a false spectral FAIL.
-    # Preserve the full diagnostics but gate only bands having meaningful
-    # energy in at least one backend (relative to its own measured spectrum).
-    audible=[abs(d) for d,x,y in zip(spectral_differences,spec_a,spec_b)
-             if max(x,y)>-42]
-    require(audible,"NO_USABLE_SPECTRAL_ENERGY")
-    max_abs=max(audible)
-    # Tails are only measured when the recorded MIDI schedule includes
-    # a verified NoteOff. Their separate loop/effect semantics are gated
-    # by playback evidence rather than pretending this determines hardware.
-    passed=(abs(gain_db)<=LEVEL_TOLERANCE_DB and
-            envelope_corr>=ENVELOPE_CORR_MIN and
-            max_abs<=SPECTRAL_DIFF_DB_MAX)
-    return {"status":"PASS" if passed else "FAIL",
-            "rms_level_native_minus_creative_db":round(gain_db,3),
-            "log_envelope_correlation":round(envelope_corr,5),
-            "onset_lag_ms":lag_ms,
-            "spectrum_native_minus_creative_db_8_centers":spectral_differences,
-            "max_abs_spectral_difference_db":round(max_abs,3),
-            "center_frequencies_hz":[110,220,440,880,1760,3520,7040,11000],
-            "measured_audio_frames":frames,
-            "scope":"emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"}
+    aa=[s[a["onset_bin"]*441:a["onset_bin"]*441+frames] for s in a["channels"]]
+    bb=[s[b["onset_bin"]*441:b["onset_bin"]*441+frames] for s in b["channels"]]
+    active=[i for i,s in enumerate(aa) if signal_rms(s)>=MIN_RMS]
+    require(active,"NO_PLAYABLE_NOTE_AUDIO")
+    # Reuse the existing P90 signed PCM oracle. It estimates one common
+    # lag and requires every active channel to agree at that SAME lag.
+    # Positive gain and residual checks detect polarity/delay faults even
+    # when channel spectra and RMS magnitudes alone are unchanged.
+    try:
+        pcm=compare_existing_pcm({"samples_by_channel":[aa[i] for i in active]},
+            {"samples_by_channel":[bb[i] for i in active]},
+            PCM_FINE_LAG_MAX_FRAMES,PCM_CORRELATION_MIN)
+        pcm["status"]="PASS" if pcm["matches_reference"] else "FAIL"
+        for row,index in zip(pcm["channel_results"],active):row["channel"]=index+1
+    except ValueError as exc:
+        pcm={"status":"FAIL","lag_frames":0,"reason":str(exc)}
+    offset=pcm["lag_frames"]
+    start_a,start_b=max(0,-offset),max(0,offset)
+    frames-=abs(offset)
+    aa=[s[start_a:start_a+frames] for s in aa]
+    bb=[s[start_b:start_b+frames] for s in bb]
+    channels=[channel_comparison(x,y,i+1) for i,(x,y) in enumerate(zip(aa,bb))]
+    sa,sb=stereo_structure(aa),stereo_structure(bb)
+    correlation_delta=(abs(sa["lr_correlation"]-sb["lr_correlation"])
+        if all(x.get("activity")=="ACTIVE" for x in channels) else None)
+    side_delta=abs(sa["side_energy_fraction"]-sb["side_energy_fraction"])
+    stereo_pass=(pcm["status"]=="PASS" and
+        all(x["status"]=="PASS" for x in channels) and
+        (correlation_delta is None or correlation_delta<=STEREO_CORRELATION_DELTA_MAX) and
+        side_delta<=SIDE_ENERGY_FRACTION_DELTA_MAX)
+    energy_a=math.sqrt(sum(x["reference_rms"]**2 for x in channels)/2)
+    energy_b=math.sqrt(sum(x["capture_rms"]**2 for x in channels)/2)
+    require(min(energy_a,energy_b)>=MIN_RMS,"NO_PLAYABLE_NOTE_AUDIO")
+    active_rows=[x for x in channels if x.get("activity")=="ACTIVE"]
+    max_spec=max((x["max_abs_spectral_difference_db"] for x in active_rows),default=0.)
+    worst_bands=[max((x["spectral_difference_db_8_centers"][i] for x in active_rows),
+                     key=abs,default=0.) for i in range(8)]
+    return {"status":"PASS" if stereo_pass else "FAIL",
+        "audio_comparison_version":COMPARISON_VERSION,
+        "rms_level_native_minus_creative_db":round(20*math.log10(energy_b/energy_a),3),
+        "log_envelope_correlation":round(min((x["log_envelope_correlation"] for x in active_rows),default=0.),5),
+        "onset_lag_ms":lag_ms,"channel_results":channels,
+        "stereo_comparison":{"status":"PASS" if stereo_pass else "FAIL",
+            "reference":sa,"capture":sb,"lr_correlation_delta":correlation_delta,
+            "side_energy_fraction_delta":side_delta,"signed_pcm":pcm},
+        "spectrum_native_minus_creative_db_8_centers":worst_bands,
+        "max_abs_spectral_difference_db":round(max_spec,3),
+        "center_frequencies_hz":[110,220,440,880,1760,3520,7040,11000],
+        "measured_audio_frames":frames,
+        "scope":"emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"}
 
 def load_json(path):
     if path is None or not Path(path).is_file():
@@ -261,6 +329,7 @@ def check_provenance(creative,vst3,scenarios):
 def evaluate(contract,creative,vst3,creative_dir,vst3_dir):
     scenarios=validate_contract(contract)
     report={"schema":RESULT_SCHEMA,
+        "audio_comparison_version":COMPARISON_VERSION,
         "private_sf2_sha256":BANK_SHA,
         "original_creative_driver_sha256":VXD_SHA,
         "expected_programs":77,"expected_scenarios":154,

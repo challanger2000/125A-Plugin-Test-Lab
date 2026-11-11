@@ -9,8 +9,11 @@ may ever be issued as original Creative Win95 sound fidelity.
 """
 from __future__ import annotations
 import copy
+import argparse
 import hashlib
+import json
 import math
+import os
 import sys
 import tempfile
 import wave
@@ -98,6 +101,83 @@ def make(root):
             "vst3_note_on_count":1,"vst3_bank_selection_acknowledged":True})
     return plan,creative,vst,creative_dir,vst3_dir
 
+STEREO_TEST_VERSION = "p220-stereo-regression-v2"
+
+def stereo_regressions(root, evidence_out=None):
+    """Actual asymmetric PCM/WAV mutants, with fresh matching SHA receipts.
+
+    This tests the existing comparator, not a real Creative/VST3 capture.
+    Expected outcomes are fixed before invoking the comparator. Equal
+    dual-mono has no observable channel-order information and must pass.
+    """
+    import struct
+    n=44100*3
+    def signal(i, channel):
+        t=i/44100
+        env=(.35+.65*math.exp(-2.1*t))*(.85+.15*math.cos(7*t))
+        return round((6000 if channel==0 else 3500)*env*(
+            math.sin(2*math.pi*(220 if channel==0 else 440)*t)+
+            .19*math.sin(2*math.pi*(617 if channel==0 else 991)*t)))
+    stereo=[(signal(i,0),signal(i,1)) for i in range(n)]
+    dual=[(l,l) for l,r in stereo]
+    anti=[(l,-l) for l,r in stereo]
+    hard_left=[(l,0) for l,r in stereo]
+    cases=[
+        ("asymmetric_independent_lsb",stereo,[(l+1,r-1) for l,r in stereo],"PASS"),
+        ("dual_mono_swap",dual,[(r,l) for l,r in dual],"PASS"),
+        ("matching_antiphase",anti,[(l+1,r+1) for l,r in anti],"PASS"),
+        ("matching_hard_left",hard_left,[(l+1,1) for l,r in hard_left],"PASS"),
+        ("common_gain_half_db",stereo,[(round(l*10**(.5/20)),round(r*10**(.5/20))) for l,r in stereo],"PASS"),
+        ("common_latency_211_frames",stereo,[(0,0)]*211+stereo[:-211],"PASS"),
+        ("left_right_swap",stereo,[(r,l) for l,r in stereo],"FAIL"),
+        ("right_silent",stereo,[(l,0) for l,r in stereo],"FAIL"),
+        ("left_silent",stereo,[(0,r) for l,r in stereo],"FAIL"),
+        ("right_gain_minus_3db",stereo,[(l,round(r*10**(-3/20))) for l,r in stereo],"FAIL"),
+        ("right_polarity",stereo,[(l,-r) for l,r in stereo],"FAIL"),
+        ("both_polarities",stereo,[(-l,-r) for l,r in stereo],"FAIL"),
+        ("right_delay_128_frames",stereo,[(l,stereo[i-128][1] if i>=128 else 0) for i,(l,r) in enumerate(stereo)],"FAIL"),
+    ]
+    report={"test_version":STEREO_TEST_VERSION,
+            "scope":"SYNTHETIC_STEREO_WAV_COMPARATOR_ONLY_NOT_ORIGINAL_CREATIVE_OR_VST3",
+            "tool_source_sha256":hashlib.sha256(Path(__file__).with_name("p220_awe_sf2_sound_gate.py").read_bytes()).hexdigest(),
+            "test_source_sha256":hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "pcm_oracle_source_sha256":hashlib.sha256(Path(__file__).with_name("run_external_daw_capture_check.py").read_bytes()).hexdigest(),
+            "github_source_sha":os.environ.get("GITHUB_SHA"),
+            "release_approved":False,"cases":[]}
+    for index,(name,reference,actual,expected) in enumerate(cases):
+        folder=root/f"stereo-{index:02d}-{name}";folder.mkdir()
+        decoded=[];hashes=[]
+        for side,pcm in (("reference",reference),("capture",actual)):
+            d=folder/side;d.mkdir();path=d/"P000-DRY.wav"
+            with wave.open(str(path),"wb") as wav:
+                wav.setparams((2,2,44100,0,"NONE","not compressed"))
+                wav.writeframes(b"".join(struct.pack("<hh",l,r) for l,r in pcm))
+            h=hashlib.sha256(path.read_bytes()).hexdigest();hashes.append(h)
+            try:decoded.append(exact_wav(d,path.name,h,n))
+            except EvidenceError as exc:decoded.append(exc)
+        detail={}
+        try:
+            if any(isinstance(x,Exception) for x in decoded):
+                raise next(x for x in decoded if isinstance(x,Exception))
+            detail=compare(decoded[0],decoded[1],"DRY")
+            observed=detail["status"]
+        except EvidenceError as exc:
+            observed="FAIL";detail={"reason":str(exc)}
+        row={"id":name,"expected":expected,"actual":observed,
+             "reference_wav_sha256":hashes[0],"capture_wav_sha256":hashes[1],
+             "comparison":detail}
+        report["cases"].append(row)
+        print("P220_STEREO",name,"expected="+expected,"observed="+observed)
+    report["passed_assertions"]=sum(x["expected"]==x["actual"] for x in report["cases"])
+    report["assertions"]=len(cases)
+    if evidence_out is not None:
+        evidence_out.parent.mkdir(parents=True,exist_ok=True)
+        evidence_out.write_text(json.dumps(report,indent=2)+"\n")
+    require(report["passed_assertions"]==len(cases),
+            "asymmetric stereo mutants and legitimate capture controls")
+    print("P220_STEREO_REGRESSION",report["passed_assertions"],"/",len(cases),
+          "synthetic WAV only; release_approved=False")
+
 def run():
     with tempfile.TemporaryDirectory(prefix="p220-unit-only-") as temp:
         root=Path(temp)
@@ -110,6 +190,17 @@ def run():
             positive["passed_scenarios"]==154 and
             positive["release_approved"] is False,
             "synthetic positive test must exercise 154 comparisons without approving release")
+        from run_unified_qa_gaps import awe77_sound_report
+        require(awe77_sound_report(positive,"c"*64)=="PASS",
+                "P89 accepts actual complete synthetic stereo-v2 evidence")
+        old_report=copy.deepcopy(positive)
+        old_report.pop("audio_comparison_version")
+        require(awe77_sound_report(old_report,"c"*64)=="BLOCKED",
+                "P89 must block cached mono-only report even with green counters")
+        missing_stereo=copy.deepcopy(positive)
+        missing_stereo["presets"][0]["scenario_results"][0].pop("stereo_comparison")
+        require(awe77_sound_report(missing_stereo,"c"*64)=="FAIL",
+                "P89 rejects missing case-level stereo proof")
         print("P220 SYNTHETIC oracle positive: 77/77 and 154/154, release_approved=False – NO original Creative driver used")
         # Nine semantic mutants checked through same actual-wave and
         # source/receipt gates, not missing JSON field parser failures.
@@ -182,4 +273,11 @@ def run():
         return True
 
 if __name__=="__main__":
-    run()
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--stereo-only",action="store_true")
+    parser.add_argument("--stereo-evidence",type=Path)
+    args=parser.parse_args()
+    with tempfile.TemporaryDirectory(prefix="p220-stereo-unit-only-") as temp:
+        stereo_regressions(Path(temp),args.stereo_evidence)
+    if not args.stereo_only:
+        run()
