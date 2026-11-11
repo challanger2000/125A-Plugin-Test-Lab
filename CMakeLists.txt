@@ -76,6 +76,23 @@ smtg_add_vst3plugin(QAReaperMidiTone
 target_link_libraries(QAReaperMidiTone PRIVATE sdk)
 target_compile_definitions(QAReaperMidiTone PRIVATE NOMINMAX)
 
+# P182 independent minimally musical ASIO reference instrument, NOT an AWE emulator.
+# The physical-ASIO host sends MIDI pitch 48, which alone gates a 220Hz sine.
+smtg_add_vst3plugin(QAASIOReferenceMidi
+    PACKAGE_NAME "125A_QA_ASIO_Reference_MIDI"
+    SOURCES_LIST tests/asio_reference_midi_fixture.cpp)
+target_link_libraries(QAASIOReferenceMidi PRIVATE sdk)
+target_compile_definitions(QAASIOReferenceMidi PRIVATE NOMINMAX)
+
+# P183 deliberately defective lifecycle oracle: source-built but returns
+# non-OK on setProcessing(true). A real host must reject it BEFORE ASIO startup.
+smtg_add_vst3plugin(QAASIOReferenceMidiBroken
+    PACKAGE_NAME "125A_QA_ASIO_Reference_MIDI_Broken"
+    SOURCES_LIST tests/asio_reference_midi_fixture.cpp)
+target_link_libraries(QAASIOReferenceMidiBroken PRIVATE sdk)
+target_compile_definitions(QAASIOReferenceMidiBroken PRIVATE
+    NOMINMAX QA_REFERENCE_BROKEN_PROCESSING=1)
+
 # P04: native Win32 editor host; real mouse-to-VST3-parameter assertion is
 # verified by two independent, source-built synthetic UI fixtures in Actions.
 add_executable(TestLabGUI src/gui_host.cpp)

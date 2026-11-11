@@ -11,6 +11,7 @@
 
 #include "public.sdk/source/vst/hosting/module.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
+#include "public.sdk/source/vst/hosting/eventlist.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
@@ -140,6 +141,7 @@ struct Processing {
     std::vector<AudioBusBuffers> inputBuses, outputBuses;
     ProcessContext context{};
     ProcessData data{};
+    EventList midiEvents{4}; // allocated before ASIO starts; no callback allocation
 
     void prepare(IComponent* component, int frames, double rate) {
         auto build = [&](BusDirection direction, std::vector<NativeBus>& buses,
@@ -185,8 +187,12 @@ struct Processing {
         data.inputs = inputBuses.empty() ? nullptr : inputBuses.data();
         data.outputs = outputBuses.empty() ? nullptr : outputBuses.data();
         data.processContext = &context;
+        data.inputEvents = &midiEvents;
     }
 };
+
+// P183: real offline MIDI-VST3 lifecycle proof, without an ASIO device.
+#include "asio_reference_lifecycle.inc"
 
 // Actual device formats: reject unsupported layouts rather than writing
 // 32-bit words into non-32-bit driver buffers.
@@ -309,6 +315,19 @@ int formatSelfTest() {
     return 0;
 }
 
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+void updateDiagnosticMax(std::atomic<uint64_t>& target,uint64_t sample) noexcept;
+#endif
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+struct AsioTraceSample {
+    int64_t startQpc=0,endQpc=0;
+    uint64_t xrunsAtStart=0,rateChangesAtStart=0;
+    uint64_t noteOnCount=0,noteOffCount=0;
+    uint32_t threadId=0;
+    int bufferIndex=-1;
+    bool recorded=false,gapViolation=false,processOk=false;
+};
+#endif
 struct Engine {
     IASIO* driver{};
     IAudioProcessor* processor{};
@@ -323,18 +342,38 @@ struct Engine {
     std::array<ASIOSampleType, 2> sampleTypes{};
 #endif
     int frames{}, rate{};
+    int midiPitch=-1;
+    uint64_t emittedNoteOn=0, emittedNoteOff=0, audibleSamples=0;
+    float observedPeak=0.f;
     std::atomic<uint64_t> asioCallbacks{0};
     std::atomic<uint64_t> processedCallbacks{0};
     std::atomic<uint64_t> deadlineMisses{0};
     std::atomic<uint64_t> xruns{0};
     std::atomic<uint64_t> processFailures{0};
     std::atomic<uint64_t> sampleRateChanges{0};
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+    bool diagnosticsEnabled=false;
+    bool traceEnabled=false;
+    std::vector<AsioTraceSample> trace; // Allocated BEFORE physical ASIO start.
+    std::atomic<uint64_t> traceDropped{0};
+    std::atomic<uint64_t> callbackGapMisses{0},callbackDurationMisses{0};
+    std::atomic<uint64_t> maxCallbackDurationNs{0},maxCallbackSpacingNs{0};
+    std::atomic<uint64_t> midiEventFailures{0},vstProcessErrors{0};
+    std::atomic<uint64_t> nonfinitePcmSamples{0},missingOutputBuffers{0};
+    std::atomic<uint64_t> asioWriteFailures{0},callbackExceptions{0};
+#endif
     uint64_t lastEndNs{};
     uint64_t framePosition{};
     int64_t qpcFrequency{};
 
     void callback(long index) noexcept {
-        asioCallbacks.fetch_add(1, std::memory_order_relaxed);
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+        const auto traceIndex=asioCallbacks.fetch_add(1,std::memory_order_relaxed);
+        const auto driverMessagesAtEntry=xruns.load(std::memory_order_relaxed);
+        const auto rateMessagesAtEntry=sampleRateChanges.load(std::memory_order_relaxed);
+#else
+        asioCallbacks.fetch_add(1,std::memory_order_relaxed);
+#endif
         const LARGE_INTEGER started = [&]{ LARGE_INTEGER v{}; QueryPerformanceCounter(&v); return v;}();
         const auto budgetNs = static_cast<uint64_t>(
             1'000'000'000.0 * static_cast<double>(frames) / rate);
@@ -342,9 +381,21 @@ struct Engine {
             started.QuadPart * 1'000'000'000.0 / static_cast<double>(qpcFrequency));
         // A late callback is a host-observed scheduling anomaly, not proof
         // of physical hardware XRUN. Hardware overloads are counted separately.
-        if (lastEndNs && startNs > lastEndNs + 2 * budgetNs)
-            deadlineMisses.fetch_add(1, std::memory_order_relaxed);
-        lastEndNs = startNs;
+        bool traceGap=false;
+        if(lastEndNs) {
+            const auto spacingNs=startNs>lastEndNs ? startNs-lastEndNs : uint64_t(0);
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+            if(diagnosticsEnabled)updateDiagnosticMax(maxCallbackSpacingNs,spacingNs);
+#endif
+            if(spacingNs>2*budgetNs) {
+                traceGap=true;
+                deadlineMisses.fetch_add(1,std::memory_order_relaxed);
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                callbackGapMisses.fetch_add(1,std::memory_order_relaxed);
+#endif
+            }
+        }
+        lastEndNs=startNs;
         bool ok = false;
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
         ok = true;
@@ -383,13 +434,60 @@ struct Engine {
             p.context.projectTimeSamples = static_cast<int64>(framePosition);
             p.context.projectTimeMusic = static_cast<double>(framePosition) *
                                          120. / (60. * rate);
-            ok = processor->process(p.data) == kResultOk;
+            p.midiEvents.clear();
+            bool eventValid=true;
+            if(midiPitch>=0) {
+                const auto cb=framePosition/static_cast<uint64_t>(frames);
+                const auto cycle=std::max<uint64_t>(2u,static_cast<uint64_t>(rate/frames));
+                if(cb%cycle==0u) {
+                    Event on{};on.type=Event::kNoteOnEvent;on.sampleOffset=0;
+                    on.noteOn.channel=0;on.noteOn.pitch=static_cast<int16_t>(midiPitch);
+                    on.noteOn.velocity=100.f/127.f;on.noteOn.noteId=47;
+                    eventValid=p.midiEvents.addEvent(on)==kResultOk;
+                    ++emittedNoteOn;
+                } else if(cb%cycle==cycle/2u) {
+                    Event off{};off.type=Event::kNoteOffEvent;off.sampleOffset=0;
+                    off.noteOff.channel=0;off.noteOff.pitch=static_cast<int16_t>(midiPitch);
+                    off.noteOff.noteId=47;off.noteOff.velocity=0.f;
+                    eventValid=p.midiEvents.addEvent(off)==kResultOk;
+                    ++emittedNoteOff;
+                }
+            }
+            ok=eventValid&&processor->process(p.data)==kResultOk;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+            if(!eventValid)midiEventFailures.fetch_add(1,std::memory_order_relaxed);
+            else if(!ok)vstProcessErrors.fetch_add(1,std::memory_order_relaxed);
+#endif
+            if(ok&&midiPitch>=0)for(size_t ch=0;ch<2;++ch) {
+                for(float v:p.outputs[0].channels[ch]) {
+                    if(!std::isfinite(v)){
+                        ok=false;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                        nonfinitePcmSamples.fetch_add(1,std::memory_order_relaxed);
+#endif
+                        break;
+                    }
+                    const float a=std::abs(v);
+                    if(a>1.e-6f)++audibleSamples;
+                    observedPeak=std::max(observedPeak,a);
+                }
+                if(!ok)break;
+            }
             if (ok) for (size_t ch = 0; ch < 2; ++ch) {
                 auto* target = asioBuffers[ch].buffers[index];
-                if (!target) { ok = false; break; }
+                if (!target) {
+                    ok=false;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                    missingOutputBuffers.fetch_add(1,std::memory_order_relaxed);
+#endif
+                    break;
+                }
                 const auto& samples = p.outputs[0].channels[ch];
                 writeAsioSamples(target, sampleTypes[ch],
                                  samples.data(), frames, ok, 0.10); // -20 dBFS safety ceiling
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                if(!ok)asioWriteFailures.fetch_add(1,std::memory_order_relaxed);
+#endif
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
                 if (ok) for (int n = 0; n < frames; ++n)
                     loopbackTrace[static_cast<size_t>((framePosition + n) * 4 + ch)] =
@@ -399,7 +497,12 @@ struct Engine {
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
             }
 #endif
-        } catch (...) { ok = false; }
+        } catch (...) {
+            ok=false;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+            callbackExceptions.fetch_add(1,std::memory_order_relaxed);
+#endif
+        }
         if (ok) processedCallbacks.fetch_add(1, std::memory_order_relaxed);
         else processFailures.fetch_add(1, std::memory_order_relaxed);
         if (!ok) for (size_t ch = 0; ch < 2; ++ch) {
@@ -411,9 +514,39 @@ struct Engine {
         framePosition += static_cast<uint64_t>(frames);
         LARGE_INTEGER done{};
         QueryPerformanceCounter(&done);
-        if (done.QuadPart - started.QuadPart >
-            static_cast<int64_t>(frames) * qpcFrequency / rate)
-            deadlineMisses.fetch_add(1, std::memory_order_relaxed);
+        const auto durationTicks=done.QuadPart-started.QuadPart;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+        if(traceEnabled) {
+            if(traceIndex<trace.size()) {
+                auto& record=trace[static_cast<size_t>(traceIndex)];
+                record.startQpc=started.QuadPart;
+                record.endQpc=done.QuadPart;
+                record.threadId=GetCurrentThreadId();
+                record.bufferIndex=static_cast<int>(index);
+                record.gapViolation=traceGap;
+                record.processOk=ok;
+                record.xrunsAtStart=driverMessagesAtEntry;
+                record.rateChangesAtStart=rateMessagesAtEntry;
+                record.noteOnCount=emittedNoteOn;
+                record.noteOffCount=emittedNoteOff;
+                record.recorded=true;
+            } else traceDropped.fetch_add(1,std::memory_order_relaxed);
+        }
+#endif
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+        if(diagnosticsEnabled&&durationTicks>0) {
+            const auto durationNs=static_cast<uint64_t>(
+                static_cast<double>(durationTicks)*1000000000.0 /
+                static_cast<double>(qpcFrequency));
+            updateDiagnosticMax(maxCallbackDurationNs,durationNs);
+        }
+#endif
+        if(durationTicks>static_cast<int64_t>(frames)*qpcFrequency/rate) {
+            deadlineMisses.fetch_add(1,std::memory_order_relaxed);
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+            callbackDurationMisses.fetch_add(1,std::memory_order_relaxed);
+#endif
+        }
     }
 };
 std::atomic<Engine*> activeEngine{nullptr};
@@ -444,6 +577,8 @@ ASIOTime* onTimeInfo(ASIOTime* info, long index, ASIOBool direct) {
     onBuffer(index, direct);
     return info;
 }
+#include "asio_buffer_probe.inc"
+
 struct Arguments {
     std::filesystem::path plugin, output;
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
@@ -451,6 +586,10 @@ struct Arguments {
 #endif
     std::string name, clsid, nonce;
     int rate{}, frames{}, callbacks{};
+    int midiPitch=-1;
+    std::filesystem::path midiOut;
+    std::filesystem::path diagnosticOut;
+    std::filesystem::path traceOut;
 };
 Arguments parse(int argc, char** argv) {
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
@@ -472,17 +611,43 @@ Arguments parse(int argc, char** argv) {
     args.clsid = requireArg(argc, argv, "--driver-clsid");
     args.nonce = requireArg(argc, argv, "--nonce");
     args.rate = parseInteger(requireArg(argc, argv, "--rate"), 44100, 96000);
-    args.frames = parseInteger(requireArg(argc, argv, "--frames"), 64, 1024);
+    args.frames = parseInteger(requireArg(argc, argv, "--frames"), 64, 4096);
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
     args.callbacks = parseInteger(requireArg(argc, argv, "--callbacks"), 200, 1000);
 #else
     args.callbacks = parseInteger(requireArg(argc, argv, "--callbacks"), 100, 200000);
+    for(int i=1;i<argc;++i)if(std::strcmp(argv[i],"--midi-note")==0) {
+        ensure(i+1<argc,"missing --midi-note value");
+        args.midiPitch=parseInteger(argv[++i],0,127);
+    }
+    for(int i=1;i<argc;++i)if(std::strcmp(argv[i],"--midi-out")==0) {
+        ensure(i+1<argc,"missing --midi-out value");
+        args.midiOut=std::filesystem::u8path(argv[++i]);
+    }
+    ensure((args.midiPitch>=0)==!args.midiOut.empty(),
+           "MIDI instrumentation requires both --midi-note and --midi-out");
+    ensure(args.midiOut.empty()||args.midiOut!=args.output,
+           "ASIO and MIDI evidence paths must be distinct");
+    for(int i=1;i<argc;++i)if(std::strcmp(argv[i],"--diagnostic-out")==0) {
+        ensure(i+1<argc,"missing --diagnostic-out value");
+        args.diagnosticOut=std::filesystem::u8path(argv[++i]);
+    }
+    ensure(args.diagnosticOut.empty()||
+           (args.diagnosticOut!=args.output&&args.diagnosticOut!=args.midiOut),
+           "ASIO diagnostic path must not overlap PASS proof paths");
+    for(int i=1;i<argc;++i)if(std::strcmp(argv[i],"--timing-trace-out")==0) {
+        ensure(i+1<argc,"missing --timing-trace-out value");
+        args.traceOut=std::filesystem::u8path(argv[++i]);
+    }
+    ensure(args.traceOut.empty()||
+           (!args.diagnosticOut.empty()&&args.traceOut!=args.output&&
+            args.traceOut!=args.midiOut&&args.traceOut!=args.diagnosticOut&&
+            args.callbacks<=4096),
+           "P181 timing trace requires diagnostic output and <=4096 callbacks, with distinct paths");
 #endif
     ensure(args.rate == 44100 || args.rate == 48000 || args.rate == 96000,
            "unsupported ASIO sample rate");
-    ensure(args.frames == 64 || args.frames == 128 || args.frames == 256 ||
-           args.frames == 512 || args.frames == 1024,
-           "unsupported ASIO frames");
+    ensure(args.frames>=64&&args.frames<=4096,"unsupported physical ASIO buffer size");
     ensure(args.nonce.size() == 48 &&
            std::all_of(args.nonce.begin(), args.nonce.end(), [](char c) {
                return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
@@ -491,6 +656,39 @@ Arguments parse(int argc, char** argv) {
            args.plugin.extension() == ".vst3", "physical test requires exact .vst3 DLL");
     return args;
 }
+
+#include "asio_live_diagnostics.inc"
+#include "asio_timing_trace.inc"
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+void writeMidiProof(const Arguments& a,const Engine& e,
+                    const std::string& moduleHash,const std::string& exeHash) {
+    if(a.midiPitch<0)return;
+    ensure(e.emittedNoteOn>=1&&e.emittedNoteOff>=1&&
+           e.audibleSamples>=100&&e.observedPeak>0.0001f,
+           "ASIO-instrument callbacks did not render independently observed audio");
+    std::ofstream out(a.midiOut,std::ios::binary|std::ios::trunc);
+    ensure(out.good(),"Cannot open independent MIDI/PCM proof");
+    out<<"{\n"
+       <<"  \"schema\": \"125a-physical-asio-instrument-midi-v1\",\n"
+       <<"  \"nonce\": \""<<a.nonce<<"\",\n"
+       <<"  \"product_sha256\": \""<<moduleHash<<"\",\n"
+       <<"  \"executor_sha256\": \""<<exeHash<<"\",\n"
+       <<"  \"asio_driver_name\": \""<<escapeJSON(a.name)<<"\",\n"
+       <<"  \"sample_rate\": "<<a.rate<<",\n"
+       <<"  \"buffer_frames\": "<<a.frames<<",\n"
+       <<"  \"midi_note\": "<<a.midiPitch<<",\n"
+       <<"  \"note_ons\": "<<e.emittedNoteOn<<",\n"
+       <<"  \"note_offs\": "<<e.emittedNoteOff<<",\n"
+       <<"  \"nonzero_pcm_samples\": "<<e.audibleSamples<<",\n"
+       <<"  \"peak_before_safety_ceiling\": "<<e.observedPeak<<",\n"
+       <<"  \"physical_asio_callback_source\": true,\n"
+       <<"  \"daw_session_verified\": false,\n"
+       <<"  \"release_approved\": false\n"
+       <<"}\n";
+    out.flush();
+    ensure(out.good(),"Independent MIDI/PCM proof write failed");
+}
+#endif
 
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
 void writeLoopbackTrace(const Arguments& args, const Engine& engine) {
@@ -574,10 +772,7 @@ int run(const Arguments& a) {
 #endif
         checkASIO(driver->getBufferSize(&minimum, &maximum, &preferred, &granularity),
                   "Physical ASIO buffer capability query failed");
-        ensure(a.frames >= minimum && a.frames <= maximum &&
-               (granularity == -1 ? ((a.frames & (a.frames - 1)) == 0) :
-                (granularity == 0 ? a.frames == preferred :
-                 (granularity > 0 && ((a.frames - minimum) % granularity == 0)))),
+        ensure(asioFramesAllowed(a.frames,minimum,maximum,preferred,granularity),
                "Requested ASIO buffer size not supported by physical driver");
         checkASIO(driver->canSampleRate(static_cast<double>(a.rate)),
                   "Physical ASIO hardware rejects requested sample rate");
@@ -630,6 +825,13 @@ int run(const Arguments& a) {
                 engine.processing = &audio;
                 engine.frames = a.frames;
                 engine.rate = a.rate;
+                engine.midiPitch = a.midiPitch;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                engine.diagnosticsEnabled=!a.diagnosticOut.empty();
+                engine.traceEnabled=!a.traceOut.empty();
+                if(engine.traceEnabled)
+                    engine.trace.resize(static_cast<size_t>(a.callbacks)+64);
+#endif
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
                 engine.maxRecordedFrames =
                     static_cast<uint64_t>(a.callbacks + 32) * a.frames;
@@ -706,6 +908,12 @@ int run(const Arguments& a) {
                 ensure(component->setActive(false) == kResultOk,
                        "VST3 setActive(false) failed");
                 active = false;
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                // Real device already stopped. This is NOT a PASS result:
+                // always write objective diagnostics before aggregated failure gate.
+                writeAsioDiagnostics(a,engine,moduleHash,executorHash);
+                writeAsioTimingTrace(a,engine,moduleHash,executorHash);
+#endif
 
                 ensure(engine.asioCallbacks.load() >= static_cast<uint64_t>(a.callbacks),
                        "Actual physical ASIO callback threshold not reached");
@@ -721,6 +929,9 @@ int run(const Arguments& a) {
                        "ASIO plugin/executor changed during real callback processing");
 #if defined(QA_ASIO_VIRTUAL_LOOPBACK)
                 writeLoopbackTrace(a, engine);
+#endif
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+                writeMidiProof(a,engine,moduleHash,executorHash);
 #endif
                 proof(a, engine, moduleHash, executorHash);
             } catch (...) {
@@ -750,8 +961,20 @@ int run(const Arguments& a) {
 
 int main(int argc, char** argv) {
     try {
+        if (argc >= 4 && std::strcmp(argv[1],"--vst3-reference-lifecycle-selftest")==0)
+            return referenceInstrumentLifecycleSelfTest(argc,argv);
         if (argc == 2 && std::strcmp(argv[1], "--sample-format-selftest") == 0)
             return formatSelfTest();
+        if (argc == 2 && std::strcmp(argv[1], "--buffer-choice-selftest") == 0)
+            return asioBufferSelfTest();
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+        if (argc == 2 && std::strcmp(argv[1],"--timing-trace-selftest")==0)
+            return asioTraceSelfTest();
+#endif
+#if !defined(QA_ASIO_VIRTUAL_LOOPBACK)
+        if (argc >= 2 && std::strcmp(argv[1],"--asio-buffer-capabilities")==0)
+            return asioReadDriverCapabilities(argc,argv);
+#endif
         return run(parse(argc, argv));
     } catch (const std::exception& ex) {
         std::cerr << "[P58 HARDWARE NO-GO] " << ex.what() << "\n";

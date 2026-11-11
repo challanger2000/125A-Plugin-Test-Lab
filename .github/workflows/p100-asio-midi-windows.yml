@@ -1,0 +1,95 @@
+name: P100 native Windows ASIO instrument MIDI callback host
+on:
+  push:
+    branches: [qa/p100-asio-instrument-midi]
+permissions:
+  contents: read
+jobs:
+  build-negative:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned reference ASIO headers for build only
+        shell: pwsh
+        run: |
+          git clone --no-checkout https://github.com/audiosdk/asio.git asio-sdk
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO SDK unavailable' }
+          git -C asio-sdk checkout --detach 496a0765b8bb9c26f764f22f9a9712a937177db2
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO SDK pin failed' }
+          if ((git -C asio-sdk rev-parse HEAD).Trim() -cne '496a0765b8bb9c26f764f22f9a9712a937177db2') { throw 'Unexpected SDK revision' }
+      - name: Build native ASIO host
+        shell: pwsh
+        run: |
+          cmake -S . -B build-p100 -G 'Visual Studio 17 2022' -A x64 "-DASIO_SDK_DIR=$env:GITHUB_WORKSPACE/asio-sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'ASIO host configure failure' }
+          cmake --build build-p100 --config Release --parallel 4 --target TestLabPhysicalASIO QASignalGood QAASIOReferenceMidi QAASIOReferenceMidiBroken
+          if ($LASTEXITCODE -ne 0) { throw 'P100 native ASIO host build failure' }
+      - name: Fail-closed physical device negative and converter selftest
+        shell: pwsh
+        run: |
+          $exe=(Get-ChildItem build-p100 -Filter '125A_Test_Lab_Physical_ASIO.exe' -Recurse -File | Select-Object -First 1).FullName
+          if (-not $exe) { throw 'P100 executor missing' }
+          & $exe --sample-format-selftest
+          if ($LASTEXITCODE -ne 0) { throw 'P100 sample conversion selftest failed' }
+          & $exe --buffer-choice-selftest
+          if ($LASTEXITCODE -ne 0) { throw 'P101 ASIO buffer chooser selftest failed' }
+          & $exe --timing-trace-selftest
+          if ($LASTEXITCODE -ne 0) { throw 'P181 ASIO timing trace window selftest failed' }
+          New-Item -Force -ItemType Directory artifacts/P100 | Out-Null
+          $nonce='0123456789abcdef0123456789abcdef0123456789abcdef'
+          $args=@('--physical-asio-probe','--plugin','C:/does-not-exist/Plugin.vst3','--driver-name','Unregistered P100 Dummy','--driver-clsid','{00000000-0000-0000-0000-000000000000}','--rate','44100','--frames','256','--callbacks','500','--nonce',$nonce,'--out','artifacts/P100/must-not-exist.json','--midi-note','48','--midi-out','artifacts/P100/invalid-midi.json')
+          $PSNativeCommandUseErrorActionPreference = $false # negative native exit 1 is expected
+          & $exe @args
+          if ($LASTEXITCODE -eq 0 -or (Test-Path 'artifacts/P100/must-not-exist.json') -or (Test-Path 'artifacts/P100/invalid-midi.json')) { throw 'False ASIO/MIDI PASS without a driver or actual plug-in' }
+
+          $capArgs=@('--asio-buffer-capabilities','--driver-name','Unregistered P100 Dummy','--driver-clsid','{00000000-0000-0000-0000-000000000000}','--nonce',$nonce,'--out','artifacts/P100/forbidden-driver-capability.json')
+          & $exe @capArgs
+          if ($LASTEXITCODE -eq 0 -or (Test-Path 'artifacts/P100/forbidden-driver-capability.json')) { throw 'Capability probe manufactured driver data without real IASIO hardware' }
+          # Real VST3 binary + unregistered device: proof, MIDI and callback
+          # diagnostics must ALL remain absent. A nonexistent module alone
+          # would not test the registered driver gate.
+          $module=@(Get-ChildItem build-p100 -Filter '125A_QA_SignalGood.vst3' -Recurse -File)
+          if ($module.Count -ne 1) { throw 'Valid source-built real VST3 fixture absent' }
+          $blockedDiag='artifacts/P100/forbidden-callback-diagnostics.json'
+          $blockedTrace='artifacts/P100/forbidden-callback-timing-trace.json'
+          $blockedAsio='artifacts/P100/forbidden-realplugin-asio-pass.json'
+          $blockedMidi='artifacts/P100/forbidden-realplugin-midi-pass.json'
+          & $exe --physical-asio-probe --plugin $module[0].FullName --driver-name 'Unregistered P100 Dummy' --driver-clsid '{00000000-0000-0000-0000-000000000000}' --rate 44100 --frames 512 --callbacks 500 --nonce $nonce --out $blockedAsio --midi-note 48 --midi-out $blockedMidi --diagnostic-out $blockedDiag --timing-trace-out $blockedTrace
+          if ($LASTEXITCODE -eq 0 -or (Test-Path $blockedAsio) -or (Test-Path $blockedMidi) -or (Test-Path $blockedDiag) -or (Test-Path $blockedTrace)) { throw 'Unregistered driver forged proof or diagnostic with valid VST3' }
+          $reference=@(Get-ChildItem build-p100 -Filter '125A_QA_ASIO_Reference_MIDI.vst3' -Recurse -File)
+          if ($reference.Count -ne 1) { throw 'P182 exactly one actual reference instrument DLL required' }
+          $refDenied='artifacts/P100/forbidden-reference-proof.json'
+          $refMidi='artifacts/P100/forbidden-reference-midi.json'
+          $refDiag='artifacts/P100/forbidden-reference-diagnostic.json'
+          $refTrace='artifacts/P100/forbidden-reference-trace.json'
+          & $exe --physical-asio-probe --plugin $reference[0].FullName --driver-name 'Unregistered P182 Device' --driver-clsid '{00000000-0000-0000-0000-000000000000}' --rate 44100 --frames 512 --callbacks 1000 --nonce $nonce --out $refDenied --midi-note 48 --midi-out $refMidi --diagnostic-out $refDiag --timing-trace-out $refTrace
+          if ($LASTEXITCODE -eq 0 -or (Test-Path $refDenied) -or (Test-Path $refMidi) -or (Test-Path $refDiag) -or (Test-Path $refTrace)) { throw 'P182 fabricated physical ASIO reference proof without registered device' }
+          # P183: actual Windows host invokes the VST3's lifecycle, not a
+          # source-text match. A deliberately broken setProcessing MUST fail.
+          & $exe --vst3-reference-lifecycle-selftest --plugin $reference[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'P183 reference real VST3 lifecycle did not pass' }
+          $broken=@(Get-ChildItem build-p100 -Filter '125A_QA_ASIO_Reference_MIDI_Broken.vst3' -Recurse -File)
+          if ($broken.Count -ne 1) { throw 'P183 negative reference VST3 DLL missing' }
+          $badLifecycle=( & $exe --vst3-reference-lifecycle-selftest --plugin $broken[0].FullName 2>&1 | Out-String )
+          if ($LASTEXITCODE -eq 0 -or -not $badLifecycle.Contains('P183 reference setProcessing(true) failed')) {
+            throw 'P183 lifecycle oracle failed to reject deliberately broken VST3 setProcessing'
+          }
+          $overlap='artifacts/P100/forbidden-overlap.json'
+          & $exe --physical-asio-probe --plugin $module[0].FullName --driver-name 'Unregistered P100 Dummy' --driver-clsid '{00000000-0000-0000-0000-000000000000}' --rate 44100 --frames 512 --callbacks 500 --nonce $nonce --out $overlap --midi-note 48 --midi-out $blockedMidi --diagnostic-out $overlap
+          if ($LASTEXITCODE -eq 0 -or (Test-Path $overlap)) { throw 'ASIO diagnostic/proof path overlap not rejected' }
+          "P100_SOURCE_SHA=$env:GITHUB_SHA" | Set-Content artifacts/P100/provenance.txt
+          'P181_TIMING_TRACE_WINDOWS=SELFTEST_ONLY' | Add-Content artifacts/P100/provenance.txt
+          'P182_REFERENCE_VST3=COMPILED_AND_NEGATIVE_GATED_ONLY' | Add-Content artifacts/P100/provenance.txt
+          'P183_VST3_LIFECYCLE=REAL_MODULE_SUCCESS_AND_BROKEN_PROCESSING_REJECTION' | Add-Content artifacts/P100/provenance.txt
+          'REAL_ASIO_HARDWARE=NOT_RUN' | Add-Content artifacts/P100/provenance.txt
+          'REAL_MIDI_ASIO_PCM=NOT_RUN' | Add-Content artifacts/P100/provenance.txt
+          'RELEASE=NO_GO' | Add-Content artifacts/P100/provenance.txt
+          exit 0 # GitHub pwsh must not propagate the intentionally rejected native exit code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: P100-Native-ASIO-MIDI-Host-Build-Only
+          path: artifacts/P100
+          if-no-files-found: warn
+          retention-days: 14
