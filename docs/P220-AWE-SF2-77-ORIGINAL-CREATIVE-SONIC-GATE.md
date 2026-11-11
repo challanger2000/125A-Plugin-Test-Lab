@@ -13,6 +13,8 @@ RMS-, Hüllkurven- und Spektralprüfung. Ein asymmetrisches Stereo-WAV mit
 vollständig vertauschten Kanälen bestand deshalb. Ebenso konnten
 einseitige Gain-, Polaritäts- und Zeitfehler verborgen bleiben; gültiges
 gegenphasiges Stereo wurde dagegen fälschlich als stumm zurückgewiesen.
+Alle bisherigen 154 positiven WAV-Fixtures waren Dual-Mono; ihnen fehlte
+unterscheidbare L/R-Information, sodass ein Kanaltausch unentdeckt blieb.
 Die neuen Tests wurden zuerst gegen die unveränderte alte Implementierung
 ausgeführt: 7/13 Erwartungen erfüllt, fünf Stereo-Mutanten falsch grün
 und die passende Antiphasen-Kontrolle falsch rot.
@@ -80,8 +82,26 @@ Aufruf: `python tests/test_p220_awe_sf2_sound_gate.py --stereo-evidence <JSON>`.
 `--stereo-only` führt nur die 13 gezielten Stereoerwartungen aus. Das
 JSON enthält beide WAV-Hashes, Werkzeug-/Testquellhash, Version,
 Einzelmessungen, Soll-/Ist-Ergebnisse und `release_approved=false`.
-Die tatsächlichen CI-Run-/Commit-Nachweise werden nach Abschluss hier
-nachgetragen; bis dahin Windows **NOT RUN**.
+**Tatsächlich abgeschlossen:** [Run #42939861242 SUCCESS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42939861242)
+prüft den exakten QA-Quellcommit `0832e1573a9ba83d3fdae43a63917554a0440aa8`.
+[Windows-2022 Job #130258823938 SUCCESS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42939861242/job/130258823938)
+und [Ubuntu-24.04 Job #130258824439 SUCCESS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42939861242/job/130258824439):
+je 13 Stereoerwartungen, 154 synthetische Vergleiche, zehn bisherige
+Fehlermutationen, fünf P220/P89-, vier allgemeine P89- und zehn bestehende
+P90-Regressionen; fehlende Originalaufnahmen bleiben 77 BLOCKED / 0 PASS.
+Beide Jobs laufen ohne continue-on-error. Der bestehende Testcode prüft
+die Zähler und erzeugt fallweise JSON mit Quell-/WAV-Hashes.
+
+Windows-Artefakt **13820017799**, veröffentlichtes Archiv-SHA256
+`3ca4cd2e599405fbd27b6087377314704d592e52b6c3010208094352a28365bc`;
+Ubuntu-Artefakt **13821075153**, Archiv-SHA256
+`b00ac8eaddd623e3623886a400e604b423a1d23edc63cc07771fa9c5f610af84`.
+Die öffentlichen Jobstatus und Archivdigests wurden abgeglichen; originale
+ZIP-Bytes/Windows-Rohlogs wurden in der Cloud ohne GitHub-Login nicht
+erneut heruntergeladen. Lokale RED/GREEN-JSONs und Logs werden zusätzlich
+im AWE-Repository mit dem #104-Integrationsbericht veröffentlicht.
+Dieser Python-QA-Lauf baut kein neues Produkt-VST3 und liefert keinen
+Original-Creative-, Hardware-, DAW-/ASIO- oder Release-PASS.
 
 ---
 

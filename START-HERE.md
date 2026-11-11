@@ -6,7 +6,11 @@ asymmetrischen Stereo-WAV-Tests reproduzieren den alten L/R-Swap-False-PASS;
 P89 blockiert alte Mono-Reports. Reale Original-Creative-/VST3-Klangabnahme
 bleibt **BLOCKED / NOT RUN**; keine Engine- oder ASIO-Grenzwertänderung.
 [Versionen, 13 Gegenproben und Toleranzen](docs/P220-AWE-SF2-77-ORIGINAL-CREATIVE-SONIC-GATE.md).
-Windows-Nachweis erst nach dem tatsächlichen bestehenden P220-CI-Lauf.
+**Windows + Ubuntu tatsächlich SUCCESS:** [P220 #42939861242](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42939861242)
+auf QA-Quellcommit `0832e1573a9ba83d3fdae43a63917554a0440aa8`:
+je 13 Stereoerwartungen, 154 synthetische Vergleiche, zehn alte Mutanten
+und 19 P89/P90-Kompatibilitätstests. Originalklang bleibt 77 BLOCKED / 0 PASS;
+kein nativer Produktneubuild, kein FULL AUDIT und keine Freigabe.
 
 ## P220 – 77 reale SoundFont-Programme des 125A-AWE-Synthesizers: Release-Klangsperre
 
