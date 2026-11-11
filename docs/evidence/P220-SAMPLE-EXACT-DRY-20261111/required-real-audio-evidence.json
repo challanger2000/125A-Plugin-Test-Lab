@@ -1,0 +1,481 @@
+{
+  "schema": "125a-testlab-awe-sf2-77-sonic-gate-v1",
+  "audio_comparison_version": "p220-stereo-v2",
+  "private_sf2_sha256": "d5b99ec38fddf59f53f66b90921e170d207bf3bbd73960f6e4175c39ef68349b",
+  "original_creative_driver_sha256": "d343f2428ab3e593c9e42a668cf521b7801e1239792eaf7f2b11b5f179bc7c9a",
+  "expected_programs": 77,
+  "expected_scenarios": 154,
+  "original_driver_logic": "real Creative Win95 WinMM, IF source receipt verified",
+  "reference_chip": "86Box EMU8000, not a physical Creative AWE64",
+  "real_physical_awe64": "NOT TESTED",
+  "Studio_One_ASIO": "NOT TESTED",
+  "release_approved": false,
+  "status": "BLOCKED",
+  "errors": [
+    "MISSING_REAL_CREATIVE_OR_WINDOWS_VST3_CAPTURE_RECEIPTS"
+  ],
+  "presets": [
+    {
+      "program": 0,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 1,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 2,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 3,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 4,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 5,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 6,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 7,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 8,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 9,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 10,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 11,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 12,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 13,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 14,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 15,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 16,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 17,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 18,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 19,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 20,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 21,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 22,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 23,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 24,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 25,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 26,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 27,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 28,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 29,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 30,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 31,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 32,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 33,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 34,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 35,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 36,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 37,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 38,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 39,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 40,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 41,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 42,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 43,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 44,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 45,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 46,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 47,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 48,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 49,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 50,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 51,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 52,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 53,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 54,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 55,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 56,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 57,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 58,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 59,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 60,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 61,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 62,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 64,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 65,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 66,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 67,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 68,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 69,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 70,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 71,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 72,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 73,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 74,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 75,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 76,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    },
+    {
+      "program": 77,
+      "status": "BLOCKED",
+      "scenario_results": [],
+      "reason": "NO_INDEPENDENT_TWO_BACKEND_PCM"
+    }
+  ]
+}

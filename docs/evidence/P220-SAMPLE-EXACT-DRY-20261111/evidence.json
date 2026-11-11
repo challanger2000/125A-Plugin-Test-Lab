@@ -1,0 +1,275 @@
+{
+  "schema": "125a-p220-sample-exact-dry-audit-v1",
+  "repository": "challanger2000/125A-Plugin-Test-Lab",
+  "branch": "qa/p220-awe-sf2-77-sound-gate",
+  "source_sha": "2e541bb553a584a452a4f1127c007e88813a2404",
+  "tree_sha": "5090bc5ee9e30b14430c4670ccf1c5493ff5b6e2",
+  "baseline_sha": "f96213b20f234eef2c6fadf8d0706818cc5681dd",
+  "engineering_rules_sha": "811f71fa72f51ecf1b9d5121c21f8b8e03302971",
+  "comparison_version": "p220-sample-exact-dry-v1",
+  "test_version": "p220-dry-regression-v1",
+  "source_sha256": {
+    "tests/p220_awe_sf2_sound_gate.py": "f84cf26e24c65cef447cab24a86d01f69ad9b19d495c2dc13db9ecc25cc3832f",
+    "tests/run_external_daw_capture_check.py": "bd4873bf45c3121226938b3fb4c1113f2d87dcc89cf1c26b3a2a4f714974a71d",
+    "tests/run_unified_qa_gaps.py": "3a0afed7ba43ef71abf502dcf99e9c2272106834159f2a9ad110c561f4f74f2f",
+    "tests/test_p220_awe_sf2_sound_gate.py": "271d5941ba0bd2a7eca8b49c70c9c08a5a76a92edfd9cdafd82e5b857b4a830d",
+    "tests/test_p220_awe_unified_release.py": "8771d5edd6598c844c650c9702b076dca665c9ecb5e2633f136ca05d8a639ed0",
+    "tests/test_p90_external_capture_check.py": "4596cff0873c72a579b52af8fdb027ee7ddce160005d18ac4c12e28b975fdd20",
+    ".github/workflows/p220-awe-sf2-77-gate.yml": "1a030a3179bbff57faa527262a30de48281ee74019830ca5f7078dec7dc4c898"
+  },
+  "scope": "QA_COMPARATOR_AND_CONTRACT_VALIDATION_NOT_PRODUCT_SOUND_ACCEPTANCE",
+  "local": {
+    "source_sha": "2e541bb553a584a452a4f1127c007e88813a2404",
+    "tree_sha": "5090bc5ee9e30b14430c4670ccf1c5493ff5b6e2",
+    "commands": [
+      {
+        "suite": "p220-full",
+        "exit": 0,
+        "seconds": 455.6582891310027
+      },
+      {
+        "suite": "p220-release",
+        "exit": 0,
+        "seconds": 0.2888952630019048
+      },
+      {
+        "suite": "p89",
+        "exit": 0,
+        "seconds": 0.11549262300104601
+      },
+      {
+        "suite": "p90",
+        "exit": 0,
+        "seconds": 0.8247764870029641
+      }
+    ],
+    "scope": "SYNTHETIC_ONLY_NOT_REAL_CAPTURE",
+    "release_approved": false,
+    "real_sound_gate": "77 BLOCKED / 0 PASS"
+  },
+  "ci": {
+    "run_id": 42989599864,
+    "status": "SUCCESS",
+    "duration": "6m 40s",
+    "url": "https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42989599864",
+    "jobs": [
+      {
+        "os": "ubuntu-24.04",
+        "job_id": 130418934383,
+        "status": "SUCCESS",
+        "duration": "4m 51s",
+        "url": "https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42989599864/job/130418934383"
+      },
+      {
+        "os": "windows-2022",
+        "job_id": 130418934661,
+        "status": "SUCCESS",
+        "duration": "6m 36s",
+        "url": "https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42989599864/job/130418934661"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "13841492477",
+        "name": "P220-Sample-Exact-Dry-QA-ubuntu-24.04",
+        "sha256": "0c4b567d39b8d5c9285bf58be839df43aedcb2bb1d49abb1c73d685e43f8f2f6",
+        "url": "https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42989599864/artifacts/13841492477"
+      },
+      {
+        "id": "13840783363",
+        "name": "P220-Sample-Exact-Dry-QA-windows-2022",
+        "sha256": "e93e0db02f669cd9fc5b10047c8f17136f4fdac42b0ee33d0fd3c766641a19e3",
+        "url": "https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42989599864/artifacts/13840783363"
+      }
+    ],
+    "verification_method": "Public per-job source/tree/count annotations emitted after workflow JSON/log verification; published artifact digests recorded. Artifact contents not separately downloaded in cloud."
+  },
+  "dry_expected_outcomes": {
+    "PASS": 7,
+    "FAIL": 33,
+    "BLOCKED": 2
+  },
+  "test_expectations_passed": "42/42",
+  "historical_source_controls": [
+    {
+      "id": "independent_1lsb",
+      "before": {
+        "commit": "f96213b20f234eef2c6fadf8d0706818cc5681dd",
+        "status": "PASS",
+        "measured_audio_frames": 88026
+      },
+      "after": "PASS"
+    },
+    {
+      "id": "shifted_midi_note_off",
+      "before": {
+        "commit": "f96213b20f234eef2c6fadf8d0706818cc5681dd",
+        "status": "PASS",
+        "measured_audio_frames": 88026
+      },
+      "after": "FAIL"
+    },
+    {
+      "id": "extra_dsp_block_in_window",
+      "before": {
+        "commit": "f96213b20f234eef2c6fadf8d0706818cc5681dd",
+        "status": "PASS",
+        "measured_audio_frames": 88026
+      },
+      "after": "FAIL"
+    },
+    {
+      "id": "hidden_wet_pcm_despite_zero_metadata",
+      "before": {
+        "commit": "f96213b20f234eef2c6fadf8d0706818cc5681dd",
+        "status": "PASS",
+        "measured_audio_frames": 88026
+      },
+      "after": "FAIL"
+    },
+    {
+      "id": "one_late_sample_fault",
+      "before": {
+        "commit": "f96213b20f234eef2c6fadf8d0706818cc5681dd",
+        "status": "PASS",
+        "measured_audio_frames": 88026
+      },
+      "after": "FAIL"
+    },
+    {
+      "id": "gain_half_db_must_not_be_normalized",
+      "before": {
+        "commit": "f96213b20f234eef2c6fadf8d0706818cc5681dd",
+        "status": "PASS",
+        "measured_audio_frames": 88026
+      },
+      "after": "FAIL"
+    },
+    {
+      "id": "shifted_pcm_cannot_be_realigned",
+      "before": {
+        "commit": "f96213b20f234eef2c6fadf8d0706818cc5681dd",
+        "status": "PASS",
+        "measured_audio_frames": 88025
+      },
+      "after": "FAIL"
+    }
+  ],
+  "superseded_first_implementation": {
+    "source_sha": "aa846205104f4875d7f40b853bdff64c179df0cf",
+    "ci_run_id": 42989046260,
+    "ci_status": "SUCCESS",
+    "accepted": false,
+    "reason": "Dry spectrum analysis window sampled preroll silence; active post-note-on absolute spectral oracle added in final source"
+  },
+  "original_creative_capture": "NOT RUN",
+  "actual_awe_windows_vst3_capture": "NOT RUN",
+  "actual_gui_to_register_observation": "NOT RUN",
+  "capture_producer_live_execution": "NOT RUN",
+  "real_daw_asio": "NOT RUN",
+  "native_product_build_ctest_validator_gui": "NOT RUN",
+  "real_sound_gate": "BLOCKED: 77 cases, 0 real passes",
+  "accepted_integration_preflight_42946883199": "NOT REPEATED",
+  "release_approved": false,
+  "review_class": "adversarial same-agent self-challenge; no independent reviewer claimed",
+  "requirements": {
+    "D1": {
+      "qa_path": "dry_trace: approved identities",
+      "synthetic_contract_test": "PASS",
+      "actual_product_capture_chain": "NOT RUN",
+      "cases": [
+        "wrong_rom_hash",
+        "wrong_bank_hash",
+        "wrong_program",
+        "wrong_note",
+        "wrong_velocity",
+        "wrong_wav_samplerate",
+        "wrong_trace_samplerate",
+        "wrong_vst3_module"
+      ]
+    },
+    "D2": {
+      "qa_path": "dry_trace: GUI/controller/processor, all voices and returns",
+      "synthetic_contract_test": "PASS",
+      "actual_product_capture_chain": "NOT RUN",
+      "cases": [
+        "gui_not_zero",
+        "gui_zero_processor_not_zero",
+        "gui_zero_controller_not_zero",
+        "nonzero_final_hardware_send",
+        "transient_send_on_other_voice",
+        "wet_return_not_muted",
+        "incomplete_send_history",
+        "hidden_wet_pcm_despite_zero_metadata"
+      ]
+    },
+    "D3": {
+      "qa_path": "dry_trace: MIDI/register/sample clock mapping",
+      "synthetic_contract_test": "PASS",
+      "actual_product_capture_chain": "NOT RUN",
+      "cases": [
+        "different_partitions_and_transport_offset",
+        "shifted_midi_note_off",
+        "shifted_register_note_off",
+        "wrong_clock_calibration",
+        "midi_event_outside_process_block",
+        "process_block_gap"
+      ]
+    },
+    "D4": {
+      "qa_path": "dry_trace + dry_compare: exact bounded windows",
+      "synthetic_contract_test": "PASS",
+      "actual_product_capture_chain": "NOT RUN",
+      "cases": [
+        "extra_dsp_block_in_window",
+        "window_start_not_event_bound",
+        "wav_one_frame_short",
+        "shifted_pcm_cannot_be_realigned",
+        "audio_before_note_on_in_both_sources"
+      ]
+    },
+    "D5": {
+      "qa_path": "compare + P90 _compare(sample_exact=True): raw unit-gain PCM and release",
+      "synthetic_contract_test": "PASS",
+      "actual_product_capture_chain": "NOT RUN",
+      "cases": [
+        "independent_1lsb",
+        "independent_2lsb_budget",
+        "matching_hard_left",
+        "matching_antiphase",
+        "matching_silent_release",
+        "shifted_audible_release",
+        "one_late_sample_fault",
+        "gain_half_db_must_not_be_normalized",
+        "swapped_actual_stereo"
+      ]
+    },
+    "D6": {
+      "qa_path": "dry_regressions: seven actual historical controls",
+      "synthetic_contract_test": "PASS",
+      "actual_product_capture_chain": "NOT RUN",
+      "cases": [
+        "independent_1lsb",
+        "shifted_midi_note_off",
+        "extra_dsp_block_in_window",
+        "hidden_wet_pcm_despite_zero_metadata",
+        "one_late_sample_fault",
+        "gain_half_db_must_not_be_normalized",
+        "shifted_pcm_cannot_be_realigned"
+      ]
+    },
+    "D7": {
+      "qa_path": "dry_trace + P89 sound gate: source class and tap",
+      "synthetic_contract_test": "PASS",
+      "actual_product_capture_chain": "NOT RUN",
+      "cases": [
+        "native_diagnostic_is_not_vst3",
+        "synthetic_is_not_original_capture",
+        "wrong_audio_tap",
+        "wrong_channel_metadata",
+        "neutral_daw_contract_fixture",
+        "daw_gain_not_neutral"
+      ]
+    }
+  }
+}

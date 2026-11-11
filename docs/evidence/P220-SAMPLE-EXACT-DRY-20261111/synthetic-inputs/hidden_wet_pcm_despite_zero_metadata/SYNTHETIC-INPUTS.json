@@ -1,0 +1,70 @@
+{
+  "scope": "SYNTHETIC_ONLY_NOT_CREATIVE_OR_VST3",
+  "spec": {
+    "schema": "125a-p220-sample-exact-dry-contract-v1",
+    "rom_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "bank_sha256": "d5b99ec38fddf59f53f66b90921e170d207bf3bbd73960f6e4175c39ef68349b",
+    "sample_rate": 44100,
+    "channels": [
+      "L",
+      "R"
+    ],
+    "pre_note_frames": 4410,
+    "note_length_frames": 44100,
+    "window_frames": 132300,
+    "vst3_module_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "vst3_capture_kind": "WINDOWS_VST3",
+    "captures": {
+      "P000-DRY": {
+        "creative": {
+          "sample_to_audio_offset_frames": -11,
+          "midi_to_sample_on_frames": 0,
+          "midi_to_sample_off_frames": 0,
+          "wav_sha256": "c1941fe819e7924c2f8e9638491d53975891aa455ea0c45dc059366cd978a61a",
+          "trace_sha256": "ec721d966390195472d80f3d46054c58bb7d9bd0681c6d22730e64bf10854ab7"
+        },
+        "vst3": {
+          "sample_to_audio_offset_frames": -11,
+          "midi_to_sample_on_frames": 0,
+          "midi_to_sample_off_frames": 0,
+          "wav_sha256": "d21241c94828beb4dbe95521b39dac0bebfefd857f2d4b318b5b8524b8fb2fa7",
+          "trace_sha256": "cfa86ac0b4e065868d9c89ca05c399f8dce255fb42369b061e23cb5b85269463"
+        }
+      }
+    }
+  },
+  "fixture": {
+    "id": "P000-DRY",
+    "program": 0,
+    "variant": "DRY",
+    "note": 48,
+    "velocity": 64,
+    "controllers": {
+      "1": 0,
+      "7": 100,
+      "11": 127,
+      "91": 0,
+      "93": 0
+    },
+    "channel": 0,
+    "user_bank": 1,
+    "note_off_ms": 1000,
+    "record_ms": 3000,
+    "creative_wav": "P000-DRY.wav",
+    "vst3_wav": "P000-DRY.wav"
+  },
+  "receipts": {
+    "creative": {
+      "audio_frames": 132352,
+      "event_trace": "P000-DRY.events.json",
+      "wav_sha256": "c1941fe819e7924c2f8e9638491d53975891aa455ea0c45dc059366cd978a61a",
+      "event_trace_sha256": "ec721d966390195472d80f3d46054c58bb7d9bd0681c6d22730e64bf10854ab7"
+    },
+    "vst3": {
+      "audio_frames": 132608,
+      "event_trace": "P000-DRY.events.json",
+      "wav_sha256": "d21241c94828beb4dbe95521b39dac0bebfefd857f2d4b318b5b8524b8fb2fa7",
+      "event_trace_sha256": "cfa86ac0b4e065868d9c89ca05c399f8dce255fb42369b061e23cb5b85269463"
+    }
+  }
+}

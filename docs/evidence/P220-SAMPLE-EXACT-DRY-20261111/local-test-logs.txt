@@ -1,0 +1,108 @@
+SYNTHETIC QA ONLY; source 2e541bb553a584a452a4f1127c007e88813a2404; tree 5090bc5ee9e30b14430c4670ccf1c5493ff5b6e2. Real Creative/VST3 sound BLOCKED.
+
+### p220-full.log
+P220_STEREO asymmetric_independent_lsb expected=PASS observed=PASS
+P220_STEREO dual_mono_swap expected=PASS observed=PASS
+P220_STEREO matching_antiphase expected=PASS observed=PASS
+P220_STEREO matching_hard_left expected=PASS observed=PASS
+P220_STEREO common_gain_half_db expected=PASS observed=PASS
+P220_STEREO common_latency_211_frames expected=PASS observed=PASS
+P220_STEREO left_right_swap expected=FAIL observed=FAIL
+P220_STEREO right_silent expected=FAIL observed=FAIL
+P220_STEREO left_silent expected=FAIL observed=FAIL
+P220_STEREO right_gain_minus_3db expected=FAIL observed=FAIL
+P220_STEREO right_polarity expected=FAIL observed=FAIL
+P220_STEREO both_polarities expected=FAIL observed=FAIL
+P220_STEREO right_delay_128_frames expected=FAIL observed=FAIL
+P220_STEREO_REGRESSION 13 / 13 synthetic WAV only; release_approved=False
+P220_DRY independent_1lsb expected=PASS observed=PASS
+P220_DRY independent_2lsb_budget expected=PASS observed=PASS
+P220_DRY different_partitions_and_transport_offset expected=PASS observed=PASS
+P220_DRY matching_hard_left expected=PASS observed=PASS
+P220_DRY matching_antiphase expected=PASS observed=PASS
+P220_DRY matching_silent_release expected=PASS observed=PASS
+P220_DRY neutral_daw_contract_fixture expected=PASS observed=PASS
+P220_DRY shifted_midi_note_off expected=FAIL observed=FAIL
+P220_DRY shifted_register_note_off expected=FAIL observed=FAIL
+P220_DRY shifted_audible_release expected=FAIL observed=FAIL
+P220_DRY extra_dsp_block_in_window expected=FAIL observed=FAIL
+P220_DRY window_start_not_event_bound expected=FAIL observed=FAIL
+P220_DRY wav_one_frame_short expected=FAIL observed=FAIL
+P220_DRY nonzero_final_hardware_send expected=FAIL observed=FAIL
+P220_DRY transient_send_on_other_voice expected=FAIL observed=FAIL
+P220_DRY wet_return_not_muted expected=FAIL observed=FAIL
+P220_DRY gui_not_zero expected=FAIL observed=FAIL
+P220_DRY gui_zero_processor_not_zero expected=FAIL observed=FAIL
+P220_DRY gui_zero_controller_not_zero expected=FAIL observed=FAIL
+P220_DRY incomplete_send_history expected=FAIL observed=FAIL
+P220_DRY hidden_wet_pcm_despite_zero_metadata expected=FAIL observed=FAIL
+P220_DRY one_late_sample_fault expected=FAIL observed=FAIL
+P220_DRY gain_half_db_must_not_be_normalized expected=FAIL observed=FAIL
+P220_DRY shifted_pcm_cannot_be_realigned expected=FAIL observed=FAIL
+P220_DRY audio_before_note_on_in_both_sources expected=FAIL observed=FAIL
+P220_DRY wrong_audio_tap expected=FAIL observed=FAIL
+P220_DRY wrong_channel_metadata expected=FAIL observed=FAIL
+P220_DRY swapped_actual_stereo expected=FAIL observed=FAIL
+P220_DRY wrong_rom_hash expected=FAIL observed=FAIL
+P220_DRY wrong_bank_hash expected=FAIL observed=FAIL
+P220_DRY wrong_program expected=FAIL observed=FAIL
+P220_DRY wrong_velocity expected=FAIL observed=FAIL
+P220_DRY wrong_note expected=FAIL observed=FAIL
+P220_DRY wrong_wav_samplerate expected=FAIL observed=FAIL
+P220_DRY wrong_trace_samplerate expected=FAIL observed=FAIL
+P220_DRY wrong_vst3_module expected=FAIL observed=FAIL
+P220_DRY wrong_clock_calibration expected=FAIL observed=FAIL
+P220_DRY midi_event_outside_process_block expected=FAIL observed=FAIL
+P220_DRY process_block_gap expected=FAIL observed=FAIL
+P220_DRY native_diagnostic_is_not_vst3 expected=BLOCKED observed=BLOCKED
+P220_DRY synthetic_is_not_original_capture expected=BLOCKED observed=BLOCKED
+P220_DRY daw_gain_not_neutral expected=FAIL observed=FAIL
+P220_DRY_REGRESSION 42 / 42 synthetic only; real sound BLOCKED
+P220 SYNTHETIC oracle positive: 77/77 and 154/154, release_approved=False – NO original Creative driver used
+P220 SYNTHETIC MUTATION AUDIT: 10/10 rejected, including valid-but-wrong sound, silent PCM, wrong presets and missing FX
+
+### p220-release.log
+test_actual_technical_pass_does_not_certify_original_bank_sound (__main__.SoundReleaseIntegration.test_actual_technical_pass_does_not_certify_original_bank_sound) ... ok
+test_complete_cached_stereo_screen_without_dry_events_is_blocked (__main__.SoundReleaseIntegration.test_complete_cached_stereo_screen_without_dry_events_is_blocked) ... ok
+test_explicit_release_run_exits_nonzero_despite_technical_pass (__main__.SoundReleaseIntegration.test_explicit_release_run_exits_nonzero_despite_technical_pass) ... ok
+test_forged_meta_green_cannot_approve_77_missing_sound_files (__main__.SoundReleaseIntegration.test_forged_meta_green_cannot_approve_77_missing_sound_files) ... ok
+test_full_gate_routes_dry_through_event_windows_without_legacy_block_crop (__main__.SoundReleaseIntegration.test_full_gate_routes_dry_through_event_windows_without_legacy_block_crop) ... ok
+test_legacy_mono_reports_remain_blocked_even_with_positive_counters (__main__.SoundReleaseIntegration.test_legacy_mono_reports_remain_blocked_even_with_positive_counters) ... ok
+test_unrelated_plugin_remains_generic_technical_check (__main__.SoundReleaseIntegration.test_unrelated_plugin_remains_generic_technical_check) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.138s
+
+OK
+
+### p89.log
+test_actual_failed_child_does_not_stop_consolidated_report (__main__.UnifiedGapTests.test_actual_failed_child_does_not_stop_consolidated_report) ... ok
+test_false_hardware_or_release_claim_cannot_be_accepted (__main__.UnifiedGapTests.test_false_hardware_or_release_claim_cannot_be_accepted) ... ok
+test_forged_pass_cannot_hide_missing_child_or_wrong_sha (__main__.UnifiedGapTests.test_forged_pass_cannot_hide_missing_child_or_wrong_sha) ... ok
+test_truthful_mixed_batch_and_readable_summary (__main__.UnifiedGapTests.test_truthful_mixed_batch_and_readable_summary) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.011s
+
+OK
+
+### p90.log
+test_checksum_identity_is_pinned (__main__.ExternalCaptureTests.test_checksum_identity_is_pinned) ... ok
+test_clipping_is_rejected (__main__.ExternalCaptureTests.test_clipping_is_rejected) ... ok
+test_fake_hardware_metadata_cannot_upgrade_provenance (__main__.ExternalCaptureTests.test_fake_hardware_metadata_cannot_upgrade_provenance) ... ok
+test_good_offset_amplitude_variance_validates_pcm_but_not_asio (__main__.ExternalCaptureTests.test_good_offset_amplitude_variance_validates_pcm_but_not_asio) ... ok
+test_mismatched_rate_rejected (__main__.ExternalCaptureTests.test_mismatched_rate_rejected) ... ok
+test_missing_or_forged_manifest_fields_rejected (__main__.ExternalCaptureTests.test_missing_or_forged_manifest_fields_rejected) ... ok
+test_same_reference_as_capture_is_not_independent (__main__.ExternalCaptureTests.test_same_reference_as_capture_is_not_independent) ... ok
+test_sample_exact_refuses_lag_or_different_channel_window_sizes (__main__.ExternalCaptureTests.test_sample_exact_refuses_lag_or_different_channel_window_sizes) ... ok
+test_sample_exact_rejects_fault_between_legacy_stride_samples (__main__.ExternalCaptureTests.test_sample_exact_rejects_fault_between_legacy_stride_samples) ... ok
+test_sample_exact_two_lsb_budget_boundary (__main__.ExternalCaptureTests.test_sample_exact_two_lsb_budget_boundary) ... ok
+test_sample_exact_uses_unit_gain_and_keeps_legacy_behavior (__main__.ExternalCaptureTests.test_sample_exact_uses_unit_gain_and_keeps_legacy_behavior) ... ok
+test_silence_is_never_valid_evidence (__main__.ExternalCaptureTests.test_silence_is_never_valid_evidence) ... ok
+test_stereo_both_channels_must_pass (__main__.ExternalCaptureTests.test_stereo_both_channels_must_pass) ... ok
+test_unrelated_non_silent_pcm_fails (__main__.ExternalCaptureTests.test_unrelated_non_silent_pcm_fails) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.722s
+
+OK

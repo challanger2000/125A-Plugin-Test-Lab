@@ -1,0 +1,476 @@
+{
+  "schema": "125a-p220-sample-exact-dry-result-v1",
+  "comparison_version": "p220-sample-exact-dry-v1",
+  "status": "BLOCKED",
+  "release_approved": false,
+  "expected_cases": 77,
+  "passed_cases": 0,
+  "cases": [
+    {
+      "id": "P000-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P001-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P002-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P003-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P004-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P005-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P006-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P007-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P008-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P009-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P010-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P011-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P012-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P013-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P014-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P015-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P016-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P017-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P018-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P019-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P020-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P021-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P022-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P023-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P024-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P025-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P026-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P027-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P028-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P029-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P030-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P031-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P032-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P033-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P034-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P035-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P036-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P037-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P038-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P039-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P040-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P041-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P042-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P043-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P044-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P045-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P046-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P047-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P048-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P049-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P050-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P051-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P052-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P053-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P054-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P055-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P056-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P057-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P058-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P059-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P060-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P061-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P062-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P064-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P065-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P066-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P067-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P068-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P069-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P070-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P071-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P072-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P073-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P074-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P075-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P076-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    },
+    {
+      "id": "P077-DRY",
+      "status": "BLOCKED",
+      "comparison_status": "NOT RUN",
+      "reason": "NO_APPROVED_EVENT_BOUNDED_CAPTURE_PAIR"
+    }
+  ],
+  "capture_producer_execution": "NOT RUN_BY_THIS_COMPARATOR",
+  "physical_awe64": "NOT RUN",
+  "daw_asio_verification": "NOT RUN",
+  "reason": "MISSING_SAMPLE_EXACT_DRY_CONTRACT_OR_REAL_CAPTURES"
+}

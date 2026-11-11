@@ -1,0 +1,23 @@
+{
+  "schema": "125a-p220-dry-qa-execution-v1",
+  "source_sha": "2e541bb553a584a452a4f1127c007e88813a2404",
+  "tree_sha": "5090bc5ee9e30b14430c4670ccf1c5493ff5b6e2",
+  "runner_os": "Linux-local",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "dry_expectations": "42/42",
+  "stereo_expectations": "13/13",
+  "legacy_synthetic_comparisons": "154/154",
+  "legacy_mutants": "10/10",
+  "unit_tests": "25/25",
+  "historical_source_controls": "7/7",
+  "source_sha256": {
+    "p220_awe_sf2_sound_gate.py": "f84cf26e24c65cef447cab24a86d01f69ad9b19d495c2dc13db9ecc25cc3832f",
+    "run_external_daw_capture_check.py": "bd4873bf45c3121226938b3fb4c1113f2d87dcc89cf1c26b3a2a4f714974a71d",
+    "test_p220_awe_sf2_sound_gate.py": "271d5941ba0bd2a7eca8b49c70c9c08a5a76a92edfd9cdafd82e5b857b4a830d"
+  },
+  "original_creative_audio": "NOT RUN",
+  "actual_windows_vst3_audio": "NOT RUN",
+  "real_sound_gate": "77 BLOCKED / 0 PASS",
+  "accepted_integration_preflight": "NOT REPEATED",
+  "release_approved": false
+}

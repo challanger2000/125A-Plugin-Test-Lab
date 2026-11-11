@@ -1,3 +1,23 @@
+## P220 samplegenaue Dry-Prüfung – Werkzeug geprüft, echte Klangabnahme BLOCKED
+
+Auf bestehendem QA-Branch geprüft: Quellcommit
+`2e541bb553a584a452a4f1127c007e88813a2404`, Baum
+`5090bc5ee9e30b14430c4670ccf1c5493ff5b6e2`.
+**[Windows-2022 + Ubuntu-24.04 #42989599864 SUCCESS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42989599864)**:
+je 42 Dry-Erwartungen, 13 Stereoerwartungen, 154 bestehende synthetische
+Audiofälle, 10 alte Mutanten, 25 Unit-Tests und 7 historische Quellkontrollen.
+Dry bindet ROM/Bank/MIDI/Rate, GUI→Controller→Processor→alle 32 Hardware-Sends,
+echte gelieferte MIDI-/Register-/Sampleereignisse und exakt gleiche Fenster.
+P90 vergleicht jedes Sample bei Unit-Gain und Lag 0; Release und absolute
+Spektren werden ereignisbezogen geprüft. Native Diagnosen und synthetische
+Fixtures zählen nicht als echte Aufnahmen. Eine Nachkorrektur des neuen
+Spektralstarts ist im geprüften Commit enthalten; Erststand `aa84620` ist überholt.
+**Original-Creative-/tatsächliche AWE-VST3-Aufnahmen und reale GUI-/DAW-/ASIO-
+Ketten NOT RUN; 77 Dry-Fälle BLOCKED / 0 PASS; keine Klang-/Releasefreigabe.**
+Die abgenommene Integrationsvorprüfung #42946883199 wurde nicht wiederholt.
+Kein main-Merge, neuer Branch/PR oder Produkt-Engine-Eingriff.
+[Vertrag, Gegenproben, genaue Grenzen, Rohbelege und Artefakte](docs/P220-SAMPLE-EXACT-DRY-ACCEPTANCE.md).
+
 ## P220 + aktuelles main / AWE #104 – Windows-/Ubuntu-Integrationsvorlage geprüft
 
 Der tatsächlich kombinierte Stand aus main `7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c`
