@@ -1,0 +1,1586 @@
+{
+  "test_version": "p220-stereo-regression-v2",
+  "scope": "SYNTHETIC_STEREO_WAV_COMPARATOR_ONLY_NOT_ORIGINAL_CREATIVE_OR_VST3",
+  "tool_source_sha256": "a714443c99e09a1e676d22c87fc28a97f2ee0b45d5484ab002ffc0165a380ad8",
+  "test_source_sha256": "1992debc2c0c39b7bb73425c29064c08881e44ae00a2894ffc554372ac22e6bd",
+  "pcm_oracle_source_sha256": "b9905ac2c8ff79eec9cd2e55810c568b6a467521c6aa908a57da5817652e8f8d",
+  "github_source_sha": null,
+  "release_approved": false,
+  "cases": [
+    {
+      "id": "asymmetric_independent_lsb",
+      "expected": "PASS",
+      "actual": "PASS",
+      "reference_wav_sha256": "cf8fdb54adfda2b3525b495dbb6c0385933a71c600ffdf65e4e16dcfd861fa56",
+      "capture_wav_sha256": "d4c3139451712562aecb49cbaadcb3944deee1f69e782b50e5494118bd9b6350",
+      "comparison": {
+        "status": "PASS",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": 0.0,
+        "log_envelope_correlation": 1.0,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.060847660553108585,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.213836669921875,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 4.568373645870465e-06,
+            "peak_delta_db": 0.001239690238037507,
+            "log_envelope_correlation": 0.9999999899966263,
+            "spectral_difference_db_8_centers": [
+              -7.897020594782589e-06,
+              1.6429150703723902e-09,
+              -1.9020114407908295e-05,
+              1.692148548215755e-05,
+              0.00022687524322861918,
+              0.00010583876121472713,
+              -6.966528609098077e-05,
+              -1.9487188467337546e-05
+            ],
+            "max_abs_spectral_difference_db": 7.897020594782589e-06
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.03549442056142651,
+            "capture_rms": 0.03549442131258716,
+            "reference_peak": 0.125946044921875,
+            "capture_peak": 0.1259765625,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 1.8381757897734443e-07,
+            "peak_delta_db": 0.0021043948347786996,
+            "log_envelope_correlation": 0.9999999798995537,
+            "spectral_difference_db_8_centers": [
+              0.0007949017429922378,
+              7.992983540106025e-05,
+              -3.812863889957654e-10,
+              -2.014888160317696e-05,
+              -0.00019137468909491417,
+              -0.0003328275073073428,
+              -0.00010549842546936361,
+              2.6421266170473245e-06
+            ],
+            "max_abs_spectral_difference_db": 3.812863889957654e-10
+          }
+        ],
+        "stereo_comparison": {
+          "status": "PASS",
+          "reference": {
+            "lr_correlation": 3.1400408008877128e-06,
+            "mid_rms": 0.03522180203572222,
+            "side_rms": 0.03522170576414987,
+            "side_energy_fraction": 0.49999863335067546
+          },
+          "capture": {
+            "lr_correlation": 2.2260589250731787e-06,
+            "mid_rms": 0.03522180203572222,
+            "side_rms": 0.03522173378621896,
+            "side_energy_fraction": 0.4999990311459744
+          },
+          "lr_correlation_delta": 9.13981875814534e-07,
+          "side_energy_fraction_delta": 3.977952989231426e-07,
+          "signed_pcm": {
+            "lag_frames": 0,
+            "correlation": 0.9999996,
+            "relative_rms_error": 0.0008598,
+            "estimated_gain": 1.0000004,
+            "channel_results": [
+              {
+                "channel": 1,
+                "correlation": 0.9999999,
+                "relative_rms_error": 0.0005015,
+                "estimated_gain": 1.0000004,
+                "matches_reference": true
+              },
+              {
+                "channel": 2,
+                "correlation": 0.9999996,
+                "relative_rms_error": 0.0008598,
+                "estimated_gain": 0.9999997,
+                "matches_reference": true
+              }
+            ],
+            "channels_compared": 2,
+            "compared_frames": 88200,
+            "matches_reference": true,
+            "status": "PASS"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          0.0007949017429922378,
+          7.992983540106025e-05,
+          -1.9020114407908295e-05,
+          -2.014888160317696e-05,
+          0.00022687524322861918,
+          -0.0003328275073073428,
+          -0.00010549842546936361,
+          -1.9487188467337546e-05
+        ],
+        "max_abs_spectral_difference_db": 0.0,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 88200,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "dual_mono_swap",
+      "expected": "PASS",
+      "actual": "PASS",
+      "reference_wav_sha256": "a5b31fd8aac9ec01d999db099b8899a11586879044dbabb8af41ccaf9484b11f",
+      "capture_wav_sha256": "a5b31fd8aac9ec01d999db099b8899a11586879044dbabb8af41ccaf9484b11f",
+      "comparison": {
+        "status": "PASS",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": 0.0,
+        "log_envelope_correlation": 1.0,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.06084762855007984,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.21380615234375,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.0,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 1.0,
+            "spectral_difference_db_8_centers": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "max_abs_spectral_difference_db": 0.0
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.06084762855007984,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.21380615234375,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.0,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 1.0,
+            "spectral_difference_db_8_centers": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "max_abs_spectral_difference_db": 0.0
+          }
+        ],
+        "stereo_comparison": {
+          "status": "PASS",
+          "reference": {
+            "lr_correlation": 1.0,
+            "mid_rms": 0.06084762855007984,
+            "side_rms": 0.0,
+            "side_energy_fraction": 0.0
+          },
+          "capture": {
+            "lr_correlation": 1.0,
+            "mid_rms": 0.06084762855007984,
+            "side_rms": 0.0,
+            "side_energy_fraction": 0.0
+          },
+          "lr_correlation_delta": 0.0,
+          "side_energy_fraction_delta": 0.0,
+          "signed_pcm": {
+            "lag_frames": 0,
+            "correlation": 1.0,
+            "relative_rms_error": 0.0,
+            "estimated_gain": 1.0,
+            "channel_results": [
+              {
+                "channel": 1,
+                "correlation": 1.0,
+                "relative_rms_error": 0.0,
+                "estimated_gain": 1.0,
+                "matches_reference": true
+              },
+              {
+                "channel": 2,
+                "correlation": 1.0,
+                "relative_rms_error": 0.0,
+                "estimated_gain": 1.0,
+                "matches_reference": true
+              }
+            ],
+            "channels_compared": 2,
+            "compared_frames": 88200,
+            "matches_reference": true,
+            "status": "PASS"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_abs_spectral_difference_db": 0.0,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 88200,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "matching_antiphase",
+      "expected": "PASS",
+      "actual": "PASS",
+      "reference_wav_sha256": "81ba4b8c8d2ef920b35411e7f1484835f1baef8feefc9f5da6de425b3dedb630",
+      "capture_wav_sha256": "4d0fc45121a3469e7f3d95c17f078894caa0e24f19efbb42e5c61141be016ad1",
+      "comparison": {
+        "status": "PASS",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": 0.0,
+        "log_envelope_correlation": 1.0,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.060847660553108585,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.213836669921875,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 4.568373645870465e-06,
+            "peak_delta_db": 0.001239690238037507,
+            "log_envelope_correlation": 0.9999999899966263,
+            "spectral_difference_db_8_centers": [
+              -7.897020594782589e-06,
+              1.6429150703723902e-09,
+              -1.9020114407908295e-05,
+              1.692148548215755e-05,
+              0.00022687524322861918,
+              0.00010583876121472713,
+              -6.966528609098077e-05,
+              -1.9487188467337546e-05
+            ],
+            "max_abs_spectral_difference_db": 7.897020594782589e-06
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.06084761185285585,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.213775634765625,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": -2.38349904758195e-06,
+            "peak_delta_db": -0.001239867197603883,
+            "log_envelope_correlation": 0.9999999899965504,
+            "spectral_difference_db_8_centers": [
+              7.897101824028141e-06,
+              -1.6429353263047383e-09,
+              1.902018468769029e-05,
+              -1.6921525258339898e-05,
+              -0.0002268477120139778,
+              -0.00010583936924035697,
+              6.966467664426546e-05,
+              1.9487200972889696e-05
+            ],
+            "max_abs_spectral_difference_db": 7.897101824028141e-06
+          }
+        ],
+        "stereo_comparison": {
+          "status": "PASS",
+          "reference": {
+            "lr_correlation": -1.0,
+            "mid_rms": 0.0,
+            "side_rms": 0.06084762855007984,
+            "side_energy_fraction": 1.0
+          },
+          "capture": {
+            "lr_correlation": -0.9999994969137748,
+            "mid_rms": 3.0517578125e-05,
+            "side_rms": 0.06084762855007984,
+            "side_energy_fraction": 0.9999997484567272
+          },
+          "lr_correlation_delta": 5.030862252342061e-07,
+          "side_energy_fraction_delta": 2.5154327276677435e-07,
+          "signed_pcm": {
+            "lag_frames": 0,
+            "correlation": 0.9999999,
+            "relative_rms_error": 0.0005015,
+            "estimated_gain": 1.0000004,
+            "channel_results": [
+              {
+                "channel": 1,
+                "correlation": 0.9999999,
+                "relative_rms_error": 0.0005015,
+                "estimated_gain": 1.0000004,
+                "matches_reference": true
+              },
+              {
+                "channel": 2,
+                "correlation": 0.9999999,
+                "relative_rms_error": 0.0005015,
+                "estimated_gain": 0.9999996,
+                "matches_reference": true
+              }
+            ],
+            "channels_compared": 2,
+            "compared_frames": 88200,
+            "matches_reference": true,
+            "status": "PASS"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          7.897101824028141e-06,
+          -1.6429353263047383e-09,
+          1.902018468769029e-05,
+          -1.6921525258339898e-05,
+          0.00022687524322861918,
+          -0.00010583936924035697,
+          -6.966528609098077e-05,
+          1.9487200972889696e-05
+        ],
+        "max_abs_spectral_difference_db": 0.0,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 88200,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "matching_hard_left",
+      "expected": "PASS",
+      "actual": "PASS",
+      "reference_wav_sha256": "5d3a31ec2c4e4b35e69be02c3776f2f1b89a5aa3f35723de6eaabf6e14aaece4",
+      "capture_wav_sha256": "52cf630cdb52b8ff098530fd1e8b789e6758ecd38c253c61a122f56fe09edc59",
+      "comparison": {
+        "status": "PASS",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": 0.0,
+        "log_envelope_correlation": 1.0,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.060847660553108585,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.213836669921875,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 4.568373645870465e-06,
+            "peak_delta_db": 0.001239690238037507,
+            "log_envelope_correlation": 0.9999999899966263,
+            "spectral_difference_db_8_centers": [
+              -7.897020594782589e-06,
+              1.6429150703723902e-09,
+              -1.9020114407908295e-05,
+              1.692148548215755e-05,
+              0.00022687524322861918,
+              0.00010583876121472713,
+              -6.966528609098077e-05,
+              -1.9487188467337546e-05
+            ],
+            "max_abs_spectral_difference_db": 7.897020594782589e-06
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.0,
+            "capture_rms": 3.0517578125e-05,
+            "reference_peak": 0.0,
+            "capture_peak": 3.0517578125e-05,
+            "status": "PASS",
+            "activity": "QUIET_IN_BOTH"
+          }
+        ],
+        "stereo_comparison": {
+          "status": "PASS",
+          "reference": {
+            "lr_correlation": null,
+            "mid_rms": 0.03042381427503992,
+            "side_rms": 0.03042381427503992,
+            "side_energy_fraction": 0.5
+          },
+          "capture": {
+            "lr_correlation": 0.0012994453191459811,
+            "mid_rms": 0.030423853930958977,
+            "side_rms": 0.03042381427503992,
+            "side_energy_fraction": 0.499999348275452
+          },
+          "lr_correlation_delta": null,
+          "side_energy_fraction_delta": 6.51724547995336e-07,
+          "signed_pcm": {
+            "lag_frames": 0,
+            "correlation": 0.9999999,
+            "relative_rms_error": 0.0005015,
+            "estimated_gain": 1.0000004,
+            "channel_results": [
+              {
+                "channel": 1,
+                "correlation": 0.9999999,
+                "relative_rms_error": 0.0005015,
+                "estimated_gain": 1.0000004,
+                "matches_reference": true
+              }
+            ],
+            "channels_compared": 1,
+            "compared_frames": 88200,
+            "matches_reference": true,
+            "status": "PASS"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          -7.897020594782589e-06,
+          1.6429150703723902e-09,
+          -1.9020114407908295e-05,
+          1.692148548215755e-05,
+          0.00022687524322861918,
+          0.00010583876121472713,
+          -6.966528609098077e-05,
+          -1.9487188467337546e-05
+        ],
+        "max_abs_spectral_difference_db": 0.0,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 88200,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "common_gain_half_db",
+      "expected": "PASS",
+      "actual": "PASS",
+      "reference_wav_sha256": "cf8fdb54adfda2b3525b495dbb6c0385933a71c600ffdf65e4e16dcfd861fa56",
+      "capture_wav_sha256": "91fe819d16e61ec205f8fda8ff63e84461924e5c95de5bd4d6734958bc61574c",
+      "comparison": {
+        "status": "PASS",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": 0.5,
+        "log_envelope_correlation": 1.0,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.06445306592866952,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.226470947265625,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.4999984797107066,
+            "peak_delta_db": 0.4998459721449283,
+            "log_envelope_correlation": 0.999999999674285,
+            "spectral_difference_db_8_centers": [
+              -0.002029007491920254,
+              4.374482244812357e-07,
+              -0.04733530048918766,
+              0.015420974161500567,
+              -0.25668569194483837,
+              3.7876489187192277,
+              -3.047541679253115,
+              8.84201349974903
+            ],
+            "max_abs_spectral_difference_db": 0.002029007491920254
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.03549442056142651,
+            "capture_rms": 0.03759759951915607,
+            "reference_peak": 0.125946044921875,
+            "capture_peak": 0.1334228515625,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.5000005351532882,
+            "peak_delta_db": 0.5009136880049834,
+            "log_envelope_correlation": 0.999999999204534,
+            "spectral_difference_db_8_centers": [
+              -0.03851790679995304,
+              -0.022860577755189126,
+              5.4035268034210244e-08,
+              0.041927091056550125,
+              1.5356592542267151,
+              9.020061351730618,
+              18.576595056665212,
+              0.49195965124525287
+            ],
+            "max_abs_spectral_difference_db": 5.4035268034210244e-08
+          }
+        ],
+        "stereo_comparison": {
+          "status": "PASS",
+          "reference": {
+            "lr_correlation": 3.1400408008877128e-06,
+            "mid_rms": 0.03522180203572222,
+            "side_rms": 0.03522170576414987,
+            "side_energy_fraction": 0.49999863335067546
+          },
+          "capture": {
+            "lr_correlation": 2.6941873670496285e-06,
+            "mid_rms": 0.037308813485395144,
+            "side_rms": 0.03730872598891752,
+            "side_energy_fraction": 0.4999988274006589
+          },
+          "lr_correlation_delta": 4.4585343383808425e-07,
+          "side_energy_fraction_delta": 1.9404998341521207e-07,
+          "signed_pcm": {
+            "lag_frames": 0,
+            "correlation": 1.0,
+            "relative_rms_error": 0.0002348,
+            "estimated_gain": 1.0592537,
+            "channel_results": [
+              {
+                "channel": 1,
+                "correlation": 1.0,
+                "relative_rms_error": 0.0001363,
+                "estimated_gain": 1.0592537,
+                "matches_reference": true
+              },
+              {
+                "channel": 2,
+                "correlation": 1.0,
+                "relative_rms_error": 0.0002348,
+                "estimated_gain": 1.059253,
+                "matches_reference": true
+              }
+            ],
+            "channels_compared": 2,
+            "compared_frames": 88200,
+            "matches_reference": true,
+            "status": "PASS"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          -0.03851790679995304,
+          -0.022860577755189126,
+          -0.04733530048918766,
+          0.041927091056550125,
+          1.5356592542267151,
+          9.020061351730618,
+          18.576595056665212,
+          8.84201349974903
+        ],
+        "max_abs_spectral_difference_db": 0.002,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 88200,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "common_latency_211_frames",
+      "expected": "PASS",
+      "actual": "PASS",
+      "reference_wav_sha256": "cf8fdb54adfda2b3525b495dbb6c0385933a71c600ffdf65e4e16dcfd861fa56",
+      "capture_wav_sha256": "425ee7a25a91de63b2ff653565b819df5fdc2499c4a1c18b1cb1fcf341da0b97",
+      "comparison": {
+        "status": "PASS",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": 0.0,
+        "log_envelope_correlation": 1.0,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.06088892791899215,
+            "capture_rms": 0.06088892791899215,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.21380615234375,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.0,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 1.0,
+            "spectral_difference_db_8_centers": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "max_abs_spectral_difference_db": 0.0
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.03551815205880772,
+            "capture_rms": 0.03551815205880772,
+            "reference_peak": 0.125946044921875,
+            "capture_peak": 0.125946044921875,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.0,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 1.0,
+            "spectral_difference_db_8_centers": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "max_abs_spectral_difference_db": 0.0
+          }
+        ],
+        "stereo_comparison": {
+          "status": "PASS",
+          "reference": {
+            "lr_correlation": 3.42851812186526e-05,
+            "mid_rms": 0.035246095398383234,
+            "side_rms": 0.03524504353191343,
+            "side_energy_fraction": 0.4999850780327068
+          },
+          "capture": {
+            "lr_correlation": 3.42851812186526e-05,
+            "mid_rms": 0.035246095398383234,
+            "side_rms": 0.03524504353191343,
+            "side_energy_fraction": 0.4999850780327068
+          },
+          "lr_correlation_delta": 0.0,
+          "side_energy_fraction_delta": 0.0,
+          "signed_pcm": {
+            "lag_frames": 211,
+            "correlation": 1.0,
+            "relative_rms_error": 0.0,
+            "estimated_gain": 1.0,
+            "channel_results": [
+              {
+                "channel": 1,
+                "correlation": 1.0,
+                "relative_rms_error": 0.0,
+                "estimated_gain": 1.0,
+                "matches_reference": true
+              },
+              {
+                "channel": 2,
+                "correlation": 1.0,
+                "relative_rms_error": 0.0,
+                "estimated_gain": 1.0,
+                "matches_reference": true
+              }
+            ],
+            "channels_compared": 2,
+            "compared_frames": 87989,
+            "matches_reference": true,
+            "status": "PASS"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_abs_spectral_difference_db": 0.0,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 87989,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "left_right_swap",
+      "expected": "FAIL",
+      "actual": "FAIL",
+      "reference_wav_sha256": "cf8fdb54adfda2b3525b495dbb6c0385933a71c600ffdf65e4e16dcfd861fa56",
+      "capture_wav_sha256": "fe1ba80de563eb71ec180850e8eef09436fb24bf9584b18e8998340e9272d0d8",
+      "comparison": {
+        "status": "FAIL",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": 0.056,
+        "log_envelope_correlation": 0.99671,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.0604986792265556,
+            "capture_rms": 0.03552257251240229,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.125946044921875,
+            "status": "FAIL",
+            "activity": "ACTIVE",
+            "rms_delta_db": -4.624829680479015,
+            "peak_delta_db": -4.596713282085152,
+            "log_envelope_correlation": 0.9967137538070974,
+            "spectral_difference_db_8_centers": [
+              -28.998790564087784,
+              -56.70983596544577,
+              55.84880682688572,
+              1.3600352857040434,
+              10.094838117321856,
+              -6.15381266161998,
+              -15.919228856327877,
+              15.667276297111243
+            ],
+            "max_abs_spectral_difference_db": 56.70983596544577
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.03530665621347192,
+            "capture_rms": 0.060893062071062036,
+            "reference_peak": 0.12481689453125,
+            "capture_peak": 0.21380615234375,
+            "status": "FAIL",
+            "activity": "ACTIVE",
+            "rms_delta_db": 4.734224495181969,
+            "peak_delta_db": 4.674936499486637,
+            "log_envelope_correlation": 0.9968984762259859,
+            "spectral_difference_db_8_centers": [
+              27.784250197136984,
+              56.472985217482,
+              -63.984756795065614,
+              2.1682148528671235,
+              -14.32094717055108,
+              0.030446620869867047,
+              -8.768004029790532,
+              -13.700636687926803
+            ],
+            "max_abs_spectral_difference_db": 63.984756795065614
+          }
+        ],
+        "stereo_comparison": {
+          "status": "FAIL",
+          "reference": {
+            "lr_correlation": -0.002054358274415817,
+            "mid_rms": 0.03499240602491702,
+            "side_rms": 0.035055051007726885,
+            "side_energy_fraction": 0.5008943212981524
+          },
+          "capture": {
+            "lr_correlation": -0.00019614687268339778,
+            "mid_rms": 0.035245459297033654,
+            "side_rms": 0.03525147772910648,
+            "side_energy_fraction": 0.5000853715392873
+          },
+          "lr_correlation_delta": 0.0018582114017324193,
+          "side_energy_fraction_delta": 0.0008089497588650296,
+          "signed_pcm": {
+            "lag_frames": -258,
+            "correlation": 0.0005856,
+            "relative_rms_error": 0.9999998,
+            "estimated_gain": 0.001453,
+            "channel_results": [
+              {
+                "channel": 1,
+                "correlation": 0.0024746,
+                "relative_rms_error": 0.9999969,
+                "estimated_gain": 0.001453,
+                "matches_reference": false
+              },
+              {
+                "channel": 2,
+                "correlation": 0.0005856,
+                "relative_rms_error": 0.9999998,
+                "estimated_gain": 0.00101,
+                "matches_reference": false
+              }
+            ],
+            "channels_compared": 2,
+            "compared_frames": 87942,
+            "matches_reference": false,
+            "status": "FAIL"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          -28.998790564087784,
+          -56.70983596544577,
+          -63.984756795065614,
+          2.1682148528671235,
+          -14.32094717055108,
+          -6.15381266161998,
+          -15.919228856327877,
+          15.667276297111243
+        ],
+        "max_abs_spectral_difference_db": 63.985,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 87942,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "right_silent",
+      "expected": "FAIL",
+      "actual": "FAIL",
+      "reference_wav_sha256": "cf8fdb54adfda2b3525b495dbb6c0385933a71c600ffdf65e4e16dcfd861fa56",
+      "capture_wav_sha256": "5d3a31ec2c4e4b35e69be02c3776f2f1b89a5aa3f35723de6eaabf6e14aaece4",
+      "comparison": {
+        "status": "FAIL",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": -1.272,
+        "log_envelope_correlation": 1.0,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.06084762855007984,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.21380615234375,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.0,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 1.0,
+            "spectral_difference_db_8_centers": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "max_abs_spectral_difference_db": 0.0
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.03549442056142651,
+            "capture_rms": 0.0,
+            "reference_peak": 0.125946044921875,
+            "capture_peak": 0.0,
+            "status": "FAIL",
+            "activity": "CHANNEL_ACTIVITY_MISMATCH"
+          }
+        ],
+        "stereo_comparison": {
+          "status": "FAIL",
+          "reference": {
+            "lr_correlation": 3.1400408008877128e-06,
+            "mid_rms": 0.03522180203572222,
+            "side_rms": 0.03522170576414987,
+            "side_energy_fraction": 0.49999863335067546
+          },
+          "capture": {
+            "lr_correlation": null,
+            "mid_rms": 0.03042381427503992,
+            "side_rms": 0.03042381427503992,
+            "side_energy_fraction": 0.5
+          },
+          "lr_correlation_delta": null,
+          "side_energy_fraction_delta": 1.3666493245412248e-06,
+          "signed_pcm": {
+            "status": "FAIL",
+            "lag_frames": 0,
+            "reason": "P90 channel has insufficient captured signal energy"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_abs_spectral_difference_db": 0.0,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 88200,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "left_silent",
+      "expected": "FAIL",
+      "actual": "FAIL",
+      "reference_wav_sha256": "cf8fdb54adfda2b3525b495dbb6c0385933a71c600ffdf65e4e16dcfd861fa56",
+      "capture_wav_sha256": "1c234ed27473107ebcad3716fce8508a9a1dd192e4616b76fbcd7b7fc9ee2db6",
+      "comparison": {
+        "status": "FAIL",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": -5.954,
+        "log_envelope_correlation": 1.0,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.0,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.0,
+            "status": "FAIL",
+            "activity": "CHANNEL_ACTIVITY_MISMATCH"
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.03549442056142651,
+            "capture_rms": 0.03549442056142651,
+            "reference_peak": 0.125946044921875,
+            "capture_peak": 0.125946044921875,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.0,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 1.0,
+            "spectral_difference_db_8_centers": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "max_abs_spectral_difference_db": 0.0
+          }
+        ],
+        "stereo_comparison": {
+          "status": "FAIL",
+          "reference": {
+            "lr_correlation": 3.1400408008877128e-06,
+            "mid_rms": 0.03522180203572222,
+            "side_rms": 0.03522170576414987,
+            "side_energy_fraction": 0.49999863335067546
+          },
+          "capture": {
+            "lr_correlation": null,
+            "mid_rms": 0.017747210280713254,
+            "side_rms": 0.017747210280713254,
+            "side_energy_fraction": 0.5
+          },
+          "lr_correlation_delta": null,
+          "side_energy_fraction_delta": 1.3666493245412248e-06,
+          "signed_pcm": {
+            "status": "FAIL",
+            "lag_frames": 0,
+            "reason": "P90 channel has insufficient captured signal energy"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_abs_spectral_difference_db": 0.0,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 88200,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "right_gain_minus_3db",
+      "expected": "FAIL",
+      "actual": "FAIL",
+      "reference_wav_sha256": "cf8fdb54adfda2b3525b495dbb6c0385933a71c600ffdf65e4e16dcfd861fa56",
+      "capture_wav_sha256": "dfdc422ab4d7622bb309c93656bf4342ae0916a622599840b7441746f07e4504",
+      "comparison": {
+        "status": "FAIL",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": -0.588,
+        "log_envelope_correlation": 1.0,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.06084762855007984,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.21380615234375,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.0,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 1.0,
+            "spectral_difference_db_8_centers": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "max_abs_spectral_difference_db": 0.0
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.03549442056142651,
+            "capture_rms": 0.025128124106663045,
+            "reference_peak": 0.125946044921875,
+            "capture_peak": 0.08917236328125,
+            "status": "FAIL",
+            "activity": "ACTIVE",
+            "rms_delta_db": -3.0000004490025844,
+            "peak_delta_db": -2.9990851455827605,
+            "log_envelope_correlation": 0.9999999981553432,
+            "spectral_difference_db_8_centers": [
+              -0.25166944491597576,
+              -0.07395382194597033,
+              1.863027576407482e-07,
+              0.32587474216261114,
+              2.230977969786025,
+              16.226297801898895,
+              20.820253910747894,
+              4.905839641653415
+            ],
+            "max_abs_spectral_difference_db": 1.863027576407482e-07
+          }
+        ],
+        "stereo_comparison": {
+          "status": "FAIL",
+          "reference": {
+            "lr_correlation": 3.1400408008877128e-06,
+            "mid_rms": 0.03522180203572222,
+            "side_rms": 0.03522170576414987,
+            "side_energy_fraction": 0.49999863335067546
+          },
+          "capture": {
+            "lr_correlation": 5.149597978651612e-06,
+            "mid_rms": 0.032916076120273766,
+            "side_rms": 0.03291595651790358,
+            "side_energy_fraction": 0.4999981832192415
+          },
+          "lr_correlation_delta": 2.0095571777638994e-06,
+          "side_energy_fraction_delta": 4.5013143395999933e-07,
+          "signed_pcm": {
+            "lag_frames": 0,
+            "correlation": 0.9999999,
+            "relative_rms_error": 0.0003525,
+            "estimated_gain": 1.0,
+            "channel_results": [
+              {
+                "channel": 1,
+                "correlation": 1.0,
+                "relative_rms_error": 0.0,
+                "estimated_gain": 1.0,
+                "matches_reference": true
+              },
+              {
+                "channel": 2,
+                "correlation": 0.9999999,
+                "relative_rms_error": 0.0003525,
+                "estimated_gain": 0.7079458,
+                "matches_reference": true
+              }
+            ],
+            "channels_compared": 2,
+            "compared_frames": 88200,
+            "matches_reference": true,
+            "status": "PASS"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          -0.25166944491597576,
+          -0.07395382194597033,
+          1.863027576407482e-07,
+          0.32587474216261114,
+          2.230977969786025,
+          16.226297801898895,
+          20.820253910747894,
+          4.905839641653415
+        ],
+        "max_abs_spectral_difference_db": 0.0,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 88200,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "right_polarity",
+      "expected": "FAIL",
+      "actual": "FAIL",
+      "reference_wav_sha256": "cf8fdb54adfda2b3525b495dbb6c0385933a71c600ffdf65e4e16dcfd861fa56",
+      "capture_wav_sha256": "894f1681c2aacee5dcb06652069ac8cff350f00ebce1b6fbcb66d8aef00d76a2",
+      "comparison": {
+        "status": "FAIL",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": 0.0,
+        "log_envelope_correlation": 1.0,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.06084762855007984,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.21380615234375,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.0,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 1.0,
+            "spectral_difference_db_8_centers": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "max_abs_spectral_difference_db": 0.0
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.03549442056142651,
+            "capture_rms": 0.03549442056142651,
+            "reference_peak": 0.125946044921875,
+            "capture_peak": 0.125946044921875,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.0,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 1.0,
+            "spectral_difference_db_8_centers": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "max_abs_spectral_difference_db": 0.0
+          }
+        ],
+        "stereo_comparison": {
+          "status": "FAIL",
+          "reference": {
+            "lr_correlation": 3.1400408008877128e-06,
+            "mid_rms": 0.03522180203572222,
+            "side_rms": 0.03522170576414987,
+            "side_energy_fraction": 0.49999863335067546
+          },
+          "capture": {
+            "lr_correlation": -3.1400408008877128e-06,
+            "mid_rms": 0.03522170576414987,
+            "side_rms": 0.03522180203572222,
+            "side_energy_fraction": 0.5000013666493246
+          },
+          "lr_correlation_delta": 6.2800816017754255e-06,
+          "side_energy_fraction_delta": 2.7332986491379607e-06,
+          "signed_pcm": {
+            "lag_frames": 0,
+            "correlation": -1.0,
+            "relative_rms_error": 0.0,
+            "estimated_gain": 1.0,
+            "channel_results": [
+              {
+                "channel": 1,
+                "correlation": 1.0,
+                "relative_rms_error": 0.0,
+                "estimated_gain": 1.0,
+                "matches_reference": true
+              },
+              {
+                "channel": 2,
+                "correlation": -1.0,
+                "relative_rms_error": 0.0,
+                "estimated_gain": -1.0,
+                "matches_reference": false
+              }
+            ],
+            "channels_compared": 2,
+            "compared_frames": 88200,
+            "matches_reference": false,
+            "status": "FAIL"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_abs_spectral_difference_db": 0.0,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 88200,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "both_polarities",
+      "expected": "FAIL",
+      "actual": "FAIL",
+      "reference_wav_sha256": "cf8fdb54adfda2b3525b495dbb6c0385933a71c600ffdf65e4e16dcfd861fa56",
+      "capture_wav_sha256": "2dd98056c43a1d1558569b92c82d831cf691917d95f4ad38f5352d2e934f9f83",
+      "comparison": {
+        "status": "FAIL",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": 0.021,
+        "log_envelope_correlation": 0.99931,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.060723688075562464,
+            "capture_rms": 0.06086716221705709,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.21380615234375,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.02049827161037889,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 0.9999341555663622,
+            "spectral_difference_db_8_centers": [
+              -0.009634732398019707,
+              8.288717079107423e-07,
+              4.876082020971133,
+              0.0038337440276023926,
+              -9.56447575093513,
+              0.901095583138769,
+              -6.23725757744991,
+              3.006848038833226
+            ],
+            "max_abs_spectral_difference_db": 0.009634732398019707
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.03541764011068357,
+            "capture_rms": 0.0355053556585223,
+            "reference_peak": 0.12481689453125,
+            "capture_peak": 0.125946044921875,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.02148493442131043,
+            "peak_delta_db": 0.07822321740148402,
+            "log_envelope_correlation": 0.9993137619276482,
+            "spectral_difference_db_8_centers": [
+              -0.16505993377013795,
+              -0.05735250072750375,
+              3.2284819158515208e-09,
+              2.1851246587416853,
+              0.16750354995534167,
+              -0.8406069338213484,
+              -1.0156149557201104,
+              -0.28081605584644365
+            ],
+            "max_abs_spectral_difference_db": 3.2284819158515208e-09
+          }
+        ],
+        "stereo_comparison": {
+          "status": "FAIL",
+          "reference": {
+            "lr_correlation": -0.00013840949928010227,
+            "mid_rms": 0.03514676433446865,
+            "side_rms": 0.03515099883461886,
+            "side_energy_fraction": 0.5000602366269417
+          },
+          "capture": {
+            "lr_correlation": -9.526635119615676e-06,
+            "mid_rms": 0.03523279913865147,
+            "side_rms": 0.035233091309921874,
+            "side_energy_fraction": 0.5000041462794061
+          },
+          "lr_correlation_delta": 0.00012888286416048658,
+          "side_energy_fraction_delta": 5.609034753550901e-05,
+          "signed_pcm": {
+            "lag_frames": -102,
+            "correlation": -0.9501188,
+            "relative_rms_error": 0.3118883,
+            "estimated_gain": 0.9972659,
+            "channel_results": [
+              {
+                "channel": 1,
+                "correlation": 0.9949152,
+                "relative_rms_error": 0.1007163,
+                "estimated_gain": 0.9972659,
+                "matches_reference": true
+              },
+              {
+                "channel": 2,
+                "correlation": -0.9501188,
+                "relative_rms_error": 0.3118883,
+                "estimated_gain": -0.9524699,
+                "matches_reference": false
+              }
+            ],
+            "channels_compared": 2,
+            "compared_frames": 88098,
+            "matches_reference": false,
+            "status": "FAIL"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          -0.16505993377013795,
+          -0.05735250072750375,
+          4.876082020971133,
+          2.1851246587416853,
+          -9.56447575093513,
+          0.901095583138769,
+          -6.23725757744991,
+          3.006848038833226
+        ],
+        "max_abs_spectral_difference_db": 0.01,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 88098,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    },
+    {
+      "id": "right_delay_128_frames",
+      "expected": "FAIL",
+      "actual": "FAIL",
+      "reference_wav_sha256": "cf8fdb54adfda2b3525b495dbb6c0385933a71c600ffdf65e4e16dcfd861fa56",
+      "capture_wav_sha256": "e51c7173dcafb1b7d01556cf7af520af51c16dc827107ed2dd1d837dd57117b0",
+      "comparison": {
+        "status": "FAIL",
+        "audio_comparison_version": "p220-stereo-v2",
+        "rms_level_native_minus_creative_db": -0.001,
+        "log_envelope_correlation": 0.99694,
+        "onset_lag_ms": 0,
+        "channel_results": [
+          {
+            "channel": 1,
+            "reference_rms": 0.06084762855007984,
+            "capture_rms": 0.06084762855007984,
+            "reference_peak": 0.21380615234375,
+            "capture_peak": 0.21380615234375,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": 0.0,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 1.0,
+            "spectral_difference_db_8_centers": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "max_abs_spectral_difference_db": 0.0
+          },
+          {
+            "channel": 2,
+            "reference_rms": 0.03549442056142651,
+            "capture_rms": 0.03548260108183757,
+            "reference_peak": 0.125946044921875,
+            "capture_peak": 0.125946044921875,
+            "status": "PASS",
+            "activity": "ACTIVE",
+            "rms_delta_db": -0.0028928431726502075,
+            "peak_delta_db": 0.0,
+            "log_envelope_correlation": 0.9969354019453713,
+            "spectral_difference_db_8_centers": [
+              1.5763475843333197,
+              0.3918587655984993,
+              -1.1048178874285226e-06,
+              -4.7551916022277965,
+              -8.257267806760893,
+              9.1414011955561,
+              9.924433357099701,
+              -2.27548085926648
+            ],
+            "max_abs_spectral_difference_db": 1.1048178874285226e-06
+          }
+        ],
+        "stereo_comparison": {
+          "status": "FAIL",
+          "reference": {
+            "lr_correlation": 3.1400408008877128e-06,
+            "mid_rms": 0.03522180203572222,
+            "side_rms": 0.03522170576414987,
+            "side_energy_fraction": 0.49999863335067546
+          },
+          "capture": {
+            "lr_correlation": -0.0015649924167156295,
+            "mid_rms": 0.03519478349797589,
+            "side_rms": 0.03524275321794907,
+            "side_energy_fraction": 0.5006810246348978
+          },
+          "lr_correlation_delta": 0.0015681324575165172,
+          "side_energy_fraction_delta": 0.0006823912842223723,
+          "signed_pcm": {
+            "lag_frames": 0,
+            "correlation": -0.1375352,
+            "relative_rms_error": 0.9904969,
+            "estimated_gain": 1.0,
+            "channel_results": [
+              {
+                "channel": 1,
+                "correlation": 1.0,
+                "relative_rms_error": 0.0,
+                "estimated_gain": 1.0,
+                "matches_reference": true
+              },
+              {
+                "channel": 2,
+                "correlation": -0.1375352,
+                "relative_rms_error": 0.9904969,
+                "estimated_gain": -0.1374891,
+                "matches_reference": false
+              }
+            ],
+            "channels_compared": 2,
+            "compared_frames": 88200,
+            "matches_reference": false,
+            "status": "FAIL"
+          }
+        },
+        "spectrum_native_minus_creative_db_8_centers": [
+          1.5763475843333197,
+          0.3918587655984993,
+          -1.1048178874285226e-06,
+          -4.7551916022277965,
+          -8.257267806760893,
+          9.1414011955561,
+          9.924433357099701,
+          -2.27548085926648
+        ],
+        "max_abs_spectral_difference_db": 0.0,
+        "center_frequencies_hz": [
+          110,
+          220,
+          440,
+          880,
+          1760,
+          3520,
+          7040,
+          11000
+        ],
+        "measured_audio_frames": 88200,
+        "scope": "emulated EMU8000 original Win95 driver vs real VST3; NOT physical AWE64"
+      }
+    }
+  ],
+  "passed_assertions": 13,
+  "assertions": 13
+}

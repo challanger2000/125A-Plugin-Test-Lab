@@ -1,3 +1,20 @@
+## P220 + aktuelles main / AWE #104 – Windows-/Ubuntu-Integrationsvorlage geprüft
+
+Der tatsächlich kombinierte Stand aus main `7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c`
+und korrigiertem QA-Eingang `6cc9579714c56ee14afa8d5b1612aeeec2f4fac1`
+wurde in temporären detached Worktrees geprüft: **Baum
+`1d9b5c21866f383a108768e66529bcbd97f0a3b5`**, temporärer Test-Commit
+`efc78988fb0e359c1205e8d809d856902cd1ac79`.
+**[Windows-2022 + Ubuntu-24.04 #42946883199 SUCCESS](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42946883199)**:
+je 13 Stereoerwartungen, 154 synthetische Audiofälle, 10 alte Mutanten,
+19 Kompatibilitäts- und 15 main-Vertragstests. Ein START-HERE-Konflikt
+wurde unter Erhalt beider Vorspänne aufgelöst; P99/P74/P75 sowie P90/DAW/ASIO
+und native Quellen sind erhalten. **Kein Repository-Branch-Merge; main
+bleibt unverändert.** Seit diesem Auftrag erhält QA nur zusätzliche CI-Instrumentierung und
+Dokumentation. Originalklang bleibt 77 BLOCKED / 0 PASS; keine Produkt-,
+FULL-AUDIT- oder Releasefreigabe. P196/P198 warten auf P232.
+[Exakte Inputs, Test-SHA, Konfliktauflösung, Joblinks und Artefaktprüfsummen](docs/P220-MAIN-INTEGRATION-PREFLIGHT.md).
+
 ## P220 Stereo-v2 / AWE #104 – QA-Korrektur, keine Produktfreigabe
 
 Bestehender P220-Vergleicher erhält kanalweise RMS/Peak/Envelope/Spektrum,

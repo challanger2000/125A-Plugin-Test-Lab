@@ -1,0 +1,661 @@
+{
+  "schema": "125a-p220-main-preflight-v1",
+  "main": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+  "qa": "6cc9579714c56ee14afa8d5b1612aeeec2f4fac1",
+  "merge_base": "2c467e03d0a90b8c8d103be443bfe37d449bbc7c",
+  "combined_tree": "1d9b5c21866f383a108768e66529bcbd97f0a3b5",
+  "test_sha": "efc78988fb0e359c1205e8d809d856902cd1ac79",
+  "test_sha_scope": "temporary detached commit; never pushed as a branch merge",
+  "conflicts": [
+    "START-HERE.md"
+  ],
+  "resolution": "complete QA prefix + complete main P99 prefix + identical P98 history",
+  "resolved_start_blob": "1babe74a33783bbddc62b817a3daf1959e824aaa",
+  "main_changed_paths": [
+    ".github/workflows/p74-universal-qa.yml",
+    ".github/workflows/p99-real-rea-ghidra-windows.yml",
+    "README.md",
+    "START-HERE.md",
+    "docs/P74-UNIVERSAL-QA-PIPELINE.md",
+    "docs/P75-UNIVERSAL-BATCH-QA.md",
+    "docs/P99-REA-BINARY-ANALYSIS.md",
+    "tests/run_rea_binary_analysis.py",
+    "tests/run_universal_qa.py",
+    "tests/run_vst3_batch_qa.py",
+    "tests/test_rea_binary_analysis.py",
+    "tests/test_universal_qa.py",
+    "tests/test_vst3_batch_qa.py"
+  ],
+  "qa_changed_paths": [
+    ".github/workflows/p220-awe-sf2-77-gate.yml",
+    "START-HERE.md",
+    "docs/P220-AWE-SF2-77-ORIGINAL-CREATIVE-SONIC-GATE.md",
+    "tests/p220_awe_sf2_sound_gate.py",
+    "tests/run_unified_qa_gaps.py",
+    "tests/test_p220_awe_sf2_sound_gate.py",
+    "tests/test_p220_awe_unified_release.py"
+  ],
+  "main_only_commits": [
+    "8619a8337367bc3d0fcb6691cd8a999da3d88a78",
+    "7b041e2f01a0d1caea78782bfaf0719954bf5647",
+    "30be60423d5ff442c2b3fd71fdfcab43dfb32b28",
+    "c551f3ae06c03f80e6d7e96a597edc66f2d9434b",
+    "0cae5c5a7adb06e3e734a136db490cc2781817f7",
+    "7913fc80bf939d859bf9344991246371bfc4e4e0",
+    "d71829b76e183c8d836331644ba3d40db6d0a87a",
+    "176d4fa94e45b0d604b0429f845157bfd271c737",
+    "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c"
+  ],
+  "release_approved": false,
+  "native_plugin_build": "NOT RUN",
+  "original_creative_audio": "NOT RUN",
+  "real_daw_asio": "NOT RUN",
+  "actual_rea_ghidra_provider": "NOT RUN",
+  "snapshot_date_utc": "2026-11-11",
+  "instruction": "https://github.com/challanger2000/125A-AWE-Synthesizer/issues/104#issuecomment-6785041464",
+  "instrumentation_trigger_sha": "7e127add47073e1559ef55eae253590f9173d347",
+  "source_files_verified": 316,
+  "protected_parent_blobs": [
+    {
+      "path": ".github/workflows/p56-asio-evidence.yml",
+      "main": "6d7bba2e80c14ef3e2e813dbf951da5d4ceaf255",
+      "qa": "6d7bba2e80c14ef3e2e813dbf951da5d4ceaf255",
+      "combined": "6d7bba2e80c14ef3e2e813dbf951da5d4ceaf255"
+    },
+    {
+      "path": ".github/workflows/p57-asio-quickcheck-status.yml",
+      "main": "37c27bc31de7b385c975313d064b9099491d3c90",
+      "qa": "37c27bc31de7b385c975313d064b9099491d3c90",
+      "combined": "37c27bc31de7b385c975313d064b9099491d3c90"
+    },
+    {
+      "path": ".github/workflows/p58-native-asio-host.yml",
+      "main": "fee6cfda2d0af06a23cf9beb83ce0e377946b18f",
+      "qa": "fee6cfda2d0af06a23cf9beb83ce0e377946b18f",
+      "combined": "fee6cfda2d0af06a23cf9beb83ce0e377946b18f"
+    },
+    {
+      "path": ".github/workflows/p59-asio-plan-regression.yml",
+      "main": "a7493e2bc92be769b2be4a29e9552aca9f66b7cd",
+      "qa": "a7493e2bc92be769b2be4a29e9552aca9f66b7cd",
+      "combined": "a7493e2bc92be769b2be4a29e9552aca9f66b7cd"
+    },
+    {
+      "path": ".github/workflows/p59-one-click-asio-hardware.yml",
+      "main": "f53ed10bd8e3ce82ad5d4d5d59f54d6c43a1ffa1",
+      "qa": "f53ed10bd8e3ce82ad5d4d5d59f54d6c43a1ffa1",
+      "combined": "f53ed10bd8e3ce82ad5d4d5d59f54d6c43a1ffa1"
+    },
+    {
+      "path": ".github/workflows/p90-external-capture.yml",
+      "main": "2a881416972ffe2a5ed88eb647de713465adee48",
+      "qa": "2a881416972ffe2a5ed88eb647de713465adee48",
+      "combined": "2a881416972ffe2a5ed88eb647de713465adee48"
+    },
+    {
+      "path": ".github/workflows/p91-reaper-daw.yml",
+      "main": "f4b4be4eb34c09e3721b29fc30e7c8ebc610f607",
+      "qa": "f4b4be4eb34c09e3721b29fc30e7c8ebc610f607",
+      "combined": "f4b4be4eb34c09e3721b29fc30e7c8ebc610f607"
+    },
+    {
+      "path": ".github/workflows/p94-virtual-asio4all.yml",
+      "main": "8c1fb9c5dda7a587775f24a0e7116556b83b4087",
+      "qa": "8c1fb9c5dda7a587775f24a0e7116556b83b4087",
+      "combined": "8c1fb9c5dda7a587775f24a0e7116556b83b4087"
+    },
+    {
+      "path": ".github/workflows/p97-local-virtual-asio.yml",
+      "main": "bdffcc28f75442b17eb79d6348c445362fce0194",
+      "qa": "bdffcc28f75442b17eb79d6348c445362fce0194",
+      "combined": "bdffcc28f75442b17eb79d6348c445362fce0194"
+    },
+    {
+      "path": "docs/P56-PHYSICAL-ASIO-GATE.md",
+      "main": "5f46f566f7a80cec773e3a120158286be44d2508",
+      "qa": "5f46f566f7a80cec773e3a120158286be44d2508",
+      "combined": "5f46f566f7a80cec773e3a120158286be44d2508"
+    },
+    {
+      "path": "docs/P58-NATIVE-ASIO-HOST.md",
+      "main": "939fb3a09fcd60ed75436fae83af9df06e0b4f8f",
+      "qa": "939fb3a09fcd60ed75436fae83af9df06e0b4f8f",
+      "combined": "939fb3a09fcd60ed75436fae83af9df06e0b4f8f"
+    },
+    {
+      "path": "docs/P90-EXTERNAL-DAW-ASIO-CAPTURE.md",
+      "main": "ce11ffd5dddda3b12edee3bd80580e35e288fe28",
+      "qa": "ce11ffd5dddda3b12edee3bd80580e35e288fe28",
+      "combined": "ce11ffd5dddda3b12edee3bd80580e35e288fe28"
+    },
+    {
+      "path": "docs/P91-REAPER-DAW-INTEGRATION.md",
+      "main": "3b152586a2ce939cd061297f124c8fda1cd2ca5a",
+      "qa": "3b152586a2ce939cd061297f124c8fda1cd2ca5a",
+      "combined": "3b152586a2ce939cd061297f124c8fda1cd2ca5a"
+    },
+    {
+      "path": "docs/P94-VIRTUAL-ASIO4ALL.md",
+      "main": "da4582b7369bdebe14cf48810c6f8cf123bd8569",
+      "qa": "da4582b7369bdebe14cf48810c6f8cf123bd8569",
+      "combined": "da4582b7369bdebe14cf48810c6f8cf123bd8569"
+    },
+    {
+      "path": "docs/P95-VIRTUAL-ASIO-LOOPBACK.md",
+      "main": "d24e3edb5958f67f0bb66b346ced2f94f4ee4508",
+      "qa": "d24e3edb5958f67f0bb66b346ced2f94f4ee4508",
+      "combined": "d24e3edb5958f67f0bb66b346ced2f94f4ee4508"
+    },
+    {
+      "path": "docs/P97-ONE-COMMAND-LOCAL-ASIO.md",
+      "main": "74377c50a1623eeea8464584bbb423b5ee075149",
+      "qa": "74377c50a1623eeea8464584bbb423b5ee075149",
+      "combined": "74377c50a1623eeea8464584bbb423b5ee075149"
+    },
+    {
+      "path": "src/controller_recovery.cpp",
+      "main": "8d2ddbdb9bc2db0647f6b5b16b64e4f406e2af0c",
+      "qa": "8d2ddbdb9bc2db0647f6b5b16b64e4f406e2af0c",
+      "combined": "8d2ddbdb9bc2db0647f6b5b16b64e4f406e2af0c"
+    },
+    {
+      "path": "src/gui_host.cpp",
+      "main": "ada61d7a6b492e548cc341bcf57cc98d2f623bcf",
+      "qa": "ada61d7a6b492e548cc341bcf57cc98d2f623bcf",
+      "combined": "ada61d7a6b492e548cc341bcf57cc98d2f623bcf"
+    },
+    {
+      "path": "src/gui_recovery.cpp",
+      "main": "f1294b87b63b6f4b387f7cec6f33e84737811241",
+      "qa": "f1294b87b63b6f4b387f7cec6f33e84737811241",
+      "combined": "f1294b87b63b6f4b387f7cec6f33e84737811241"
+    },
+    {
+      "path": "src/instance_isolation.cpp",
+      "main": "7a4d9b9783fa94ecc58ae7019391acd1569ace31",
+      "qa": "7a4d9b9783fa94ecc58ae7019391acd1569ace31",
+      "combined": "7a4d9b9783fa94ecc58ae7019391acd1569ace31"
+    },
+    {
+      "path": "src/main.cpp",
+      "main": "3a085ab54fc01ddf90432799d3db8c829022ac3e",
+      "qa": "3a085ab54fc01ddf90432799d3db8c829022ac3e",
+      "combined": "3a085ab54fc01ddf90432799d3db8c829022ac3e"
+    },
+    {
+      "path": "src/p15_dropfiles.h",
+      "main": "2f9371619a380f9588d35f8fa981df5398fd8b24",
+      "qa": "2f9371619a380f9588d35f8fa981df5398fd8b24",
+      "combined": "2f9371619a380f9588d35f8fa981df5398fd8b24"
+    },
+    {
+      "path": "src/physical_asio.cpp",
+      "main": "b19eead3e2d41b3dcd38218acc20d81126e48ace",
+      "qa": "b19eead3e2d41b3dcd38218acc20d81126e48ace",
+      "combined": "b19eead3e2d41b3dcd38218acc20d81126e48ace"
+    },
+    {
+      "path": "src/rate_block.cpp",
+      "main": "a04c1c556c5792d14c0357c735f0975d9ef95a7d",
+      "qa": "a04c1c556c5792d14c0357c735f0975d9ef95a7d",
+      "combined": "a04c1c556c5792d14c0357c735f0975d9ef95a7d"
+    },
+    {
+      "path": "src/state_recovery.cpp",
+      "main": "72d6da0b98b8ff50e68f95c9b64b9bd7c0568d58",
+      "qa": "72d6da0b98b8ff50e68f95c9b64b9bd7c0568d58",
+      "combined": "72d6da0b98b8ff50e68f95c9b64b9bd7c0568d58"
+    },
+    {
+      "path": "src/state_stress.cpp",
+      "main": "d1675d5734401192941ab4ba3d9a6a3910b256b3",
+      "qa": "d1675d5734401192941ab4ba3d9a6a3910b256b3",
+      "combined": "d1675d5734401192941ab4ba3d9a6a3910b256b3"
+    },
+    {
+      "path": "src/voice_stress.cpp",
+      "main": "6ca745678883ce2c8f68485d46986adf032eb0bb",
+      "qa": "6ca745678883ce2c8f68485d46986adf032eb0bb",
+      "combined": "6ca745678883ce2c8f68485d46986adf032eb0bb"
+    },
+    {
+      "path": "tests/Invoke-VirtualASIOAcceptance.ps1",
+      "main": "d1b7a3b8b991970f91f2ea9ab835f6ad31ebf175",
+      "qa": "d1b7a3b8b991970f91f2ea9ab835f6ad31ebf175",
+      "combined": "d1b7a3b8b991970f91f2ea9ab835f6ad31ebf175"
+    },
+    {
+      "path": "tests/Prepare-VirtualASIO.ps1",
+      "main": "02f0407ed296d821a23974d1e5ec451ca7ddf820",
+      "qa": "02f0407ed296d821a23974d1e5ec451ca7ddf820",
+      "combined": "02f0407ed296d821a23974d1e5ec451ca7ddf820"
+    },
+    {
+      "path": "tests/generate_physical_asio_plan.py",
+      "main": "9b87a915e59da5a937154ade18f3047e546bcd0f",
+      "qa": "9b87a915e59da5a937154ade18f3047e546bcd0f",
+      "combined": "9b87a915e59da5a937154ade18f3047e546bcd0f"
+    },
+    {
+      "path": "tests/run_external_daw_capture_check.py",
+      "main": "671a4d4d68ed8e39b2510899b101e42fa24f36bd",
+      "qa": "671a4d4d68ed8e39b2510899b101e42fa24f36bd",
+      "combined": "671a4d4d68ed8e39b2510899b101e42fa24f36bd"
+    },
+    {
+      "path": "tests/run_physical_asio.py",
+      "main": "277dc66b45e612c7e96539b87c6a3b039c30da69",
+      "qa": "277dc66b45e612c7e96539b87c6a3b039c30da69",
+      "combined": "277dc66b45e612c7e96539b87c6a3b039c30da69"
+    },
+    {
+      "path": "tests/run_reaper_daw_qa.py",
+      "main": "c61a1638fdbbbc66f83d832108601d28de95ed69",
+      "qa": "c61a1638fdbbbc66f83d832108601d28de95ed69",
+      "combined": "c61a1638fdbbbc66f83d832108601d28de95ed69"
+    },
+    {
+      "path": "tests/run_virtual_asio4all.py",
+      "main": "2c2870da69a4dbef06287ebf9de78b37d3962ee2",
+      "qa": "2c2870da69a4dbef06287ebf9de78b37d3962ee2",
+      "combined": "2c2870da69a4dbef06287ebf9de78b37d3962ee2"
+    },
+    {
+      "path": "tests/run_virtual_asio_loopback.py",
+      "main": "276dbe1b88c8abe1151581a7732f2aeb59a1b83c",
+      "qa": "276dbe1b88c8abe1151581a7732f2aeb59a1b83c",
+      "combined": "276dbe1b88c8abe1151581a7732f2aeb59a1b83c"
+    },
+    {
+      "path": "tests/test_generate_physical_asio_plan.py",
+      "main": "7a50a08162f0337624fd826cc9de4db1f56b3a31",
+      "qa": "7a50a08162f0337624fd826cc9de4db1f56b3a31",
+      "combined": "7a50a08162f0337624fd826cc9de4db1f56b3a31"
+    },
+    {
+      "path": "tests/test_p90_external_capture_check.py",
+      "main": "65333c6373b1b8e801e1b5d1c32855d51b1b5cf8",
+      "qa": "65333c6373b1b8e801e1b5d1c32855d51b1b5cf8",
+      "combined": "65333c6373b1b8e801e1b5d1c32855d51b1b5cf8"
+    },
+    {
+      "path": "tests/test_p90_unified_capture.py",
+      "main": "0b23878d8831862b0412ce4baed29ec45bc892fd",
+      "qa": "0b23878d8831862b0412ce4baed29ec45bc892fd",
+      "combined": "0b23878d8831862b0412ce4baed29ec45bc892fd"
+    },
+    {
+      "path": "tests/test_p91_reaper_daw_qa.py",
+      "main": "7a073b7174822d3f3abfc279bdceac7f17bd437b",
+      "qa": "7a073b7174822d3f3abfc279bdceac7f17bd437b",
+      "combined": "7a073b7174822d3f3abfc279bdceac7f17bd437b"
+    },
+    {
+      "path": "tests/test_p94_virtual_asio4all.py",
+      "main": "ca5d1df9a2e48bb54fc989335d39eaa30e857a5a",
+      "qa": "ca5d1df9a2e48bb54fc989335d39eaa30e857a5a",
+      "combined": "ca5d1df9a2e48bb54fc989335d39eaa30e857a5a"
+    },
+    {
+      "path": "tests/test_p95_virtual_asio_loopback.py",
+      "main": "be5b8e10a19f57a243b0d4552cd63bc76e22a4af",
+      "qa": "be5b8e10a19f57a243b0d4552cd63bc76e22a4af",
+      "combined": "be5b8e10a19f57a243b0d4552cd63bc76e22a4af"
+    },
+    {
+      "path": "tests/test_physical_asio.py",
+      "main": "466d8acbd84316565c8c150f53c891be5fd5a8f3",
+      "qa": "466d8acbd84316565c8c150f53c891be5fd5a8f3",
+      "combined": "466d8acbd84316565c8c150f53c891be5fd5a8f3"
+    },
+    {
+      "path": "tests/verify_virtual_asio_loopback.py",
+      "main": "f8d90c90e60e51e3d617ba4829d9236c909f63b0",
+      "qa": "f8d90c90e60e51e3d617ba4829d9236c909f63b0",
+      "combined": "f8d90c90e60e51e3d617ba4829d9236c909f63b0"
+    },
+    {
+      "path": "tests/virtual_asio_signal_fixture.cpp",
+      "main": "f95fff0887485cb10153a9b1547c7c51bfffc605",
+      "qa": "f95fff0887485cb10153a9b1547c7c51bfffc605",
+      "combined": "f95fff0887485cb10153a9b1547c7c51bfffc605"
+    }
+  ],
+  "parent_delta_preservation": [
+    {
+      "path": ".github/workflows/p220-awe-sf2-77-gate.yml",
+      "source": "6cc9579714c56ee14afa8d5b1612aeeec2f4fac1",
+      "entry": {
+        "mode": "100644",
+        "blob": "b2ab2538bea19758ca0b63c1b4130c73c5a1dd3b"
+      }
+    },
+    {
+      "path": ".github/workflows/p74-universal-qa.yml",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "a430d89596f1579574bb545895380b4d4ef729f0"
+      }
+    },
+    {
+      "path": ".github/workflows/p99-real-rea-ghidra-windows.yml",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "e3e73d36ba39dd1884e9ff74174dd4d93f043c1b"
+      }
+    },
+    {
+      "path": "README.md",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "eb651aaf348226c2e83785573eeefc2da6aafa8a"
+      }
+    },
+    {
+      "path": "docs/P220-AWE-SF2-77-ORIGINAL-CREATIVE-SONIC-GATE.md",
+      "source": "6cc9579714c56ee14afa8d5b1612aeeec2f4fac1",
+      "entry": {
+        "mode": "100644",
+        "blob": "a21b798f804068294baf2c318bc88bc05ee23d8c"
+      }
+    },
+    {
+      "path": "docs/P74-UNIVERSAL-QA-PIPELINE.md",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "178ab49d00a638614b6fe7e3d32de0c59846b2bc"
+      }
+    },
+    {
+      "path": "docs/P75-UNIVERSAL-BATCH-QA.md",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "2cf4f9d0e67cbb1b109b6ac537de6d742effae3a"
+      }
+    },
+    {
+      "path": "docs/P99-REA-BINARY-ANALYSIS.md",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "6a2d80d3b2362982c7908cadd5f7ef33fe5df57c"
+      }
+    },
+    {
+      "path": "tests/p220_awe_sf2_sound_gate.py",
+      "source": "6cc9579714c56ee14afa8d5b1612aeeec2f4fac1",
+      "entry": {
+        "mode": "100644",
+        "blob": "9dc77340be11548cbe7a2512d3cb35611aee89fa"
+      }
+    },
+    {
+      "path": "tests/run_rea_binary_analysis.py",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "359092ebab8978724b1bb44905c19d13f77684c7"
+      }
+    },
+    {
+      "path": "tests/run_unified_qa_gaps.py",
+      "source": "6cc9579714c56ee14afa8d5b1612aeeec2f4fac1",
+      "entry": {
+        "mode": "100644",
+        "blob": "6ad4452579385b7c3bc0ecc7b3109782c2f172e5"
+      }
+    },
+    {
+      "path": "tests/run_universal_qa.py",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "1d0c321b20b02524c3ceb4de6475cbdda2999e23"
+      }
+    },
+    {
+      "path": "tests/run_vst3_batch_qa.py",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "a4545dd727082239a0351e80779ac4d66b17882d"
+      }
+    },
+    {
+      "path": "tests/test_p220_awe_sf2_sound_gate.py",
+      "source": "6cc9579714c56ee14afa8d5b1612aeeec2f4fac1",
+      "entry": {
+        "mode": "100644",
+        "blob": "5d6e34521961a22b1c929c7c804b858420f822cc"
+      }
+    },
+    {
+      "path": "tests/test_p220_awe_unified_release.py",
+      "source": "6cc9579714c56ee14afa8d5b1612aeeec2f4fac1",
+      "entry": {
+        "mode": "100644",
+        "blob": "b4082d805fe07f1e421041728f01b9177b97d84d"
+      }
+    },
+    {
+      "path": "tests/test_rea_binary_analysis.py",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "4574edd6b6661d6fd2e18d2b37cdf5330feeb410"
+      }
+    },
+    {
+      "path": "tests/test_universal_qa.py",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "b35f2ae181689763414724385dc6297ebc650636"
+      }
+    },
+    {
+      "path": "tests/test_vst3_batch_qa.py",
+      "source": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+      "entry": {
+        "mode": "100644",
+        "blob": "476da21e7e49fc7cfeea4459e0a3b57a4c694e4c"
+      }
+    }
+  ],
+  "local_results": {
+    "status": "PASS",
+    "scope": "Linux cloud Python QA preflight, no native plugin execution",
+    "commands": [
+      {
+        "suite": "p220-full",
+        "exit": 0,
+        "seconds": 456.53324671299924
+      },
+      {
+        "suite": "p220-release",
+        "exit": 0,
+        "seconds": 0.20527694799966412
+      },
+      {
+        "suite": "p89",
+        "exit": 0,
+        "seconds": 0.13922698099850095
+      },
+      {
+        "suite": "p90",
+        "exit": 0,
+        "seconds": 0.7137547370002721
+      },
+      {
+        "suite": "rea",
+        "exit": 0,
+        "seconds": 0.12018083300063154
+      },
+      {
+        "suite": "universal",
+        "exit": 0,
+        "seconds": 0.1968968399996811
+      },
+      {
+        "suite": "batch",
+        "exit": 0,
+        "seconds": 0.21481921099984902
+      }
+    ],
+    "results": {
+      "stereo_expectations": "13/13",
+      "synthetic_comparisons": "154/154",
+      "legacy_mutants_rejected": "10/10",
+      "compatibility_units": "19/19",
+      "main_preservation_units": "15/15",
+      "real_audio": "77 BLOCKED / 0 PASS"
+    }
+  },
+  "ci_results": {
+    "status": "SUCCESS",
+    "run_id": 42946883199,
+    "url": "https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42946883199",
+    "attempt": 1,
+    "duration": "8m 0s",
+    "trigger_sha": "7e127add47073e1559ef55eae253590f9173d347",
+    "test_sha": "efc78988fb0e359c1205e8d809d856902cd1ac79",
+    "combined_tree": "1d9b5c21866f383a108768e66529bcbd97f0a3b5",
+    "jobs": {
+      "ubuntu-24.04": {
+        "id": 130281708519,
+        "status": "SUCCESS",
+        "duration": "5m 57s",
+        "url": "https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42946883199/job/130281708519"
+      },
+      "windows-2022": {
+        "id": 130281708509,
+        "status": "SUCCESS",
+        "duration": "7m 56s",
+        "url": "https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42946883199/job/130281708509"
+      }
+    },
+    "results_per_os": {
+      "stereo_expectations": "13/13",
+      "synthetic_comparisons": "154/154",
+      "legacy_mutants_rejected": "10/10",
+      "compatibility_units": "19/19",
+      "main_preservation_units": "15/15",
+      "real_audio": "77 BLOCKED / 0 PASS"
+    },
+    "artifacts": [
+      {
+        "id": "13823258035",
+        "name": "P220-Stereo-v2-Gate-Mutations-and-Required-Blocked-ubuntu-24.04",
+        "sha256": "44e8b781adf7f733be43190f02a703875c6e8ae3493bd1a22aebe7562c46ccec",
+        "url": "https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42946883199/artifacts/13823258035"
+      },
+      {
+        "id": "13824065302",
+        "name": "P220-Stereo-v2-Gate-Mutations-and-Required-Blocked-windows-2022",
+        "sha256": "11b1d476dfea042a8293efd38e33ec24beedf51f13e6c7f75e3cdff53740a643",
+        "url": "https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/42946883199/artifacts/13824065302"
+      }
+    ],
+    "warnings": "actions/checkout@v4 and actions/upload-artifact@v4 target Node.js 20; GitHub forced Node.js 24; both jobs succeeded"
+  },
+  "instrumentation_source_sha256": "c6248411bae030dce980b4ae13af7e2f8fabe574e9c6c196ce4d78d05b4e0a1a",
+  "local_raw_logs": [
+    {
+      "file": "batch.log",
+      "sha256": "9b3c7c631a878765652894cc5ca0a1381d07d498434d70f2477443d6843b0fc4",
+      "bytes": 1078
+    },
+    {
+      "file": "combined-source.zip",
+      "sha256": "44439c8282e402a403a5259e158d51c305bad7f6b5a86bd3bf915e58ab5df6d8",
+      "bytes": 813624
+    },
+    {
+      "file": "identity-negative-control.log",
+      "sha256": "90087f998b44632e1adabaacb2269e289342f3e8ce91a9f5eebcf424d4d013f7",
+      "bytes": 207
+    },
+    {
+      "file": "integration-verified.json",
+      "sha256": "b7cf0eae7ccd49002e108c15af5167127f9cf5e5313ddb1b753d254b0bfff326",
+      "bytes": 90205
+    },
+    {
+      "file": "integration.json",
+      "sha256": "3af6eb46965ed9d6d2adf03e81ac1ef43c84a67e132a38672d0cf598e3cb3660",
+      "bytes": 89953
+    },
+    {
+      "file": "local-command-results.json",
+      "sha256": "842a0ca27e7e9386a16ac289654816fc594c09afe573db0956512790a223a8de",
+      "bytes": 576
+    },
+    {
+      "file": "original-missing.log",
+      "sha256": "ef289f222f5f18e7a0ef4b557d6fb4df5e763b28a209b85016d7003b79a83354",
+      "bytes": 108
+    },
+    {
+      "file": "p220-full.log",
+      "sha256": "b4b27327555bf4332d95b4ae9e08dbd98cb4e304fc2b558c4a1ad7f0e6becc52",
+      "bytes": 1068
+    },
+    {
+      "file": "p220-release.log",
+      "sha256": "aba0d0555c3f634a2c9b6cb66f295d46c9aa7c558fae2c8e44bfb5163e288c30",
+      "bytes": 103
+    },
+    {
+      "file": "p220-stereo-v2.json",
+      "sha256": "fa35b1f2492c3432f17950a220ae50e18fd3802147f5e40d5f63495f95ebbdc7",
+      "bytes": 52693
+    },
+    {
+      "file": "p89.log",
+      "sha256": "84ff24306afcf5e19892adf32493aa9bc9dbc8db16870c6155e8e03c23864a33",
+      "bytes": 102
+    },
+    {
+      "file": "p90.log",
+      "sha256": "0f61a8c8f55cc7f1b3ac899903d61bdf8830fc90b33280944801f4c774ed66b1",
+      "bytes": 109
+    },
+    {
+      "file": "rea.log",
+      "sha256": "4fc698536509610dba1118faa97f35c1be864db65848f6c0accbcbee9843d022",
+      "bytes": 378
+    },
+    {
+      "file": "required-real-audio-evidence.json",
+      "sha256": "ed343a970226be23687fb21c888c1907ac78a11fc67419eacc486e1660c6afa0",
+      "bytes": 11504
+    },
+    {
+      "file": "test-contract.json",
+      "sha256": "4d844c8a22e9caf28f2f7d28d522ba98997cfd2afa8346afd8d7a637decf5a55",
+      "bytes": 135847
+    },
+    {
+      "file": "universal.log",
+      "sha256": "5c5b9f46aa4dc8c388d930dfb279d4a7d54ad48da127e215d29ff706572580d8",
+      "bytes": 1203
+    }
+  ],
+  "failed_attempt": {
+    "run_id": 42946673492,
+    "sha": "036d753c6fa66c439c2ef1bd713dee763fc5142c",
+    "status": "FAIL",
+    "phase": "workflow validation before any OS tests",
+    "error": "runner.temp unavailable in job env context",
+    "fix_sha": "7e127add47073e1559ef55eae253590f9173d347"
+  },
+  "remote_main_verified_unchanged": "7213fe1f81f4036f74431cb5b2d7dbd09b73ee5c",
+  "evidence_observed_utc": "2026-11-11T02:42:53.741206+00:00",
+  "ci_public_summary_sha256": "ad3f8a7201ab624c326c7c87cfc5e03339474237b77f2fbf46dfa600e36bc232",
+  "p196_p198": "WAITING FOR P232; no product changes applied"
+}

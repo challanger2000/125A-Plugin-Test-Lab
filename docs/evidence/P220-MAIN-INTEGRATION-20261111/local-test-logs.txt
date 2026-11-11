@@ -1,0 +1,87 @@
+P220 combined main/QA local cloud Linux evidence; synthetic test-of-test only.
+Test SHA efc78988fb0e359c1205e8d809d856902cd1ac79
+Tree SHA 1d9b5c21866f383a108768e66529bcbd97f0a3b5
+No native plugin, original Creative, DAW, ASIO or actual Ghidra execution.
+
+### identity-negative-control.log
+Combined source bytes, tree, parent preservation and branch refs verified
+P220 integration negative control: changed source rejected
+Combined source bytes, tree, parent preservation and branch refs verified
+
+### p220-full.log
+P220_STEREO asymmetric_independent_lsb expected=PASS observed=PASS
+P220_STEREO dual_mono_swap expected=PASS observed=PASS
+P220_STEREO matching_antiphase expected=PASS observed=PASS
+P220_STEREO matching_hard_left expected=PASS observed=PASS
+P220_STEREO common_gain_half_db expected=PASS observed=PASS
+P220_STEREO common_latency_211_frames expected=PASS observed=PASS
+P220_STEREO left_right_swap expected=FAIL observed=FAIL
+P220_STEREO right_silent expected=FAIL observed=FAIL
+P220_STEREO left_silent expected=FAIL observed=FAIL
+P220_STEREO right_gain_minus_3db expected=FAIL observed=FAIL
+P220_STEREO right_polarity expected=FAIL observed=FAIL
+P220_STEREO both_polarities expected=FAIL observed=FAIL
+P220_STEREO right_delay_128_frames expected=FAIL observed=FAIL
+P220_STEREO_REGRESSION 13 / 13 synthetic WAV only; release_approved=False
+P220 SYNTHETIC oracle positive: 77/77 and 154/154, release_approved=False – NO original Creative driver used
+P220 SYNTHETIC MUTATION AUDIT: 10/10 rejected, including valid-but-wrong sound, silent PCM, wrong presets and missing FX
+
+### p220-release.log
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.074s
+
+OK
+
+### p89.log
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.015s
+
+OK
+
+### p90.log
+..........
+----------------------------------------------------------------------
+Ran 10 tests in 0.602s
+
+OK
+
+### rea.log
+test_bad_exit_json_error_timeout_mutation_are_rejected (test_rea_binary_analysis.REATests.test_bad_exit_json_error_timeout_mutation_are_rejected) ... ok
+test_explicit_observation_and_attribution (test_rea_binary_analysis.REATests.test_explicit_observation_and_attribution) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.010s
+
+OK
+
+### universal.log
+test_approved_cases_require_full_independent_feature_matrix (test_universal_qa.PipelineTests.test_approved_cases_require_full_independent_feature_matrix) ... ok
+test_default_is_inventory_only_without_clicks_or_approval (test_universal_qa.PipelineTests.test_default_is_inventory_only_without_clicks_or_approval) ... ok
+test_forged_stale_or_untrusted_evidence_does_not_pass (test_universal_qa.PipelineTests.test_forged_stale_or_untrusted_evidence_does_not_pass) ... ok
+test_native_module_mutation_during_scan_is_never_accepted (test_universal_qa.PipelineTests.test_native_module_mutation_during_scan_is_never_accepted) ... ok
+test_preflight_blocks_wrong_module_or_partial_contract_pair (test_universal_qa.PipelineTests.test_preflight_blocks_wrong_module_or_partial_contract_pair) ... ok
+test_rea_opt_in_observes_but_never_certifies_and_rejects_forgery (test_universal_qa.PipelineTests.test_rea_opt_in_observes_but_never_certifies_and_rejects_forgery) ... ok
+test_real_technical_baseline_is_strict_and_nonrelease (test_universal_qa.PipelineTests.test_real_technical_baseline_is_strict_and_nonrelease) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.023s
+
+OK
+
+### batch.log
+test_auto_detects_real_bundle_directory_without_manual_per_plugin_code (test_vst3_batch_qa.BatchTests.test_auto_detects_real_bundle_directory_without_manual_per_plugin_code) ... ok
+test_forged_success_or_corrupted_module_cannot_pass (test_vst3_batch_qa.BatchTests.test_forged_success_or_corrupted_module_cannot_pass) ... ok
+test_rea_selection_requires_tools_and_rejects_fake_green_child (test_vst3_batch_qa.BatchTests.test_rea_selection_requires_tools_and_rejects_fake_green_child) ... ok
+test_selected_batch_isolation_continues_after_crash_or_timeout (test_vst3_batch_qa.BatchTests.test_selected_batch_isolation_continues_after_crash_or_timeout) ... ok
+test_strict_manifest_duplicated_or_invalid_selection_rejected (test_vst3_batch_qa.BatchTests.test_strict_manifest_duplicated_or_invalid_selection_rejected) ... ok
+test_technical_requires_hosts_and_overlong_budget_is_rejected (test_vst3_batch_qa.BatchTests.test_technical_requires_hosts_and_overlong_budget_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.036s
+
+OK
+
+### original-missing.log
+P220 original Creative 77-preset sound evidence: BLOCKED PASS 0 /77 scenarios 0 /154 release_approved=False

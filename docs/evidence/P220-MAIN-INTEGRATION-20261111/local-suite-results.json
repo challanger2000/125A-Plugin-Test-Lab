@@ -1,0 +1,37 @@
+[
+  {
+    "suite": "p220-full",
+    "exit": 0,
+    "seconds": 456.53324671299924
+  },
+  {
+    "suite": "p220-release",
+    "exit": 0,
+    "seconds": 0.20527694799966412
+  },
+  {
+    "suite": "p89",
+    "exit": 0,
+    "seconds": 0.13922698099850095
+  },
+  {
+    "suite": "p90",
+    "exit": 0,
+    "seconds": 0.7137547370002721
+  },
+  {
+    "suite": "rea",
+    "exit": 0,
+    "seconds": 0.12018083300063154
+  },
+  {
+    "suite": "universal",
+    "exit": 0,
+    "seconds": 0.1968968399996811
+  },
+  {
+    "suite": "batch",
+    "exit": 0,
+    "seconds": 0.21481921099984902
+  }
+]
