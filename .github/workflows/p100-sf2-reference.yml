@@ -1,0 +1,72 @@
+name: P100 independent SF2 and FluidSynth executable reference
+on:
+  pull_request:
+    paths:
+      - 'tests/run_sf2_reference.py'
+      - 'tests/test_sf2_reference.py'
+      - 'tests/make_p100_valid_sf2.py'
+      - 'docs/P100-SF2-FLUIDSYNTH-REFERENCE.md'
+      - '.github/workflows/p100-sf2-reference.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  independent-sf2-contracts:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: P100 strict synthetic SF2 and AWE provenance unit regressions
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_sf2_reference.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'P100 SF2 regression FAIL' }
+          python -m py_compile tests/run_sf2_reference.py tests/test_sf2_reference.py tests/make_p100_valid_sf2.py
+          if ($LASTEXITCODE -ne 0) { throw 'P100 Python compile FAIL' }
+      - name: P100 real official FluidSynth 2.4.5 dry offline PCM render (synthetic SF2 only)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'p100-fluid'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $zip = Join-Path $root 'fluidsynth-2.4.5-win10-x64.zip'
+          $url = 'https://github.com/FluidSynth/fluidsynth/releases/download/v2.4.5/fluidsynth-2.4.5-win10-x64.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -MaximumRedirection 8 -TimeoutSec 90
+          if ((Get-Item -LiteralPath $zip).Length -ne 5446270) { throw 'Official FluidSynth release ZIP size changed; review the download' }
+          Write-Host "Official FluidSynth ZIP SHA256: $((Get-FileHash $zip -Algorithm SHA256).Hash)"
+          $expanded = Join-Path $root 'expanded'
+          Expand-Archive -LiteralPath $zip -DestinationPath $expanded
+          $exes = @(Get-ChildItem -LiteralPath $expanded -Filter fluidsynth.exe -Recurse -File)
+          if ($exes.Count -ne 1) { throw "Expected exactly one official fluidsynth.exe, got $($exes.Count)" }
+          $exe = $exes[0].FullName
+          Write-Host "FluidSynth EXE SHA256: $((Get-FileHash $exe -Algorithm SHA256).Hash)"
+          & $exe -V
+          if ($LASTEXITCODE -ne 0) { throw 'Official FluidSynth binary version command failed' }
+          $sf2 = Join-Path $root 'p100-synthetic.sf2'
+          python tests/make_p100_valid_sf2.py $sf2
+          if ($LASTEXITCODE -ne 0) { throw 'P100 synthetic SoundFont generation failed' }
+          $out = Join-Path $root 'renders'
+          python tests/run_sf2_reference.py --mode render --sf2 $sf2 --fluidsynth $exe --out $out --note 69 --velocity 100
+          if ($LASTEXITCODE -ne 0) { throw 'Actual FluidSynth dry render failed' }
+          $evidence = Join-Path $out 'SF2-REFERENCE-RESULT.json'
+          if (!(Test-Path -LiteralPath $evidence)) { throw 'Missing real FluidSynth reference evidence' }
+          $result = Get-Content -LiteralPath $evidence -Raw | ConvertFrom-Json
+          if ($result.status -ne 'REFERENCE_RENDERED' -or $result.preset_count -ne 1 -or $result.rendered_count -ne 1 -or $result.failed_count -ne 0) {
+            throw 'Real FluidSynth output did not pass independent synthesis contract'
+          }
+          if ($result.fluidsynth_version -ne '2.4.5' -or $result.awe_comparison -ne 'NOT_RUN' -or $result.hardware_fidelity -ne 'NOT_COVERED') {
+            throw 'Incorrect FluidSynth identity or false hardware/VST3 claim'
+          }
+          if ($result.render_cases.Count -ne 1 -or $result.render_cases[0].status -ne 'REFERENCE_RENDERED' -or $result.render_cases[0].metrics.peak -le 0.0001) {
+            throw 'Synthesized PCM missing or silent'
+          }
+          Write-Host "P100 REAL FLUIDSYNTH 2.4.5 SYNTHETIC AUDIO PASS: $($result.render_cases[0].fluid_sha256)"
+          Write-Host 'AWE owner SF2, current AWE product render, and original Creative hardware: NOT RUN'
+      - name: Preserve independently generated synthetic FluidSynth evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P100-FluidSynth-2_4_5-Synthetic-Reference
+          path: ${{ runner.temp }}/p100-fluid/renders/
+          if-no-files-found: warn
+          retention-days: 7
