@@ -1,0 +1,41 @@
+name: P100 original Win95 Creative versus real VST3
+on:
+  push:
+    branches: [feature/p100-original-creative-vst3-parity]
+    paths: ['tests/run_p100_original_vst3_parity.py','tests/test_p100_original_vst3_parity.py','.github/workflows/p100-original-creative.yml']
+  pull_request:
+    paths: ['tests/run_p100_original_vst3_parity.py','tests/test_p100_original_vst3_parity.py','.github/workflows/p100-original-creative.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  adversarial-unprivileged:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -p 'test_p100_original_vst3_parity.py' -v
+  windows-selfcontained:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - shell: pwsh
+        run: python -m unittest discover -s tests -p test_p100_original_vst3_parity.py -v
+      - shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+          python -m PyInstaller --clean --noconfirm --onefile --name "125A_P100_Original_VST3_TestLab" tests/run_p100_original_vst3_parity.py
+          if ($LASTEXITCODE -ne 0) { throw 'P100 Windows executable build failed' }
+          Get-FileHash -Algorithm SHA256 "dist/125A_P100_Original_VST3_TestLab.exe" |
+            Format-List | Out-File "dist/BUILD-SHA256.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: P100-125A-Test-Lab-Windows-Owner-Private-Runner
+          path: |
+            dist/125A_P100_Original_VST3_TestLab.exe
+            dist/BUILD-SHA256.txt
