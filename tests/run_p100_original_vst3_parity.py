@@ -1,0 +1,447 @@
+#!/usr/bin/env python3
+"""P100: pinned original-Creative Win95 -> real Windows VST3 -> exact EMU8000 OUT+PCM.
+An opt-in Test Lab product adapter. Private Creative assets stay owner-local.
+"""
+from __future__ import annotations
+import argparse, hashlib, json, re, struct, subprocess, sys, wave
+from pathlib import Path
+
+SCHEMA="125A-P100-ORIGINAL-VST3-PARITY-1"
+SOURCE_RESET_FRAME=1845375
+NATIVE_RESET_FRAME=87475
+REQUIRED=("vst3","native_host","rom","sf2","ram_ports","ram_pcm","vxd_pack",
+          "note_ports","reference_wav","session_manifest","guest_log",
+          "original_trace","original_full_wav")
+GROUPS=("C4_ON","C4_OFF","D4_ON","D4_OFF")
+HEADER=b"# INDEPENDENT_NATIVE_P002_PORT_WRITES_ONLY\n"
+CLOCK=b"# CLOCK=HOST_44100_SAMPLE_FRAMES; ORIGIN=ACTIVATION\n"
+
+def demand(ok,msg):
+    if not ok: raise ValueError(msg)
+
+def digest(p):
+    h=hashlib.sha256()
+    with p.open("rb") as f:
+        while chunk:=f.read(1024*1024):h.update(chunk)
+    return h.hexdigest()
+
+def source(plan_path):
+    p=json.loads(plan_path.read_text(encoding="utf-8-sig"))
+    demand(p.get("schema")==SCHEMA,"P100 plan schema")
+    demand(p.get("sample_rate")==44100,"44.1kHz original clock required")
+    demand(type(p.get("replay_original_boot_prelude",False)) is bool,
+           "private original chip-prelude opt-in must be BOOLEAN")
+    demand(type(p.get("replay_original_win95_midi_reset",False)) is bool,
+           "original Win95 reset opt-in must be BOOLEAN")
+    demand(not p.get("replay_original_win95_midi_reset",False) or
+           p.get("replay_original_boot_prelude",False),
+           "original Win95 MIDI reset requires same SHA-pinned boot prelude")
+    timings=p.get("midi_sample_frames",[])
+    demand(len(timings)==4 and all(type(x)==int for x in timings) and
+           0<timings[0]<timings[1]<timings[2]<timings[3]<p.get("native_total_frames",0)
+           <=44100*30,"explicit four-event original MIDI schedule invalid")
+    if p.get("replay_original_boot_prelude",False):
+        demand(timings[0]==137,
+               "owner 2026-11-14 source chip prelude requires native C4 frame 137")
+    if p.get("replay_original_win95_midi_reset",False):
+        demand(p.get("reference_first_note_frame")==1758037 and
+               timings[0]+SOURCE_RESET_FRAME-1758037==NATIVE_RESET_FRAME and
+               timings[3]<NATIVE_RESET_FRAME<p["native_total_frames"],
+               "owner Win95 reset must use original attested source clock")
+    w=p.get("pcm_window",{})
+    demand(all(type(w.get(k))==int and w[k]>=0
+               for k in ("original_start_frame","native_start_frame","frames")) and
+           w["frames"]>=256 and w["native_start_frame"]==timings[0] and
+           w["native_start_frame"]+w["frames"]<=p["native_total_frames"],
+           "explicit original/native PCM window invalid")
+    demand(type(p.get("reference_first_note_frame"))==int and
+           p["reference_first_note_frame"]>=0,"original note clock missing")
+    items=p.get("files",{})
+    demand(all(k in items for k in REQUIRED),"missing SHA-pinned private source")
+    paths={}
+    for key in REQUIRED:
+        obj=items[key]
+        demand(set(obj)=={"path","sha256"} and
+               bool(re.fullmatch("[0-9a-f]{64}",obj["sha256"])),
+               key+": missing SHA256 contract")
+        relative=Path(obj["path"])
+        f=(plan_path.parent/relative).resolve()
+        demand(f.is_file() and f.stat().st_size<=96000000,key+": absent/oversize")
+        demand(digest(f)==obj["sha256"],key+": SHA256 not pinned")
+        paths[key]=f
+    demand(len(set(paths.values()))==len(paths),"private inputs alias")
+    manifest=json.loads(paths["session_manifest"].read_text(encoding="utf-8-sig"))
+    demand(digest(paths["session_manifest"])==p.get("source_session_sha256"),
+           "source session manifest digest mismatch")
+    demand(manifest.get("schema")=="P002_ORIGINAL_WIN95_REAL_BOOT_CAPTURE_V1" and
+           manifest.get("original_session_kind")=="PRIVATE_CALIBRATED_86BOX_WIN95_CREATIVE_CC0_1" and
+           manifest.get("sample_rate")==44100 and manifest.get("sample_bits")==16 and
+           manifest.get("guest_log_from_same_private_fat16_disk") is True and
+           manifest.get("original_source_sf2_ram_words_bit_equal")==260921,
+           "not independently boot-attested original Win95 source")
+    for field,key in (
+        ("original_emu8k_trace_sha256","original_trace"),
+        ("original_guest_log_sha256","guest_log"),
+        ("original_win95_precard_wav_sha256","original_full_wav"),
+        ("original_owner_sf2_sha256","sf2"),("original_rom_sha256","rom")):
+        demand(manifest.get(field)==digest(paths[key]),
+               "Win95 source provenance mismatch: "+field)
+    # Independently prove cropped reference is BYTE-IDENTICAL to the
+    # unchanged original 44.1kHz PCM16 guest WAV at the source note origin.
+    with wave.open(str(paths["original_full_wav"])) as full, \
+         wave.open(str(paths["reference_wav"])) as crop:
+        for f in (full,crop):
+            demand(f.getnchannels()==2 and f.getsampwidth()==2 and
+                   f.getframerate()==44100 and f.getcomptype()=="NONE",
+                   "original reference is not PCM16 44.1kHz stereo")
+        start=p["reference_first_note_frame"];n=w["frames"]
+        demand(start+n<=full.getnframes() and
+               w["original_start_frame"]+n<=crop.getnframes(),
+               "original reference crop exceeds Win95 recording")
+        full.setpos(start);crop.setpos(w["original_start_frame"])
+        a=hashlib.sha256();b=hashlib.sha256()
+        for off in range(0,n,4096):
+            k=min(n-off,4096)
+            a.update(full.readframes(k));b.update(crop.readframes(k))
+        demand(a.digest()==b.digest(),"original reference crop is not authentic")
+    demand(manifest["original_emu8k_trace_sha256"].encode() in
+           paths["note_ports"].read_bytes()[:600],
+           "C4/D4 port fixture not tied to this Win95 trace")
+    if p.get("replay_original_win95_midi_reset",False):
+        reset=source_reset_ports(paths["original_trace"])
+        demand(len(reset)==64,"original Win95 reset has no authenticated 64 OUTs")
+    return p,paths
+
+def ref_ports(path):
+    result={};section=None
+    for line in path.read_text(encoding="ascii").splitlines():
+        line=line.strip()
+        if not line:continue
+        if line.startswith("#"):
+            key=line.lstrip("# ")
+            if key in GROUPS:
+                demand(key not in result,"duplicate original note group")
+                result[key]=[];section=key
+            continue
+        demand(section is not None,"orphan original note event")
+        v=line.split()
+        demand(len(v)==3,"original port record invalid")
+        result[section].append((int(v[0]),int(v[1],16),int(v[2],16)))
+    demand(tuple(result)==GROUPS and all(result.values()),
+           "incomplete original C4/D4 NoteOn/Off")
+    for group in result.values():
+        demand(all(group[i][0]<=group[i+1][0] for i in range(len(group)-1)),
+               "original clock not monotonic")
+    return result
+
+def source_chip_effect_sends(groups):
+    """Decode physical EMU8000 PTRX and CSL high-byte FX sends on NoteOn.
+
+    A recording before the CT1745 card is NOT necessarily effects-free:
+    the unchanged EMU8000 core sums its own chorus/reverb returns.
+    Distinguish observed nonzero, observed all-zero and unobserved sends.
+    """
+    report={}
+    for name in ("C4_ON","D4_ON"):
+        selector=None
+        buses={"reverb":[],"chorus":[]}
+        for frame,port,value in groups[name]:
+            if port==0xe22:
+                selector=value
+                continue
+            if port!=0x622 or selector is None:
+                continue
+            reg=selector>>5
+            voice=selector&31
+            if reg==1:
+                buses["reverb"].append({"voice":voice,"send":(value>>8)&255})
+            if reg==7:
+                buses["chorus"].append({"voice":voice,"send":(value>>8)&255})
+        report[name]=buses
+    counts=[item for block in report.values() for bus in block.values()
+            for item in bus]
+    observed=bool(counts) and all(
+        len(buses["chorus"])>0 and len(buses["reverb"])>0
+        for buses in report.values())
+    all_zero=all(item["send"]==0 for item in counts) if observed else None
+    return {"per_note":report,"complete_zero_send_evidence":observed,
+            "internal_emu8000_chorus_reverb_send_zero":all_zero,
+            "pre_card_audio_is_necessarily_fx_free":all_zero is True,
+            "meaning":"PRE_CT1745_IS_NOT_PRE_CHORUS_REVERB"}
+
+
+def source_reset_ports(original_full_trace):
+    """Strict source-authenticated 1996 Creative Win95 midiOutReset.
+    This is the physical DCYSUSV release sweep, NOT original C4/D4 notes.
+    Private trace was SHA-pinned by source() before this parser is invoked.
+    """
+    events=[]
+    with original_full_trace.open("rt",encoding="ascii") as f:
+        for line in f:
+            q=line.strip().split()
+            if len(q)!=3 or not q[0].isdigit():
+                continue
+            frame=int(q[0])
+            if frame not in (SOURCE_RESET_FRAME,SOURCE_RESET_FRAME+1):
+                continue
+            try:
+                port=int(q[1],16);value=int(q[2],16)
+            except ValueError as e:
+                raise ValueError("malformed original reset port") from e
+            events.append((frame-SOURCE_RESET_FRAME,port,value))
+    demand(len(events)==64,"original Win95 physical reset sweep is missing")
+    for voice in range(32):
+        when=0 if voice<23 else 1
+        demand(events[voice*2]==(when,0xe22,(5<<5)|voice) and
+               events[voice*2+1]==(when,0xa20,0x807f),
+               "Win95 source midiOutReset voice/timestamp/value changed")
+    return events
+
+def compare_reset_ports(source_full_trace,native_port_file):
+    original=source_reset_ports(source_full_trace)
+    actual=[(clock-NATIVE_RESET_FRAME,port,value)
+            for clock,port,value in native_ports(native_port_file)
+            if NATIVE_RESET_FRAME<=clock<=NATIVE_RESET_FRAME+1]
+    difference=None
+    for i in range(max(len(original),len(actual))):
+        left=original[i] if i<len(original) else None
+        right=actual[i] if i<len(actual) else None
+        if left!=right:
+            difference={"event_index":i,"original":left,"native":right}
+            break
+    return {"equal":difference is None,
+            "source_reset_frame":SOURCE_RESET_FRAME,
+            "native_reset_frame":NATIVE_RESET_FRAME,
+            "original_register_writes":len(original),
+            "native_register_writes":len(actual),
+            "first_difference":difference,
+            "source_values_not_used_for_note_on":True}
+
+
+def native_ports(path):
+    with path.open("rb") as f:
+        demand(f.readline().rstrip(b"\r\n")==HEADER.rstrip(b"\n") and
+               f.readline().rstrip(b"\r\n")==CLOCK.rstrip(b"\n"),
+               "native trace lacks genuine 125A EMU8000 capture header")
+        lines=f.read().decode("ascii").splitlines()
+        # The REAL exported VST3 recorder emits this third provenance
+        # disclaimer. It is metadata, not a physical EMU8000 OUT event.
+        # Accept only this known marker (plus the 2 legacy header lines),
+        # never silently discard arbitrary headers or injected events.
+        if lines and lines[0]=="# SOURCE_ORIGINAL_WIN95_PROVENANCE=SEPARATELY_REQUIRED":
+            lines=lines[1:]
+    out=[]
+    for line in lines:
+        if not line.strip():continue
+        fields=line.split()
+        demand(len(fields)==3,"native trace malformed")
+        event=(int(fields[0]),int(fields[1],16),int(fields[2],16))
+        demand(0<=event[0]<=44100*30 and
+               all(0<=x<=65535 for x in event[1:]) and
+               (not out or event[0]>=out[-1][0]),"native trace clock/port invalid")
+        out.append(event)
+    demand(bool(out),"native trace empty")
+    return out
+
+def compare_ports(source_file,native_file,times,first_frame):
+    original=ref_ports(source_file)
+    demand(original["C4_ON"][0][0]==first_frame,
+           "source first C4 timing changed")
+    native=native_ports(native_file)
+    groups=[]
+    for key,native_on in zip(GROUPS,times):
+        ref=original[key]
+        origin=ref[0][0]
+        demand(ref[-1][0]-origin<=15,"original note port interval too broad")
+        a=[(frame-origin,port,value) for frame,port,value in ref]
+        b=[(frame-native_on,port,value) for frame,port,value in native
+           if native_on<=frame<native_on+16]
+        mismatch=None
+        for i in range(max(len(a),len(b))):
+            x=a[i] if i<len(a) else None
+            y=b[i] if i<len(b) else None
+            if x!=y:
+                difference="count" if x is None or y is None else \
+                    next(name for name,xx,yy in zip(("frame","port","value"),x,y) if xx!=yy)
+                mismatch={"event_index":i,"field":difference,"original":x,"native":y,
+                          "original_absolute_frame":origin+(x[0] if x else 0),
+                          "native_absolute_frame":native_on+(y[0] if y else 0)}
+                break
+        groups.append({"note":key,"original_writes":len(a),"native_writes":len(b),
+                       "equal":mismatch is None,"first_difference":mismatch})
+    return {"equal":all(x["equal"] for x in groups),"groups":groups,
+            "auto_time_alignment":False,"source_trace_sha256":digest(source_file),
+            "native_trace_sha256":digest(native_file)}
+
+def compare_pcm(source_file,native_file,window):
+    start=window["original_start_frame"];position=window["native_start_frame"]
+    count=window["frames"];first=None;mismatch=0;nonzero=[0,0];maxdelta=0
+    with wave.open(str(source_file)) as a,wave.open(str(native_file)) as b:
+        for item in (a,b):
+            demand(item.getframerate()==44100 and item.getnchannels()==2 and
+                   item.getsampwidth()==2 and item.getcomptype()=="NONE",
+                   "not original EMU8000 stereo 44100Hz PCM16")
+        demand(start+count<=a.getnframes() and position+count<=b.getnframes(),
+               "PCM window out of bounds")
+        a.setpos(start);b.setpos(position)
+        for offset in range(0,count,4096):
+            n=min(4096,count-offset)
+            aa=a.readframes(n);bb=b.readframes(n)
+            demand(len(aa)==len(bb)==n*4,"truncated PCM comparison")
+            for j in range(0,len(aa),2):
+                v=struct.unpack_from("<h",aa,j)[0]
+                w=struct.unpack_from("<h",bb,j)[0]
+                nonzero[0]+=v!=0;nonzero[1]+=w!=0
+                if v!=w:
+                    mismatch+=1;maxdelta=max(maxdelta,abs(v-w))
+                    if first is None:
+                        f=offset+j//4
+                        first={"relative_frame":f,"original_absolute_frame":start+f,
+                               "native_absolute_frame":position+f,"channel":(j//2)%2,
+                               "original_s16":v,"native_s16":w}
+    demand(min(nonzero)>=64,"silent source or silent native PCM is not parity")
+    return {"equal":mismatch==0,"mismatched_channel_samples":mismatch,
+            "compared_channel_samples":2*count,"first_difference":first,
+            "max_abs_difference_lsb":maxdelta,"gain_normalization":False,
+            "automatic_alignment":False}
+
+def run_host(host,args,out,label,timeout):
+    stdout=out/(label+".stdout.txt");stderr=out/(label+".stderr.txt")
+    try:
+        with stdout.open("wb") as a,stderr.open("wb") as b:
+            p=subprocess.run([str(host)]+[str(x) for x in args],
+                             stdin=subprocess.DEVNULL,stdout=a,stderr=b,
+                             timeout=timeout,check=False)
+        return {"exit_code":p.returncode,"stdout":stdout.name,"stderr":stderr.name}
+    except subprocess.TimeoutExpired:
+        return {"exit_code":None,"timeout":True,"stdout":stdout.name,"stderr":stderr.name}
+    except OSError as error:
+        stderr.write_text(str(error),encoding="utf8")
+        return {"exit_code":None,"launch_error":str(error),
+                "stdout":stdout.name,"stderr":stderr.name}
+
+def execute(plan_path,out,timeout=120):
+    demand(not out.exists(),"P100 output folder must be new")
+    out.mkdir(parents=True)
+    result={"schema":"125A-P100-ORIGINAL-VST3-RESULT-1","status":"NO_GO",
+            "release_approved":False,"asio":"NOT_RUN","commercial_daw":"NOT_RUN"}
+    def save():
+        (out/"P100-RESULT.json").write_text(
+            json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf8")
+    try:
+        plan,files=source(plan_path)
+        result["original_session_and_all_source_sha_verified"]=True
+        result["original_session_sha256"]=plan["source_session_sha256"]
+        result["native_module_sha256"]=digest(files["vst3"])
+        t=plan["midi_sample_frames"]
+        prefix=[files[k] for k in ("vst3","rom","sf2","ram_ports","ram_pcm","vxd_pack")]
+        def case(label,clocked):
+            out_file=out/(label+".out.txt")
+            pcm_file=out/(label+".wav")
+            sha_file=out/(label+".clock.json")
+            arguments=[*prefix,out_file,pcm_file,*t,plan["native_total_frames"],sha_file]
+            if clocked:arguments.append(files["note_ports"])
+            if plan.get("replay_original_boot_prelude",False):
+                arguments.append("--original-prelude="+str(files["original_trace"]))
+            if plan.get("replay_original_win95_midi_reset",False):
+                arguments.append("--source-reset-frame="+str(NATIVE_RESET_FRAME))
+            result[label+"_native_host"]=run_host(files["native_host"],arguments,out,label,timeout)
+            return out_file,pcm_file,sha_file
+        base_ports,base_pcm,base_clock=case("independent",False)
+        if result["independent_native_host"].get("exit_code")!=0:
+            result["status"]="INDEPENDENT_NATIVE_HOST_FAILED"
+            save();return result
+        try:
+            result["independent_native_register_diagnostic"]=compare_ports(
+                files["note_ports"],base_ports,t,
+                plan["reference_first_note_frame"])
+        except (OSError,ValueError,UnicodeError) as error:
+            result["independent_native_register_diagnostic_error"]=str(error)
+        ports,pcm,clock=case("source_clocked",True)
+        if result["source_clocked_native_host"].get("exit_code")!=0:
+            result["status"]="SOURCE_CLOCKED_NATIVE_HOST_FAILED"
+            save();return result
+        timing=json.loads(clock.read_text(encoding="utf-8-sig"))
+        demand(timing.get("schema")=="P002_NATIVE_REAL_VST3_HOST_CLOCKS_V1",
+               "native clock manifest schema invalid")
+        for key,val in zip(("note_c4_on_frame","note_c4_off_frame",
+                             "note_d4_on_frame","note_d4_off_frame"),t):
+            demand(timing.get(key)==val,"native MIDI clock mismatched: "+key)
+        demand(timing.get("pcm_frames")==plan["native_total_frames"],
+               "native frame count does not match")
+        for key,path in (("native_chip_out_trace_sha256",ports),
+                         ("native_precard_wav_sha256",pcm),
+                         ("original_vxd_pack_sha256",files["vxd_pack"]),
+                         ("exported_vst3_sha256",files["vst3"])):
+            demand(timing.get(key)==digest(path),"native evidence hash changed: "+key)
+        result["source_chip_effect_sends"]=source_chip_effect_sends(
+            ref_ports(files["note_ports"]))
+        if plan.get("replay_original_boot_prelude",False):
+            demand(timing.get("original_win95_prelude_source_sha256")==
+                   digest(files["original_trace"]),
+                   "native source prelude not attested by exported VST3 host")
+            result["original_win95_chip_prelude_replayed"]=True
+        else:
+            demand(timing.get("original_win95_prelude_source_sha256") in
+                   ("NOT_RUN",None),"unapproved Win95 prelude detected")
+            result["original_win95_chip_prelude_replayed"]=False
+        reset_requested=plan.get("replay_original_win95_midi_reset",False)
+        if reset_requested:
+            demand(timing.get("original_win95_native_reset_frame")==
+                   NATIVE_RESET_FRAME,"native Win95 reset not sample-attested")
+            result["win95_midi_reset_ports"]=compare_reset_ports(
+                files["original_trace"],ports)
+            # Two independently authenticated lifecycle intervals:
+            # source's subsequent AWE_CLEAR_USER_BANK (source 1845951)
+            # has NOT yet been generated from the native SF2 state.
+            w=plan["pcm_window"]
+            demand(w["original_start_frame"]==0 and
+                   w["native_start_frame"]==137 and w["frames"]>=87915,
+                   "original lifecycle window does not cover reset and unload")
+            reset_offset=SOURCE_RESET_FRAME-plan["reference_first_note_frame"]
+            clear_offset=1845951-plan["reference_first_note_frame"]
+            def interval(start,frames):
+                return compare_pcm(files["reference_wav"],pcm,{
+                    "original_start_frame":w["original_start_frame"]+start,
+                    "native_start_frame":w["native_start_frame"]+start,
+                    "frames":frames})
+            result["pcm16_before_source_reset"]=interval(0,reset_offset)
+            result["pcm16_source_reset_until_bank_clear"]=interval(
+                reset_offset,clear_offset-reset_offset)
+            result["pcm16_after_source_bank_clear"]=interval(
+                clear_offset,w["frames"]-clear_offset)
+            result["native_original_bank_clear_control"]="NOT_IMPLEMENTED"
+        result["registers"]=compare_ports(files["note_ports"],ports,t,
+                                           plan["reference_first_note_frame"])
+        result["pcm16"]=compare_pcm(files["reference_wav"],pcm,plan["pcm_window"])
+        first=result["pcm16"]["first_difference"]
+        if first is not None:
+            first["original_full_win95_frame"]=(plan["reference_first_note_frame"]
+                                                +first["relative_frame"])
+        both=result["registers"]["equal"] and (
+            not reset_requested or result["win95_midi_reset_ports"]["equal"])
+        if both and result["pcm16"]["equal"]:
+            result["status"]="BIT_EXACT_C4_D4_AND_RESET_PASS" if reset_requested else "BIT_EXACT_C4_D4_PASS"
+        elif (reset_requested and both and
+              result["pcm16_before_source_reset"]["equal"] and
+              result["pcm16_source_reset_until_bank_clear"]["equal"]):
+            result["status"]="ORIGINAL_NATIVE_UNMATCHED_BANK_UNLOAD_TAIL"
+        else:
+            result["status"]="ORIGINAL_NATIVE_MISMATCH"
+    except (ValueError,KeyError,TypeError,OSError,UnicodeError,json.JSONDecodeError,wave.Error) as error:
+        result["status"]="INVALID_EVIDENCE_OR_TEST_CONFIGURATION"
+        result["error"]=str(error)
+    save();return result
+
+def main(argv=None):
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--plan",type=Path,required=True)
+    p.add_argument("--out",type=Path,required=True)
+    p.add_argument("--host-timeout",type=int,default=120)
+    a=p.parse_args(argv)
+    result=execute(a.plan.resolve(),a.out.resolve(),a.host_timeout)
+    print("P100",result["status"],"result",a.out/"P100-RESULT.json")
+    return 0 if result["status"] in (
+        "BIT_EXACT_C4_D4_PASS","BIT_EXACT_C4_D4_AND_RESET_PASS") else 10
+
+if __name__=="__main__":sys.exit(main())
