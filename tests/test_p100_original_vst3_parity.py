@@ -38,6 +38,7 @@ class OriginalVst3P100Regression(unittest.TestCase):
                               "# D4_OFF\n400 E22 00A3\n400 A20 8000\n")
         self.events=["# INDEPENDENT_NATIVE_P002_PORT_WRITES_ONLY",
                      "# CLOCK=HOST_44100_SAMPLE_FRAMES; ORIGIN=ACTIVATION",
+                     "# SOURCE_ORIGINAL_WIN95_PROVENANCE=SEPARATELY_REQUIRED",
                      "5 E22 0060","5 A20 00FF",
                      "25 E22 00A0","25 A20 8000",
                      "45 E22 0063","45 A20 00FF",
@@ -76,6 +77,15 @@ class OriginalVst3P100Regression(unittest.TestCase):
         self.ports.write_text("5 E22 0060\n")
         with self.assertRaisesRegex(ValueError,"header"):
             p100.compare_ports(self.notes,self.ports,[5,25,45,65],100)
+    def test_unexpected_native_metadata_is_rejected(self):
+        self.ports.write_text("\n".join(self.events[:3]+
+            ["# UNVERIFIED_DIAGNOSTIC_IS_NOT_A_PORT"]+self.events[3:])+"\n")
+        with self.assertRaisesRegex(ValueError,"malformed"):
+            p100.compare_ports(self.notes,self.ports,[5,25,45,65],100)
+    def test_real_recording_crlf_is_accepted(self):
+        self.ports.write_bytes(("\r\n".join(self.events)+"\r\n").encode("ascii"))
+        self.assertTrue(p100.compare_ports(
+            self.notes,self.ports,[5,25,45,65],100)["equal"])
     def test_note_origin_mismatch_rejected(self):
         with self.assertRaisesRegex(ValueError,"timing"):
             p100.compare_ports(self.notes,self.ports,[5,25,45,65],101)
