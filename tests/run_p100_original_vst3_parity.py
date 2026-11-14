@@ -120,6 +120,12 @@ def native_ports(path):
                f.readline().rstrip(b"\r\n")==CLOCK.rstrip(b"\n"),
                "native trace lacks genuine 125A EMU8000 capture header")
         lines=f.read().decode("ascii").splitlines()
+        # The REAL exported VST3 recorder emits this third provenance
+        # disclaimer. It is metadata, not a physical EMU8000 OUT event.
+        # Accept only this known marker (plus the 2 legacy header lines),
+        # never silently discard arbitrary headers or injected events.
+        if lines and lines[0]=="# SOURCE_ORIGINAL_WIN95_PROVENANCE=SEPARATELY_REQUIRED":
+            lines=lines[1:]
     out=[]
     for line in lines:
         if not line.strip():continue
