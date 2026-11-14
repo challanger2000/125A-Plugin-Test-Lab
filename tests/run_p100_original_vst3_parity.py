@@ -116,7 +116,7 @@ def ref_ports(path):
 
 def native_ports(path):
     with path.open("rb") as f:
-        demand(f.readline()==HEADER and f.readline()==CLOCK,
+        demand(f.readline().rstrip(b"\r\n")==HEADER.rstrip(b"\n") and\n               f.readline().rstrip(b"\r\n")==CLOCK.rstrip(b"\n"),
                "native trace lacks genuine 125A EMU8000 capture header")
         lines=f.read().decode("ascii").splitlines()
     out=[]
