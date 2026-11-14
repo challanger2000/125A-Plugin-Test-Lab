@@ -61,6 +61,28 @@ class OriginalVst3P100Regression(unittest.TestCase):
     def test_auto_alignment_forbidden(self):
         wrong=dict(self.window,native_start_frame=6,frames=479)
         self.assertFalse(p100.compare_pcm(self.original,self.native,wrong)["equal"])
+    def test_nonzero_original_emu8000_chorus_send_disproves_dry(self):
+        source={
+            "C4_ON":[(100,0xe22,0x20),(100,0x622,0x0000),
+                     (100,0xe22,0xe0),(100,0x622,0x7f23)],
+            "D4_ON":[(300,0xe22,0x26),(300,0x622,0x0000),
+                     (300,0xe22,0xe6),(300,0x622,0x7f23)]}
+        r=p100.source_chip_effect_sends(source)
+        self.assertFalse(r["internal_emu8000_chorus_reverb_send_zero"])
+        self.assertFalse(r["pre_card_audio_is_necessarily_fx_free"])
+        self.assertEqual(r["per_note"]["C4_ON"]["chorus"][0]["send"],127)
+    def test_true_zero_send_proved_only_with_both_buses_observed(self):
+        source={
+            "C4_ON":[(100,0xe22,0x20),(100,0x622,0),
+                     (100,0xe22,0xe0),(100,0x622,0x23)],
+            "D4_ON":[(300,0xe22,0x26),(300,0x622,0),
+                     (300,0xe22,0xe6),(300,0x622,0x23)]}
+        r=p100.source_chip_effect_sends(source)
+        self.assertTrue(r["internal_emu8000_chorus_reverb_send_zero"])
+    def test_missing_bus_does_not_pass_zero_send(self):
+        r=p100.source_chip_effect_sends({"C4_ON":[],"D4_ON":[]})
+        self.assertIsNone(r["internal_emu8000_chorus_reverb_send_zero"])
+        self.assertFalse(r["pre_card_audio_is_necessarily_fx_free"])
     def test_original_and_native_port_positive(self):
         self.assertTrue(p100.compare_ports(self.notes,self.ports,[5,25,45,65],100)["equal"])
     def test_register_value_mutation_rejected(self):
