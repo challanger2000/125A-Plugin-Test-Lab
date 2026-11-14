@@ -129,6 +129,49 @@ class OriginalVst3P100Regression(unittest.TestCase):
                             '"native_total_frames":97000}')
         with self.assertRaisesRegex(ValueError,"frame 137"):
             p100.source(contract)
+    def make_original_win95_reset(self):
+        source=self.root/"original-reset.txt"
+        lines=[]
+        for voice in range(32):
+            frame=p100.SOURCE_RESET_FRAME+(0 if voice<23 else 1)
+            lines.append(f"{frame} E22 {(5<<5)|voice:04X}")
+            lines.append(f"{frame} A20 807F")
+        source.write_text("\n".join(lines)+"\n")
+        return source
+    def test_original_win95_reset_voice_sweep_positive(self):
+        source=self.make_original_win95_reset()
+        result=p100.source_reset_ports(source)
+        self.assertEqual(len(result),64)
+        self.assertEqual(result[0],(0,0xe22,0x00a0))
+        self.assertEqual(result[45],(0,0xa20,0x807f))
+        self.assertEqual(result[46],(1,0xe22,0x00b7))
+        self.assertEqual(result[-1],(1,0xa20,0x807f))
+    def test_original_win95_reset_single_port_mutation_rejected(self):
+        source=self.make_original_win95_reset()
+        data=source.read_text().replace(
+            f"{p100.SOURCE_RESET_FRAME} A20 807F",
+            f"{p100.SOURCE_RESET_FRAME} A20 807E",1)
+        source.write_text(data)
+        with self.assertRaisesRegex(ValueError,"midiOutReset"):
+            p100.source_reset_ports(source)
+    def test_original_win95_reset_native_timestamps_compared(self):
+        source=self.make_original_win95_reset()
+        native=[self.events[0],self.events[1],self.events[2]]
+        for offset,port,value in p100.source_reset_ports(source):
+            native.append(f"{p100.NATIVE_RESET_FRAME+offset} {port:03X} {value:04X}")
+        self.ports.write_text("\n".join(native)+"\n")
+        self.assertTrue(p100.compare_reset_ports(source,self.ports)["equal"])
+        native[-1]=f"{p100.NATIVE_RESET_FRAME+1} A20 807E"
+        self.ports.write_text("\n".join(native)+"\n")
+        result=p100.compare_reset_ports(source,self.ports)
+        self.assertFalse(result["equal"])
+        self.assertEqual(result["first_difference"]["event_index"],63)
+    def test_original_win95_reset_requires_verified_prelude(self):
+        contract=self.root/"unsupported-reset.json"
+        contract.write_text('{"schema":"125A-P100-ORIGINAL-VST3-PARITY-1",'
+                            '"sample_rate":44100,"replay_original_win95_midi_reset":true}')
+        with self.assertRaisesRegex(ValueError,"requires same SHA-pinned"):
+            p100.source(contract)
     def test_stderr_is_not_an_exception_or_a_pass(self):
         result=p100.run_host(Path(sys.executable),
             ["-c","import sys;sys.stderr.write('P002 native error\\n');sys.exit(17)"],
