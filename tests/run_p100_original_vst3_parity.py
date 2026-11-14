@@ -114,6 +114,42 @@ def ref_ports(path):
                "original clock not monotonic")
     return result
 
+def source_chip_effect_sends(groups):
+    """Decode physical EMU8000 PTRX and CSL high-byte FX sends on NoteOn.
+
+    A recording before the CT1745 card is NOT necessarily effects-free:
+    the unchanged EMU8000 core sums its own chorus/reverb returns.
+    Distinguish observed nonzero, observed all-zero and unobserved sends.
+    """
+    report={}
+    for name in ("C4_ON","D4_ON"):
+        selector=None
+        buses={"reverb":[],"chorus":[]}
+        for frame,port,value in groups[name]:
+            if port==0xe22:
+                selector=value
+                continue
+            if port!=0x622 or selector is None:
+                continue
+            reg=selector>>5
+            voice=selector&31
+            if reg==1:
+                buses["reverb"].append({"voice":voice,"send":(value>>8)&255})
+            if reg==7:
+                buses["chorus"].append({"voice":voice,"send":(value>>8)&255})
+        report[name]=buses
+    counts=[item for block in report.values() for bus in block.values()
+            for item in bus]
+    observed=bool(counts) and all(
+        len(buses["chorus"])>0 and len(buses["reverb"])>0
+        for buses in report.values())
+    all_zero=all(item["send"]==0 for item in counts) if observed else None
+    return {"per_note":report,"complete_zero_send_evidence":observed,
+            "internal_emu8000_chorus_reverb_send_zero":all_zero,
+            "pre_card_audio_is_necessarily_fx_free":all_zero is True,
+            "meaning":"PRE_CT1745_IS_NOT_PRE_CHORUS_REVERB"}
+
+
 def native_ports(path):
     with path.open("rb") as f:
         demand(f.readline().rstrip(b"\r\n")==HEADER.rstrip(b"\n") and
@@ -266,6 +302,8 @@ def execute(plan_path,out,timeout=120):
                          ("original_vxd_pack_sha256",files["vxd_pack"]),
                          ("exported_vst3_sha256",files["vst3"])):
             demand(timing.get(key)==digest(path),"native evidence hash changed: "+key)
+        result["source_chip_effect_sends"]=source_chip_effect_sends(
+            ref_ports(files["note_ports"]))
         result["registers"]=compare_ports(files["note_ports"],ports,t,
                                            plan["reference_first_note_frame"])
         result["pcm16"]=compare_pcm(files["reference_wav"],pcm,plan["pcm_window"])
