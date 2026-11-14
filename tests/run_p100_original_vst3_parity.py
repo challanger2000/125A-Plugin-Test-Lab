@@ -27,10 +27,15 @@ def source(plan_path):
     p=json.loads(plan_path.read_text(encoding="utf-8-sig"))
     demand(p.get("schema")==SCHEMA,"P100 plan schema")
     demand(p.get("sample_rate")==44100,"44.1kHz original clock required")
+    demand(type(p.get("replay_original_boot_prelude",False)) is bool,
+           "private original chip-prelude opt-in must be BOOLEAN")
     timings=p.get("midi_sample_frames",[])
     demand(len(timings)==4 and all(type(x)==int for x in timings) and
            0<timings[0]<timings[1]<timings[2]<timings[3]<p.get("native_total_frames",0)
            <=44100*30,"explicit four-event original MIDI schedule invalid")
+    if p.get("replay_original_boot_prelude",False):
+        demand(timings[0]==137,
+               "owner 2026-11-14 source chip prelude requires native C4 frame 137")
     w=p.get("pcm_window",{})
     demand(all(type(w.get(k))==int and w[k]>=0
                for k in ("original_start_frame","native_start_frame","frames")) and
@@ -273,6 +278,8 @@ def execute(plan_path,out,timeout=120):
             sha_file=out/(label+".clock.json")
             arguments=[*prefix,out_file,pcm_file,*t,plan["native_total_frames"],sha_file]
             if clocked:arguments.append(files["note_ports"])
+            if plan.get("replay_original_boot_prelude",False):
+                arguments.append("--original-prelude="+str(files["original_trace"]))
             result[label+"_native_host"]=run_host(files["native_host"],arguments,out,label,timeout)
             return out_file,pcm_file,sha_file
         base_ports,base_pcm,base_clock=case("independent",False)
@@ -304,6 +311,15 @@ def execute(plan_path,out,timeout=120):
             demand(timing.get(key)==digest(path),"native evidence hash changed: "+key)
         result["source_chip_effect_sends"]=source_chip_effect_sends(
             ref_ports(files["note_ports"]))
+        if plan.get("replay_original_boot_prelude",False):
+            demand(timing.get("original_win95_prelude_source_sha256")==
+                   digest(files["original_trace"]),
+                   "native source prelude not attested by exported VST3 host")
+            result["original_win95_chip_prelude_replayed"]=True
+        else:
+            demand(timing.get("original_win95_prelude_source_sha256") in
+                   ("NOT_RUN",None),"unapproved Win95 prelude detected")
+            result["original_win95_chip_prelude_replayed"]=False
         result["registers"]=compare_ports(files["note_ports"],ports,t,
                                            plan["reference_first_note_frame"])
         result["pcm16"]=compare_pcm(files["reference_wav"],pcm,plan["pcm_window"])

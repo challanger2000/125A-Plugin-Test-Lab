@@ -115,6 +115,20 @@ class OriginalVst3P100Regression(unittest.TestCase):
         wav(self.native,[(0,0)]*(5+480))
         with self.assertRaisesRegex(ValueError,"silent"):
             p100.compare_pcm(self.original,self.native,self.window)
+    def test_prelude_opt_in_must_be_boolean(self):
+        contract=self.root/"bad-prelude.json"
+        contract.write_text('{"schema":"125A-P100-ORIGINAL-VST3-PARITY-1",'
+                            '"sample_rate":44100,"replay_original_boot_prelude":"YES"}')
+        with self.assertRaisesRegex(ValueError,"BOOLEAN"):
+            p100.source(contract)
+    def test_owner_prelude_clock_must_be_exact(self):
+        contract=self.root/"wrong-prelude-clock.json"
+        contract.write_text('{"schema":"125A-P100-ORIGINAL-VST3-PARITY-1",'
+                            '"sample_rate":44100,"replay_original_boot_prelude":true,'
+                            '"midi_sample_frames":[138,17837,46906,65088],'
+                            '"native_total_frames":97000}')
+        with self.assertRaisesRegex(ValueError,"frame 137"):
+            p100.source(contract)
     def test_stderr_is_not_an_exception_or_a_pass(self):
         result=p100.run_host(Path(sys.executable),
             ["-c","import sys;sys.stderr.write('P002 native error\\n');sys.exit(17)"],
