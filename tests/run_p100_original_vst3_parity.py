@@ -233,10 +233,16 @@ def execute(plan_path,out,timeout=120):
             if clocked:arguments.append(files["note_ports"])
             result[label+"_native_host"]=run_host(files["native_host"],arguments,out,label,timeout)
             return out_file,pcm_file,sha_file
-        case("independent",False)
+        base_ports,base_pcm,base_clock=case("independent",False)
         if result["independent_native_host"].get("exit_code")!=0:
             result["status"]="INDEPENDENT_NATIVE_HOST_FAILED"
             save();return result
+        try:
+            result["independent_native_register_diagnostic"]=compare_ports(
+                files["note_ports"],base_ports,t,
+                plan["reference_first_note_frame"])
+        except (OSError,ValueError,UnicodeError) as error:
+            result["independent_native_register_diagnostic_error"]=str(error)
         ports,pcm,clock=case("source_clocked",True)
         if result["source_clocked_native_host"].get("exit_code")!=0:
             result["status"]="SOURCE_CLOCKED_NATIVE_HOST_FAILED"
@@ -257,6 +263,10 @@ def execute(plan_path,out,timeout=120):
         result["registers"]=compare_ports(files["note_ports"],ports,t,
                                            plan["reference_first_note_frame"])
         result["pcm16"]=compare_pcm(files["reference_wav"],pcm,plan["pcm_window"])
+        first=result["pcm16"]["first_difference"]
+        if first is not None:
+            first["original_full_win95_frame"]=(plan["reference_first_note_frame"]
+                                                +first["relative_frame"])
         result["status"]=("BIT_EXACT_C4_D4_PASS" if
                           result["registers"]["equal"] and result["pcm16"]["equal"]
                           else "ORIGINAL_NATIVE_MISMATCH")
