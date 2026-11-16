@@ -1,0 +1,38 @@
+name: P104 temporary upstream Ghidra distribution for local private Creative verification
+
+on:
+  push:
+    branches:
+      - p102-ghidra-le-vxd-loader-proof
+    paths:
+      - '.github/workflows/p104-private-offline-ghidra-bootstrap.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage-public-official-ghidra:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Download and hash-verify official public Ghidra 12.0.1 distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.0.1_build/ghidra_12.0.1_PUBLIC_20260114.zip"
+          curl --fail --location --retry 3 --silent --show-error -o /tmp/ghidra_12.0.1_PUBLIC_20260114.zip "$url"
+          sha256sum /tmp/ghidra_12.0.1_PUBLIC_20260114.zip
+          printf '%s  %s\n' "85bd2990945f3a78df4d1e09f1bb1f40ab77be3bac62c6e7678900788c7f0f41" /tmp/ghidra_12.0.1_PUBLIC_20260114.zip | sha256sum --check --status
+          unzip -tq /tmp/ghidra_12.0.1_PUBLIC_20260114.zip >/dev/null
+          mkdir -p stage
+          cp /tmp/ghidra_12.0.1_PUBLIC_20260114.zip stage/
+          echo 'Verified unmodified official Ghidra upstream asset. No proprietary files processed.'
+      - name: Store official Ghidra archive as short-retention CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: P104-Official-Ghidra-12.0.1-Temporary
+          path: stage/ghidra_12.0.1_PUBLIC_20260114.zip
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
