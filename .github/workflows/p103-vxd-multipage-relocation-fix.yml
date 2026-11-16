@@ -1,0 +1,188 @@
+name: P103 real Ghidra LE VxD page-stride regression and patched loader
+
+on:
+  push:
+    branches:
+      - p102-ghidra-le-vxd-loader-proof
+    paths:
+      - '.github/workflows/p103-vxd-multipage-relocation-fix.yml'
+      - 'tests/p103_make_multipage_vxd.py'
+      - 'tests/p103_ghidra/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-ghidra-unpatched-vs-patched:
+    runs-on: windows-2022
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Generate public synthetic 512-byte multi-page VxD
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item build/p103 -ItemType Directory -Force | Out-Null
+          python tests/p103_make_multipage_vxd.py build/p103/P103_SYNTHETIC_512_PAGE.vxd
+          if ($LASTEXITCODE -ne 0) { throw 'P103 fixture generation failed' }
+          $fixture=Resolve-Path build/p103/P103_SYNTHETIC_512_PAGE.vxd
+          "P103_FIXTURE=$($fixture.Path)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "P103_FIXTURE_SHA=$((Get-FileHash $fixture -Algorithm SHA256).Hash.ToLowerInvariant())" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Download pinned official Ghidra 12.0.1 and unpatched LX/VxD extension
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $ProgressPreference='SilentlyContinue'
+          $root=Join-Path $env:RUNNER_TEMP 'p103-tools'
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          $pairs=@(
+            @('ghidra.zip','https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.0.1_build/ghidra_12.0.1_PUBLIC_20260114.zip','85bd2990945f3a78df4d1e09f1bb1f40ab77be3bac62c6e7678900788c7f0f41'),
+            @('lx-loader.zip','https://github.com/yetmorecode/ghidra-lx-loader/releases/download/v12.0.1/ghidra_12.0.1_PUBLIC_20260129_ghidra-lx-loader.zip','8b7e7461bd48621faa5e32c27a2c7ff8b17b82c7b765c8c6afe2cee8db693cec')
+          )
+          foreach($p in $pairs) {
+            $dest=Join-Path $root $p[0]
+            Invoke-WebRequest -Uri $p[1] -OutFile $dest -MaximumRedirection 10
+            $sha=(Get-FileHash $dest -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($sha -ne $p[2]) { throw "P103 release hash mismatch for $($p[0]): $sha" }
+            Write-Output "Verified upstream SHA256 $($p[0]): $sha"
+          }
+          $ghidraRoot=Join-Path $root 'installed'
+          Expand-Archive -LiteralPath (Join-Path $root 'ghidra.zip') -DestinationPath $ghidraRoot -Force
+          $ghidra=Join-Path $ghidraRoot 'ghidra_12.0.1_PUBLIC'
+          $extHome=Join-Path $ghidra 'Ghidra/Extensions'
+          Expand-Archive -LiteralPath (Join-Path $root 'lx-loader.zip') -DestinationPath $extHome -Force
+          if (-not (Test-Path (Join-Path $extHome 'ghidra-lx-loader/extension.properties'))) {
+            throw 'Published LX loader extension missing'
+          }
+          "GHIDRA_INSTALL_DIR=$ghidra" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "P103_HEADLESS=$(Join-Path $ghidra 'support/analyzeHeadless.bat')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "P103_EXTENSION_HOME=$extHome" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Reproduce incorrect second-page relocation SOURCE location with unmodified release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $proj=Join-Path $env:RUNNER_TEMP 'p103-original-project'
+          New-Item -ItemType Directory -Path $proj -Force | Out-Null
+          $scripts=(Resolve-Path tests/p103_ghidra).Path
+          $out=Join-Path $PWD 'build/p103/P103-UNPATCHED-RESULT.txt'
+          & $env:P103_HEADLESS $proj P103Before -import $env:P103_FIXTURE -loader VxDLoader -processor x86:LE:32:default -cspec gcc -scriptPath $scripts -postScript P103CheckRelocations.java expect-unpatched $out -analysisTimeoutPerFile 180 -deleteProject
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $out)) {
+            throw 'P103 did not reproduce the published loader page-stride bug'
+          }
+          $value=Get-Content $out -Raw
+          if (-not $value.Contains('P103_BASELINE_BUG_REPRODUCED')) {
+            throw "Unpatched loader did not demonstrate original source-xref bug: $value"
+          }
+          Write-Output "P103 UNPATCHED REAL GHIDRA: $value"
+
+      - name: Patch published LX loader source to use actual header.pageSize and compile extension
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $src=Join-Path $env:RUNNER_TEMP 'ghidra-lx-loader'
+          git clone --depth 1 --branch v12.0.1 https://github.com/yetmorecode/ghidra-lx-loader.git $src
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot retrieve official release source' }
+          $commit=(git -C $src rev-parse HEAD).Trim()
+          if ($commit -ne 'd64fca5e22665571aec050c6804c27359dab2167') {
+            throw "Upstream tag commit mismatch $commit"
+          }
+          $fix=Join-Path $src 'src/main/java/yetmorecode/ghidra/format/lx/model/FixupRecord.java'
+          $exe=Join-Path $src 'src/main/java/yetmorecode/ghidra/format/lx/model/Executable.java'
+          $fixSrc=Get-Content -LiteralPath $fix -Raw
+          $oldCtor='int baseAddress, int page) throws IOException'
+          $oldAddr='this.pageAddress = baseAddress + page * 0x1000;'
+          if (-not $fixSrc.Contains($oldCtor) -or -not $fixSrc.Contains($oldAddr)) {
+            throw 'Patch preconditions changed in published FixupRecord'
+          }
+          $fixSrc=$fixSrc.Replace($oldCtor,'int baseAddress, int page, int pageSize) throws IOException')
+          $fixSrc=$fixSrc.Replace($oldAddr,'this.pageAddress = baseAddress + page * pageSize;')
+          Set-Content -LiteralPath $fix -Value $fixSrc -Encoding utf8
+          $exeSrc=Get-Content -LiteralPath $exe -Raw
+          $needle='options\.getBaseAddress\(object\),\s*i\s*\)'
+          if ([regex]::Matches($exeSrc,$needle).Count -ne 1) {
+            throw 'Patch preconditions changed in published Executable'
+          }
+          $exeSrc=[regex]::Replace($exeSrc,$needle,'options.getBaseAddress(object), i, header.pageSize)')
+          Set-Content -LiteralPath $exe -Value $exeSrc -Encoding utf8
+          $env:GHIDRA_INSTALL_DIR=(Resolve-Path $env:GHIDRA_INSTALL_DIR).Path
+          Push-Location $src
+          try {
+            gradle buildExtension --no-daemon --stacktrace
+            if ($LASTEXITCODE -ne 0) { throw 'P103 patched LE/VxD extension failed compilation' }
+          } finally { Pop-Location }
+          $zips=@(Get-ChildItem -LiteralPath (Join-Path $src 'dist') -Filter '*.zip' -File)
+          if ($zips.Count -ne 1) { throw "P103 expected exactly one patched extension archive, got $($zips.Count)" }
+          $published=Join-Path $env:P103_EXTENSION_HOME 'ghidra-lx-loader'
+          if (-not (Test-Path $published)) { throw 'Missing original extension' }
+          Remove-Item -LiteralPath $published -Force -Recurse
+          Expand-Archive -LiteralPath $zips[0].FullName -DestinationPath $env:P103_EXTENSION_HOME -Force
+          if (-not (Test-Path (Join-Path $env:P103_EXTENSION_HOME 'ghidra-lx-loader/extension.properties'))) {
+            throw 'New patched extension directory missing after installing archive'
+          }
+          Write-Output "P103 installed patched extension from $commit; only page address stride changed to header.pageSize."
+
+      - name: Verify patched real Ghidra on same 512-byte multi-page VxD and three xrefs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $proj=Join-Path $env:RUNNER_TEMP 'p103-patched-project'
+          New-Item -ItemType Directory -Path $proj -Force | Out-Null
+          $scripts=(Resolve-Path tests/p103_ghidra).Path
+          $out=Join-Path $PWD 'build/p103/P103-PATCHED-RESULT.txt'
+          & $env:P103_HEADLESS $proj P103After -import $env:P103_FIXTURE -loader VxDLoader -processor x86:LE:32:default -cspec gcc -scriptPath $scripts -postScript P103CheckRelocations.java expect-correct $out -analysisTimeoutPerFile 180 -deleteProject
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $out)) {
+            throw 'P103 patched Ghidra import or 512-byte fixup metadata failed'
+          }
+          $value=Get-Content -LiteralPath $out -Raw
+          if (-not $value.Contains('P103_PATCHED_CORRECT')) { throw "P103 patched result invalid: $value" }
+          Write-Output "P103 PATCHED REAL GHIDRA: $value"
+          $patchPackage='build/p103/ghidra-lx-loader-patched.zip'
+          Copy-Item -LiteralPath (Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TEMP 'ghidra-lx-loader/dist') -File -Filter '*.zip' | Select-Object -First 1).FullName -Destination $patchPackage
+          if (-not (Test-Path $patchPackage)) { throw 'Patched package not preserved' }
+          $patchPackageSha=(Get-FileHash $patchPackage -Algorithm SHA256).Hash.ToLowerInvariant()
+          $summary=[ordered]@{
+            schema='125a-p103-ghidra-le-vxd-fixup-stride-v1'
+            status='REAL_UNPATCHED_BUG_REPRODUCED_AND_PATCHED_CORRECT'
+            tools='Ghidra 12.0.1 + pinned yetmorecode ghidra-lx-loader v12.0.1 (locally patched/recompiled)'
+            fixture_sha256=$env:P103_FIXTURE_SHA
+            fixture_source='synthetic non-Creative multi-page LE dynamic VxD'
+            object_count=5
+            page_size=512
+            pages=6
+            applied_e8_fixups=3
+            patched_zip_sha256=$patchPackageSha
+            wrong_original_source='0x301021'
+            correct_patched_source='0x300221'
+            original_creative_vxd_imported=$false
+            semantic_equivalence='NOT VERIFIED'
+            release_approved=$false
+          }
+          $summary|ConvertTo-Json -Depth 5|Out-File build/p103/P103-SUMMARY.json -Encoding utf8
+          "P103 baseline wrong metadata reproduced; patched loader correct: second page fixup source 0x300221 instead of 0x301021." | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Upload tested patched open-source extension for Ghidra 12.0.1
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P103-Ghidra-12.0.1-LE-LX-page512-fix
+          path: build/p103/ghidra-lx-loader-patched.zip
+          if-no-files-found: error
+
+      - name: Upload redacted metadata only, never LE binaries or decompiler output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P103-512byte-Ghidra-loader-fix-metadata
+          path: build/p103/P103-SUMMARY.json
+          if-no-files-found: warn

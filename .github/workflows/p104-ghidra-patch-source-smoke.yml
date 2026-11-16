@@ -1,0 +1,31 @@
+name: P104 Ghidra original VxD loader patch source smoke
+
+on:
+  push:
+    branches: [p102-ghidra-le-vxd-loader-proof]
+    paths:
+      - '.github/workflows/p104-ghidra-patch-source-smoke.yml'
+      - 'tests/p104_patch_ghidra_le_loader.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-apache-upstream-source-patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact public source tag and apply P104 fixes without original Creative binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet --branch v12.0.1 --depth 1 https://github.com/yetmorecode/ghidra-lx-loader.git /tmp/p104-lx-loader
+          test "$(git -C /tmp/p104-lx-loader rev-parse HEAD)" = "d64fca5e22665571aec050c6804c27359dab2167"
+          python tests/p104_patch_ghidra_le_loader.py /tmp/p104-lx-loader
+          grep -q 'page \* pageSize' /tmp/p104-lx-loader/src/main/java/yetmorecode/ghidra/format/lx/model/FixupRecord.java
+          grep -q 'fixup.sourceOffset = offsets.get(0)' /tmp/p104-lx-loader/src/main/java/yetmorecode/ghidra/format/lx/model/Executable.java
+          grep -q 'relocatedWidth' /tmp/p104-lx-loader/src/main/java/yetmorecode/ghidra/lx/LinearLoader.java
+          test "$(git -C /tmp/p104-lx-loader diff --name-only | wc -l)" -eq 3
+          echo 'P104 exact upstream source patch: PASS (source-only, no Creative bytes)'
