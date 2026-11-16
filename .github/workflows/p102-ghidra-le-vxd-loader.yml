@@ -1,13 +1,6 @@
 name: P102 actual Ghidra LE VxD loader mapping and fixup acceptance
 
 on:
-  push:
-    branches:
-      - p102-ghidra-le-vxd-loader-proof
-    paths:
-      - '.github/workflows/p102-ghidra-le-vxd-loader.yml'
-      - 'tests/p102_make_vxd.py'
-      - 'tests/p102_ghidra/**'
   pull_request:
     paths:
       - '.github/workflows/p102-ghidra-le-vxd-loader.yml'
