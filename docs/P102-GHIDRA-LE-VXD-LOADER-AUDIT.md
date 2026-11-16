@@ -16,11 +16,25 @@ Published, SHA-256-pinned provider versions:
 
 They are installed together in a **separate** temporary Ghidra installation. Our existing P99/P101 REA/Ghidra 12.1.4 is deliberately unchanged.
 
-`tests/p102_make_vxd.py` deterministically writes a synthetic, freely generated 3,584-byte `LE` Windows VxD fixture with five 512-byte objects called LCOD, MCOD, PNPC, PCOD and PDAT, mirroring only the **names and multiobject structure** of the driver. It embeds **two synthetic E8 cross-object self-relative fixups** (PNPC+0x10 and PCOD+0x20 both target LCOD+0x60); it has no Creative binary content or functioning driver algorithm. Fixture SHA-256 is `9a331d3288195cda374a1b42d481dc60cc629379f04330fac5bd11ba8a91dd9d`.
+`tests/p102_make_vxd.py` deterministically writes a synthetic, freely generated 3,584-byte `LE` Windows VxD fixture with five 512-byte objects called LCOD, MCOD, PNPC, PCOD and PDAT, mirroring only the **names and multiobject structure** of the driver. The module subtype is **0x38000 (dynamic VxD)**, matching this extension's VxD recognition rule (source: `yetmorecode/java-file-formats` `LinearHeader.MODULE_VXD`). A separate, valid 0x28000 static virtual-driver subtype was **not** recognized as a VxD by this specific loader; that limitation must be checked against the original SBAWE header privately.
+
+It embeds **two synthetic E8 cross-object self-relative fixups** (PNPC+0x10 and PCOD+0x20 both target LCOD+0x60); it has no Creative binary content or functioning driver algorithm. Fixture SHA-256 is `9f8476b223eb392868928eaeeeff158e5a2c165d341cddb7b87fad0e77173e1e`.
 
 The CI launches the **real** `analyzeHeadless.bat`, explicitly selects `yetmorecode.ghidra.lx.loader.VxDLoader`, runs the `P102VerifyVxd.java` Ghidra postscript, checks five correctly mapped Ghidra `.object1` to `.object5` memory blocks with correct locations and payloads, **checks that both E8 displacements were patched to the expected loaded LCOD target**, and fails unless the result file contains a documented success marker. Ghidra exit 0 by itself is deliberately not sufficient.
 
 The workflow publishes only a short, redacted synthetic test summary; it cannot export private Creative bytecode or decompilation.
+
+## Executed real Windows result — 2026-11-16
+
+**SUCCESS (synthetic input only)** on [GitHub Actions run #43899054587](https://github.com/challanger2000/125A-Plugin-Test-Lab/actions/runs/43899054587).
+
+- Actual launched tool: Ghidra 12.0.1, Java 21, published matching LE/VxD loader extension v12.0.1 (both archives SHA-256 verified).
+- Imported image: 3,584-byte synthetic LE dynamic-VxD, SHA-256 `9f8476b223eb392868928eaeeeff158e5a2c165d341cddb7b87fad0e77173e1e`.
+- All five `.object1` to `.object5` mapped at expected `0x00100000` ... `0x00500000`, 512 bytes each. LCOD and PDAT samples verified.
+- Both E8 patch bytes were read back from Ghidra's **loaded memory**, and resolved to the correct cross-object target `LCOD+0x60`.
+- Ghidra postscript success marker: `P102_VXD_IMPORT_PASS objects=5 self_relative_fixups=2 target=LCOD+0x60 language=x86:LE:32:default`.
+- The earlier failures showed (1) wrong headless loader argument syntax (must specify `VxDLoader`, not its fully qualified Java name), and (2) the extension's narrow VxD module subtype recognition. Both are reproducibly corrected.
+- No original Creative content has been processed by the loader. This result has **not** validated any AWE-specific logic, original relocation mapping, physical register traces or PCM.
 
 ## Product applicability gate
 
