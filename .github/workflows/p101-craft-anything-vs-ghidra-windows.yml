@@ -1,6 +1,11 @@
 name: P101 experimental Craft Anything vs REA-Ghidra PE comparison
 
 on:
+  push:
+    branches:
+      - p101-craft-anything-re-probe
+    paths:
+      - '.github/workflows/p101-craft-anything-vs-ghidra-windows.yml'
   pull_request:
     paths:
       - '.github/workflows/p101-craft-anything-vs-ghidra-windows.yml'
