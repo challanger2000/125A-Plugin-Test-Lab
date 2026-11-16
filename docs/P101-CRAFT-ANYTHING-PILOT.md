@@ -39,7 +39,7 @@ Run the `P101 experimental Craft Anything vs REA-Ghidra PE comparison` GitHub Ac
 Exact upstream sources:
 - https://github.com/storytold/craft-anything/blob/main/crates/formats/src/binary.rs
 - https://github.com/storytold/craft-anything/blob/main/crates/formats/src/dos.rs
-- https://github.com/yetmorecode/ghidra-lx-loader
+- https://github.com/yetmorecode/ghidra-lx-loader — VxD-capable Ghidra LE/LX extension with page-map and fixup/relocation support; release v12.0.1 currently targets **Ghidra 12.0.1**, whereas P99/P101 use **Ghidra 12.1.4**. Do not assume ABI compatibility; test a matching Ghidra+extension version in an isolated environment.
 
 For a genuine VxD study, first identify the original private file's LE/LX signature and SHA-256. Analyze with Ghidra plus a tested LE/LX/VxD loader, or extract mapped 32-bit executable sections and their relocations using a trustworthy LE loader; only then consider Craft's `raw-binary` x86 mode as a **secondary unrelocated instruction-level aid**. Verify relocation, address mapping and x86 references independently. Native P101 **PE-only** success is not proof of VxD support.
 
