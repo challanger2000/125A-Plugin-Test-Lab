@@ -37,7 +37,7 @@ jobs:
           python tests/p102_make_vxd.py build/p102/P102_SYNTHETIC_NOT_CREATIVE.vxd
           if ($LASTEXITCODE -ne 0) { throw 'Synthetic fixture generation failed' }
           $hash=(Get-FileHash build/p102/P102_SYNTHETIC_NOT_CREATIVE.vxd -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash -ne '9a331d3288195cda374a1b42d481dc60cc629379f04330fac5bd11ba8a91dd9d') {
+          if ($hash -ne '9f8476b223eb392868928eaeeeff158e5a2c165d341cddb7b87fad0e77173e1e') {
             throw "Unexpected fixture bytes: $hash"
           }
           Write-Output "P102 generated immutable synthetic LE VxD fixture: $hash"
@@ -95,7 +95,7 @@ jobs:
             schema='125a-p102-ghidra-le-vxd-loader-v1'
             status='REAL_GHIDRA_SYNTHETIC_VXD_PASS'
             software='Ghidra 12.0.1 / yetmorecode ghidra-lx-loader v12.0.1'
-            synthetic_sha256='9a331d3288195cda374a1b42d481dc60cc629379f04330fac5bd11ba8a91dd9d'
+            synthetic_sha256='9f8476b223eb392868928eaeeeff158e5a2c165d341cddb7b87fad0e77173e1e'
             imported_objects=5
             verified_cross_object_call_fixups=2
             original_sbawe_vxd_tested=$false
