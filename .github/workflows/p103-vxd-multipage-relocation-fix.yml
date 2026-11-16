@@ -90,7 +90,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $src=Join-Path $env:RUNNER_TEMP 'p103-lx-source'
+          $src=Join-Path $env:RUNNER_TEMP 'ghidra-lx-loader'
           git clone --depth 1 --branch v12.0.1 https://github.com/yetmorecode/ghidra-lx-loader.git $src
           if ($LASTEXITCODE -ne 0) { throw 'Cannot retrieve official release source' }
           $commit=(git -C $src rev-parse HEAD).Trim()
