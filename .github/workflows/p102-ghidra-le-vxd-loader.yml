@@ -1,0 +1,114 @@
+name: P102 actual Ghidra LE VxD loader mapping and fixup acceptance
+
+on:
+  push:
+    branches:
+      - p102-ghidra-le-vxd-loader-proof
+    paths:
+      - '.github/workflows/p102-ghidra-le-vxd-loader.yml'
+      - 'tests/p102_make_vxd.py'
+      - 'tests/p102_ghidra/**'
+  pull_request:
+    paths:
+      - '.github/workflows/p102-ghidra-le-vxd-loader.yml'
+      - 'tests/p102_make_vxd.py'
+      - 'tests/p102_ghidra/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-synthetic-vxd-loader:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Generate SHA-pinned synthetic, legally redistributable VxD LE fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path build/p102 -Force | Out-Null
+          python tests/p102_make_vxd.py build/p102/P102_SYNTHETIC_NOT_CREATIVE.vxd
+          if ($LASTEXITCODE -ne 0) { throw 'Synthetic fixture generation failed' }
+          $hash=(Get-FileHash build/p102/P102_SYNTHETIC_NOT_CREATIVE.vxd -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '9a331d3288195cda374a1b42d481dc60cc629379f04330fac5bd11ba8a91dd9d') {
+            throw "Unexpected fixture bytes: $hash"
+          }
+          Write-Output "P102 generated immutable synthetic LE VxD fixture: $hash"
+
+      - name: Download official matching Ghidra 12.0.1 and pinned published VxD extension
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $root = Join-Path $env:RUNNER_TEMP 'p102-tools'
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          $pairs = @(
+            @('ghidra.zip', 'https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.0.1_build/ghidra_12.0.1_PUBLIC_20260114.zip', '85bd2990945f3a78df4d1e09f1bb1f40ab77be3bac62c6e7678900788c7f0f41'),
+            @('lx-loader.zip', 'https://github.com/yetmorecode/ghidra-lx-loader/releases/download/v12.0.1/ghidra_12.0.1_PUBLIC_20260129_ghidra-lx-loader.zip', '8b7e7461bd48621faa5e32c27a2c7ff8b17b82c7b765c8c6afe2cee8db693cec')
+          )
+          foreach ($pair in $pairs) {
+            $dest=Join-Path $root $pair[0]
+            Invoke-WebRequest -Uri $pair[1] -OutFile $dest -MaximumRedirection 10
+            $observed=(Get-FileHash $dest -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($observed -ne $pair[2]) { throw "Release checksum mismatch for $($pair[0]): $observed" }
+            Write-Output "Verified published artifact $($pair[0]): $observed"
+          }
+          $dir=Join-Path $root 'ghidra-extracted'
+          Expand-Archive -LiteralPath (Join-Path $root 'ghidra.zip') -DestinationPath $dir -Force
+          $ghidra=Join-Path $dir 'ghidra_12.0.1_PUBLIC'
+          $headless=Join-Path $ghidra 'support/analyzeHeadless.bat'
+          if (-not (Test-Path -LiteralPath $headless -PathType Leaf)) { throw 'Official Ghidra headless launcher missing' }
+          $extensionHome=Join-Path $ghidra 'Ghidra/Extensions'
+          New-Item -ItemType Directory -Path $extensionHome -Force | Out-Null
+          Expand-Archive -LiteralPath (Join-Path $root 'lx-loader.zip') -DestinationPath $extensionHome -Force
+          $manifests=@(Get-ChildItem -Path $extensionHome -File -Recurse -Filter 'extension.properties')
+          if ($manifests.Count -lt 1) { throw 'The LE/VxD extension did not install into Ghidra/Extensions' }
+          "P102_GHIDRA=$ghidra" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "P102_HEADLESS=$headless" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Output "Ghidra 12.0.1 and matching LE/VxD extension were verified and installed."
+
+      - name: Perform real Ghidra headless import and verify applied object fixups
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $fixture=(Resolve-Path build/p102/P102_SYNTHETIC_NOT_CREATIVE.vxd).Path
+          $scripts=(Resolve-Path tests/p102_ghidra).Path
+          $result=Join-Path $PWD 'build/p102/P102-GHIDRA-RESULT.txt'
+          $project=Join-Path $env:RUNNER_TEMP 'p102-ghidra-project'
+          New-Item -ItemType Directory -Path $project -Force | Out-Null
+          & $env:P102_HEADLESS $project P102SyntheticVxD -import $fixture -loader yetmorecode.ghidra.lx.loader.VxDLoader -processor x86:LE:32:default -cspec gcc -scriptPath $scripts -postScript P102VerifyVxd.java $result -analysisTimeoutPerFile 180 -deleteProject
+          if ($LASTEXITCODE -ne 0) { throw 'Real Ghidra LE/VxD headless import failed' }
+          if (-not (Test-Path -LiteralPath $result -PathType Leaf)) { throw 'PostScript did not verify any imported VxD' }
+          $text=Get-Content -LiteralPath $result -Raw
+          if (-not $text.Contains('P102_VXD_IMPORT_PASS objects=5 self_relative_fixups=2 target=LCOD+0x60')) {
+            throw "Ghidra import did not prove all original synthetic object/fixup expectations: $text"
+          }
+          Write-Output "P102 REAL GHIDRA LE/VXD PASS: $text"
+          $summary=[ordered]@{
+            schema='125a-p102-ghidra-le-vxd-loader-v1'
+            status='REAL_GHIDRA_SYNTHETIC_VXD_PASS'
+            software='Ghidra 12.0.1 / yetmorecode ghidra-lx-loader v12.0.1'
+            synthetic_sha256='9a331d3288195cda374a1b42d481dc60cc629379f04330fac5bd11ba8a91dd9d'
+            imported_objects=5
+            verified_cross_object_call_fixups=2
+            original_sbawe_vxd_tested=$false
+            creative_driver_emulation_approved=$false
+            p003_cpu_timing_equivalence='NOT TESTED'
+          }
+          $summary | ConvertTo-Json -Depth 4 | Out-File build/p102/P102-SUMMARY.json -Encoding utf8
+          'P102: Genuine Ghidra 12.0.1 + pinned LX/VxD extension imported synthetic LE driver; 5 objects + 2 applied cross-object E8 fixups checked. Creative binary NOT tested.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Store only redacted test metadata, not binary or decompilation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P102-VxD-LE-Ghidra-redacted-metadata
+          path: build/p102/P102-SUMMARY.json
+          if-no-files-found: warn
