@@ -31,7 +31,7 @@ def generate():
     b[h:h+2] = b"LE"
     u16(h+8,2)  # x86
     u16(h+10,4) # Windows VxD
-    u32(h+0x10,0x28000) # virtual device driver
+    u32(h+0x10,0x38000) # dynamic virtual device driver
     u32(h+0x14,5) # physical pages
     u32(h+0x18,0) # eipObject=0 (typical VxD)
     u32(h+0x28,PAGE)
@@ -72,7 +72,7 @@ def main():
     a.output.write_bytes(blob)
     assert len(blob)==3584
     assert blob[0x80:0x82]==b"LE"
-    assert hashlib.sha256(blob).hexdigest()=="9a331d3288195cda374a1b42d481dc60cc629379f04330fac5bd11ba8a91dd9d"
+    assert hashlib.sha256(blob).hexdigest()=="9f8476b223eb392868928eaeeeff158e5a2c165d341cddb7b87fad0e77173e1e"
     print(json.dumps({"fixture_sha256":hashlib.sha256(blob).hexdigest(),"five_objects":list(NAMES),"fixup_records":2}))
 if __name__=="__main__":
     main()
