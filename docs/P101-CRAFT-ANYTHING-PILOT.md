@@ -20,6 +20,17 @@ Run the `P101 experimental Craft Anything vs REA-Ghidra PE comparison` GitHub Ac
 * Windows 95 VxD / ring-0 semantics, register-event order and CPU-timing reconstruction are **not demonstrated by normal PE DLL analysis**; in particular, P003's stereo allocator timing must still match captured original register traces and audio.
 * Existing P99 REA/Ghidra remains primary unless Craft proves novel evidence or greater accuracy on the same original, preferably independently reviewed against real x86 instructions.
 
+## Important format assessment — Creative Windows 95 VxD files
+
+**Source-verified limitation in Craft Anything 0.6.1:** its `crates/formats/src/binary.rs` enumerates PE, ELF, Mach-O, COFF, DOS MZ/COM and raw binaries, **but not Windows VxD LE/LX**. In `parse_binary`, an `MZ` file with no PE header falls through to the DOS MZ parser. The DOS parser recognizes `LE/LX` only as an *extended-header label* and constructs a **16-bit DOS load-module image**, not a relocated 32-bit LE driver. Thus, even if an `SBAWE.VXD` command exits successfully, it could inspect only the DOS stub. **Do not interpret that as successful Creative driver disassembly.**
+
+Exact upstream sources:
+- https://github.com/storytold/craft-anything/blob/main/crates/formats/src/binary.rs
+- https://github.com/storytold/craft-anything/blob/main/crates/formats/src/dos.rs
+- https://github.com/yetmorecode/ghidra-lx-loader
+
+For a genuine VxD study, first identify the original private file's LE/LX signature and SHA-256. Analyze with Ghidra plus a tested LE/LX/VxD loader, or extract mapped 32-bit executable sections and their relocations using a trustworthy LE loader; only then consider Craft's `raw-binary` x86 mode as a **secondary unrelocated instruction-level aid**. Verify relocation, address mapping and x86 references independently. Native P101 **PE-only** success is not proof of VxD support.
+
 ## Known limitations
 
 Craft Anything is early alpha; native decompilation can be partial or incorrect. Its self-reported function count differs from Ghidra due to discovery heuristics. The automatic *build* workflow needs an external agent; this experiment uses **inspection only**. Only official public vendor releases are installed in ephemeral CI and their SHA-256 is verified; no remote source is run on the user's DAW machine.
