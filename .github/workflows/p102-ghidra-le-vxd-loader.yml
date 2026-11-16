@@ -83,7 +83,7 @@ jobs:
           $result=Join-Path $PWD 'build/p102/P102-GHIDRA-RESULT.txt'
           $project=Join-Path $env:RUNNER_TEMP 'p102-ghidra-project'
           New-Item -ItemType Directory -Path $project -Force | Out-Null
-          & $env:P102_HEADLESS $project P102SyntheticVxD -import $fixture -loader yetmorecode.ghidra.lx.loader.VxDLoader -processor x86:LE:32:default -cspec gcc -scriptPath $scripts -postScript P102VerifyVxd.java $result -analysisTimeoutPerFile 180 -deleteProject
+          & $env:P102_HEADLESS $project P102SyntheticVxD -import $fixture -loader VxDLoader -processor x86:LE:32:default -cspec gcc -scriptPath $scripts -postScript P102VerifyVxd.java $result -analysisTimeoutPerFile 180 -deleteProject
           if ($LASTEXITCODE -ne 0) { throw 'Real Ghidra LE/VxD headless import failed' }
           if (-not (Test-Path -LiteralPath $result -PathType Leaf)) { throw 'PostScript did not verify any imported VxD' }
           $text=Get-Content -LiteralPath $result -Raw
