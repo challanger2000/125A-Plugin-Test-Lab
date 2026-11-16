@@ -147,6 +147,10 @@ jobs:
           $value=Get-Content -LiteralPath $out -Raw
           if (-not $value.Contains('P103_PATCHED_CORRECT')) { throw "P103 patched result invalid: $value" }
           Write-Output "P103 PATCHED REAL GHIDRA: $value"
+          $patchPackage='build/p103/ghidra-lx-loader-patched.zip'
+          Copy-Item -LiteralPath (Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TEMP 'ghidra-lx-loader/dist') -File -Filter '*.zip' | Select-Object -First 1).FullName -Destination $patchPackage
+          if (-not (Test-Path $patchPackage)) { throw 'Patched package not preserved' }
+          $patchPackageSha=(Get-FileHash $patchPackage -Algorithm SHA256).Hash.ToLowerInvariant()
           $summary=[ordered]@{
             schema='125a-p103-ghidra-le-vxd-fixup-stride-v1'
             status='REAL_UNPATCHED_BUG_REPRODUCED_AND_PATCHED_CORRECT'
@@ -157,6 +161,7 @@ jobs:
             page_size=512
             pages=6
             applied_e8_fixups=3
+            patched_zip_sha256=$patchPackageSha
             wrong_original_source='0x301021'
             correct_patched_source='0x300221'
             original_creative_vxd_imported=$false
@@ -165,6 +170,14 @@ jobs:
           }
           $summary|ConvertTo-Json -Depth 5|Out-File build/p103/P103-SUMMARY.json -Encoding utf8
           "P103 baseline wrong metadata reproduced; patched loader correct: second page fixup source 0x300221 instead of 0x301021." | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Upload tested patched open-source extension for Ghidra 12.0.1
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P103-Ghidra-12.0.1-LE-LX-page512-fix
+          path: build/p103/ghidra-lx-loader-patched.zip
+          if-no-files-found: error
 
       - name: Upload redacted metadata only, never LE binaries or decompiler output
         if: always()
