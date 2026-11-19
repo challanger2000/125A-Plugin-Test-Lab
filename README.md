@@ -1,3 +1,7 @@
+## Optional external THE_LAB measurement reports (1.3.4)
+
+THE_LAB by Phil Speiser can be used as a separate, manual VST3 measurement cross-check. A new SHA-pinned JSON/CSV importer preserves the raw exported report **without converting vendor claims into 125A QA or release PASS**. See [scope and usage](docs/THE-LAB-EXTERNAL-MEASUREMENTS.md). No proprietary installer is bundled, and no undocumented command-line automation is assumed.
+
 **P99 optional REA binary analysis:** The P74/P75 pipeline can now request
 SHA-pinned REA/Ghidra native VST3 observations. **Default: NOT RUN**;
 results are unreviewed static observations, never a DSP, GUI or release
