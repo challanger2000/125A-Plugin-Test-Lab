@@ -77,6 +77,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     int64 rtP95=0,rtP99=0;
     int64 callbackBudget=0;
     int32 actualInputBusCount=-1;
+    int32 actualOutputBusCount=-1;
     for(const auto& info:factory.classInfos()) {
         if(info.category()!=kVstAudioEffectClass) continue;
         ++audioClasses;
@@ -93,12 +94,32 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
         try {
             demand(processor->canProcessSampleSize(kSample32)==kResultTrue,
                    "32-bit processing unavailable");
-            demand(component->getBusCount(kAudio,kOutput)==1,
-                   "this stress scenario requires exactly one output bus");
-            BusInfo bus{};
-            demand(component->getBusInfo(kAudio,kOutput,0,bus)==kResultOk&&bus.channelCount==2,
-                   "this stress scenario requires a stereo output");
-            (void)component->activateBus(kAudio,kOutput,0,true);
+            // P100: S3000XL has main stereo plus eight independent mono buses.
+            // A stereo-only native harness incorrectly rejected every callback.
+            // Support up to 16 declared output buses, without ever dropping one.
+            const int32 outputBusCount=component->getBusCount(kAudio,kOutput);
+            actualOutputBusCount=outputBusCount;
+            demand(outputBusCount>=1 && outputBusCount<=16,
+                   "P100 technical scope: 1 to 16 output audio buses");
+            std::vector<int32> outputChannels;
+            outputChannels.reserve(static_cast<size_t>(outputBusCount));
+            int totalOutputChannels=0;
+            for(int32 busIndex=0;busIndex<outputBusCount;++busIndex) {
+                BusInfo bus{};
+                demand(component->getBusInfo(kAudio,kOutput,busIndex,bus)==kResultOk,
+                       "P100 cannot query an advertised output audio bus");
+                const auto channels=bus.channelCount;
+                demand(channels>=1 && channels<=2,
+                       "P100 technical scope: mono/stereo output buses only");
+                if(busIndex==0)
+                    demand(channels==2,"P100 requires stereo main output");
+                totalOutputChannels+=channels;
+                demand(totalOutputChannels<=32,
+                       "P100 output channel budget exceeded");
+                outputChannels.push_back(channels);
+                demand(component->activateBus(kAudio,kOutput,busIndex,true)==kResultOk,
+                       "P100 could not activate an advertised output bus");
+            }
             // P98: the P25 harness previously supplied ONLY an output bus,
             // so every nonzero callback of a genuine audio insert was
             // rejected. A zero-input generator and a single stereo-input
@@ -140,7 +161,28 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
             const int bufferSize=std::max(16,block);
             std::vector<Sample32> left(bufferSize),right(bufferSize);
             Sample32* channels[]{left.data(),right.data()};
-            AudioBusBuffers output{};output.numChannels=2;output.channelBuffers32=channels;
+            // Allocate every extra output buffer before entering process().
+            // Buffer/pointer vectors remain immutable until the audio thread
+            // has joined; the host never silently drops auxiliary outputs.
+            std::vector<std::vector<Sample32>> auxStorage;
+            auxStorage.reserve(static_cast<size_t>(totalOutputChannels-2));
+            for(int i=2;i<totalOutputChannels;++i)
+                auxStorage.emplace_back(static_cast<size_t>(bufferSize),0.f);
+            std::vector<std::vector<Sample32*>> auxPointers;
+            auxPointers.reserve(static_cast<size_t>(outputBusCount-1));
+            std::vector<AudioBusBuffers> allOutputs(static_cast<size_t>(outputBusCount));
+            allOutputs[0].numChannels=2;
+            allOutputs[0].channelBuffers32=channels;
+            int auxIndex=0;
+            for(int32 busIndex=1;busIndex<outputBusCount;++busIndex) {
+                auto& pointers=auxPointers.emplace_back();
+                const int32 count=outputChannels[static_cast<size_t>(busIndex)];
+                pointers.reserve(static_cast<size_t>(count));
+                for(int32 ch=0;ch<count;++ch)
+                    pointers.push_back(auxStorage[static_cast<size_t>(auxIndex++)].data());
+                allOutputs[static_cast<size_t>(busIndex)].numChannels=count;
+                allOutputs[static_cast<size_t>(busIndex)].channelBuffers32=pointers.data();
+            }
             // Deterministic stereo excitation for insert FX, allocated
             // and filled BEFORE audio starts. A missing input must never
             // become a false PASS for a plugin that requires one.
@@ -188,7 +230,8 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                 d.numInputs=inputBusCount;
                 d.inputs=inputBusCount==1?&input:nullptr;
 #endif
-                d.numOutputs=1;d.outputs=&output;d.processContext=&context;
+                d.numOutputs=outputBusCount;
+                d.outputs=allOutputs.data();d.processContext=&context;
                 while(!launch.load(std::memory_order_acquire)) std::this_thread::yield();
                 for(int i=0;i<iterations;++i) {
                     const int count=(i%19==0)?0:block; // legal zero-frame flush
@@ -207,9 +250,17 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
                     if(count>0 && frameIndex<=targetFrame && frameIndex+count>targetFrame) {
                         metrics.rampSample.store(left[size_t(targetFrame-frameIndex)],std::memory_order_relaxed);
                     }
-                    for(int n=0;n<count;++n) {
-                        if(!std::isfinite(left[size_t(n)])||!std::isfinite(right[size_t(n)]))
-                            metrics.processFailures.fetch_add(1,std::memory_order_relaxed);
+                    // Validate all declared output channels, not only MAIN L/R.
+                    // A defective discrete-output plugin must not earn PASS.
+                    for(const auto& bus : allOutputs) {
+                        for(int32 ch=0;ch<bus.numChannels;++ch) {
+                            const auto* pcm=bus.channelBuffers32[ch];
+                            if(!pcm) {metrics.processFailures.fetch_add(1,std::memory_order_relaxed);continue;}
+                            for(int n=0;n<count;++n) {
+                                if(!std::isfinite(pcm[static_cast<size_t>(n)]))
+                                    metrics.processFailures.fetch_add(1,std::memory_order_relaxed);
+                            }
+                        }
                     }
                     frameIndex+=count;
                     metrics.callbacks.fetch_add(1,std::memory_order_relaxed);
@@ -344,6 +395,7 @@ int stress(const std::string& pluginPath,const std::filesystem::path& report,
     out<<"sample_rate\t"<<sampleRate<<"\nblock_size\t"<<block<<"\niterations\t"<<iterations<<"\n";
     out<<"oracle\t"<<oracle<<"\nscenario\t"<<(replayValid?"replay-genuine-state":saveOnly?"playback-save-no-writes":"concurrent-writers")<<"\nclasses\t"<<audioClasses<<"\n";
     out<<"input_buses\t"<<actualInputBusCount<<"\n";
+    out<<"output_buses\t"<<actualOutputBusCount<<"\n";
     out<<"callbacks\t"<<metrics.callbacks.load()<<"\nprocess_failures\t"<<metrics.processFailures.load();
     out<<"\nset_failures\t"<<metrics.setFailures.load()<<"\nsave_failures\t"<<metrics.saveFailures.load();
     out<<"\nsaves_during_playback\t"<<metrics.savesDuringPlayback.load();

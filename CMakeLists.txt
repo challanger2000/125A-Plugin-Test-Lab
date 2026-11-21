@@ -253,6 +253,16 @@ smtg_add_vst3plugin(QAStateStereoInput
 target_link_libraries(QAStateStereoInput PRIVATE sdk)
 target_compile_definitions(QAStateStereoInput PRIVATE NOMINMAX QA_STATE_MODE=10)
 
+# P100: native multi-output 1 stereo + 8 mono stress-host acceptance.
+# The broken output emits a NaN on an individual bus while MAIN stays valid.
+foreach(mode IN ITEMS 11 12)
+  smtg_add_vst3plugin(QAStateMode${mode}
+      PACKAGE_NAME "125A_QA_State_${mode}"
+      SOURCES_LIST tests/state_race_fixture.cpp)
+  target_link_libraries(QAStateMode${mode} PRIVATE sdk)
+  target_compile_definitions(QAStateMode${mode} PRIVATE NOMINMAX QA_STATE_MODE=${mode})
+endforeach()
+
 # A deliberately incorrect real VST3 rejects valid saved-state reloads
 # during active playback; the independent native replay stress must detect it.
 smtg_add_vst3plugin(QAStateMode9
