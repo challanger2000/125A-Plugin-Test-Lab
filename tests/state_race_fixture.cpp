@@ -7,6 +7,8 @@
 #include "pluginterfaces/vst/vstspeaker.h"
 #include "pluginterfaces/base/ibstream.h"
 #include <atomic>
+#include <limits>
+#include <string>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -53,6 +55,15 @@ public:
         addAudioInput(STR16("Stereo In"),SpeakerArr::kStereo);
 #endif
         addAudioOutput(STR16("Stereo Out"),SpeakerArr::kStereo);
+#if QA_STATE_MODE==11 || QA_STATE_MODE==12
+        // A realistic 125A Akai S3000XL topology: MAIN L/R and 8 mono sends.
+        // Mode 12 emits a nonfinite discrete output so the native stress
+        // harness must reject it despite correct MAIN L/R and state.
+        for(int i=0;i<8;++i) {
+            const std::u16string busName=u"Individual "+std::u16string(1,char16_t(u'1'+i));
+            addAudioOutput(reinterpret_cast<const TChar*>(busName.c_str()),SpeakerArr::kMono);
+        }
+#endif
         return kResultOk;
     }
     tresult PLUGIN_API setupProcessing(ProcessSetup& setup) override {
@@ -117,8 +128,16 @@ public:
     }
     tresult PLUGIN_API process(ProcessData& d) override {
         if (d.symbolicSampleSize!=kSample32||d.numSamples<0||d.numSamples>2048||
-            d.numOutputs!=1||!d.outputs||d.outputs[0].numChannels!=2||
+            !d.outputs||d.outputs[0].numChannels!=2||
             !d.outputs[0].channelBuffers32) return kResultFalse;
+#if QA_STATE_MODE==11 || QA_STATE_MODE==12
+        if(d.numOutputs!=9)return kResultFalse;
+        for(int i=1;i<9;++i)
+            if(d.outputs[i].numChannels!=1 || !d.outputs[i].channelBuffers32 ||
+               !d.outputs[i].channelBuffers32[0])return kResultFalse;
+#else
+        if(d.numOutputs!=1)return kResultFalse;
+#endif
 #if QA_STATE_MODE==10
         if (d.numInputs!=1||!d.inputs||d.inputs[0].numChannels!=2||
             !d.inputs[0].channelBuffers32||!d.inputs[0].channelBuffers32[0]||
@@ -199,6 +218,20 @@ public:
         }
 #endif
         d.outputs[0].silenceFlags=0;
+#if QA_STATE_MODE==11 || QA_STATE_MODE==12
+        for(int bus=1;bus<9;++bus) {
+            auto* aux=d.outputs[bus].channelBuffers32[0];
+            for(int i=0;i<d.numSamples;++i)
+                aux[i]=Sample32(0.01*bus);
+            d.outputs[bus].silenceFlags=0;
+        }
+#if QA_STATE_MODE==12
+        // Deliberately broken AUX 7: no failure on MAIN L/R.
+        if(d.numSamples>0)
+            d.outputs[7].channelBuffers32[0][0]=
+                std::numeric_limits<Sample32>::quiet_NaN();
+#endif
+#endif
         return kResultOk;
     }
 private:
@@ -233,6 +266,10 @@ constexpr const char* name="125A QA Broken Multi Instance Global State";
 constexpr const char* name="125A QA Broken Live State Replay Rejection";
 #elif QA_STATE_MODE==10
 constexpr const char* name="125A QA P98 Stereo Audio Effect";
+#elif QA_STATE_MODE==11
+constexpr const char* name="125A QA P100 Akai Multi Output Good";
+#elif QA_STATE_MODE==12
+constexpr const char* name="125A QA P100 Broken Auxiliary Output";
 #endif
 }
 BEGIN_FACTORY_DEF("125A Universal QA","https://github.com/challanger2000","qa@125a.invalid")
